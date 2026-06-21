@@ -30,10 +30,12 @@ One Cloudflare Worker, one Installation, three editor surfaces:
 
 | URL        | Surface                                  |
 | ---------- | ---------------------------------------- |
+| `/`        | Office shell (cross-editor nav, recent items, cross-app search) |
 | `/docs`    | document editor (`.takosdoc`)            |
 | `/slide`   | presentation editor (`.takosslide`)      |
 | `/sheet`   | spreadsheet editor (`.takossheet`)       |
-| `/mcp`     | unified MCP (≈70 `docs_*`/`slide_*`/`sheet_*` tools) |
+| `/api/office/{items,search}` | cross-app recent / search feeding the shell |
+| `/mcp`     | unified MCP (≈80 `docs_*`/`slide_*`/`sheet_*` tools) |
 | `/healthz` | readiness probe                          |
 
 Each editor SPA is built with its own vite `base` (`/docs/`, `/slide/`, `/sheet/`) and SolidJS Router

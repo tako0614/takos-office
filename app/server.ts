@@ -4,7 +4,9 @@
  * Mounts the three editor sub-apps under subpaths and exposes one office-wide
  * MCP endpoint:
  *   - GET  /healthz          — readiness probe (manifest readiness)
- *   - GET  /                 — redirect to /docs
+ *   - GET  /                 — Office shell (cross-editor nav + recent + search)
+ *   - GET  /api/office/items — recent items across docs/slide/sheet
+ *   - GET  /api/office/search— cross-app title/content search
  *   - POST /mcp              — unified MCP (docs + slide + sheet tools)
  *   - /docs/*                — takos-docs SPA + /docs/api/* + /docs/files/:id
  *   - /slide/*               — takos-slide SPA + /slide/api/* + /slide/files/:id
@@ -31,7 +33,13 @@ import {
   createMcpRequestHandler,
   mcpAuthMisconfigured,
 } from "./shared/mcp-factory.ts";
-import { appAuthMisconfigured } from "./shared/app-auth.ts";
+import { appAuthMisconfigured, requireAppAuth } from "./shared/app-auth.ts";
+import {
+  collectOfficeItems,
+  type OfficeStores,
+  searchOfficeItems,
+} from "./office-items.ts";
+import { renderShellPage } from "./shell-page.ts";
 
 export type OfficeRuntimeEnv = Record<string, string | undefined>;
 
@@ -110,10 +118,10 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   app.get("/health", health);
   app.get("/healthz", health);
 
-  // ---- Root → default editor ----
-  app.get("/", (c) => c.redirect("/docs"));
+  // ---- Office shell landing ----
+  app.get("/", (c) => c.html(renderShellPage()));
 
-  // ---- Unified office MCP (docs + slide + sheet) ----
+  // ---- Shared storage config ----
   const apiUrl =
     envValue(env, "TAKOS_STORAGE_API_URL") ||
     envValue(env, "TAKOS_API_URL") ||
@@ -122,6 +130,45 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     envValue(env, "TAKOS_STORAGE_ACCESS_TOKEN") ||
     requiredEnv(env, "TAKOS_ACCESS_TOKEN");
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+
+  // ---- Office shell cross-editor APIs (recent + search) ----
+  const officeStores = new Map<string, OfficeStores>();
+  const storesForSpace = (spaceId: string): OfficeStores => {
+    let stores = officeStores.get(spaceId);
+    if (!stores) {
+      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      stores = {
+        docs: new TakosDocumentStore(client),
+        slide: createPresentationStore(client),
+        sheet: new SpreadsheetStore(client),
+      };
+      officeStores.set(spaceId, stores);
+    }
+    return stores;
+  };
+  const resolveSpace = (c: Context) =>
+    c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId;
+
+  app.get("/api/office/items", async (c) => {
+    const spaceId = resolveSpace(c);
+    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
+    if (unauthorized) return unauthorized;
+    if (!spaceId) return c.json({ error: "space_id is required" }, 400);
+    return c.json({ items: await collectOfficeItems(storesForSpace(spaceId)) });
+  });
+
+  app.get("/api/office/search", async (c) => {
+    const spaceId = resolveSpace(c);
+    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
+    if (unauthorized) return unauthorized;
+    if (!spaceId) return c.json({ error: "space_id is required" }, 400);
+    const q = c.req.query("q") ?? "";
+    return c.json({
+      items: await searchOfficeItems(storesForSpace(spaceId), q),
+    });
+  });
+
+  // ---- Unified office MCP (docs + slide + sheet) ----
   const mcpHandlers = new Map<
     string,
     (request: Request) => Promise<Response>

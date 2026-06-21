@@ -54,11 +54,13 @@ installable — they are surfaces of one `takos-office` app/Installation. Substi
 (being "office" grants no privilege over Takos core), and storage / MIME / file-handler contracts are
 unchanged.
 
-### Next: optional office shell
+### Done: office shell
 
-A shared **office shell** (cross-editor nav, unified file picker, cross-app search) layered over the
-three subpaths is a possible follow-up. The subpath mount is the foundation; the shell would compose
-the surfaces without changing each editor's build.
+A shared **office shell** now lands at `/` (`app/shell-page.ts`): cross-editor nav cards, a
+"recent across all apps" list, and cross-app search, backed by `/api/office/items` and
+`/api/office/search` (`app/office-items.ts` aggregates the docs/slide/sheet stores server-side).
+It composes the three subpath surfaces without changing each editor's build, and preserves the
+current `space_id` when navigating into an editor.
 
 ## Site
 
