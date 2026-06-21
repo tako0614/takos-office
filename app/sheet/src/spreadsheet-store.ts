@@ -20,6 +20,7 @@ import type {
   Spreadsheet,
 } from "./types/index.ts";
 import {
+  computeUsedRange,
   formatCellAddress,
   letterToColumn,
   parseCellAddress,
@@ -493,6 +494,25 @@ export class SpreadsheetStore {
       result.push(row);
     }
     return result;
+  }
+
+  /**
+   * Compute the bounding box of all non-empty cells on a sheet. When sheetId
+   * is omitted, resolves to the spreadsheet's active sheet, falling back to the
+   * first sheet. Returns a null range with zero counts for an empty sheet.
+   */
+  async getUsedRange(
+    spreadsheetId: string,
+    sheetId?: string,
+  ): Promise<
+    & { sheetId: string }
+    & ReturnType<typeof computeUsedRange>
+  > {
+    const ss = await this.getSpreadsheet(spreadsheetId);
+    const resolvedId = sheetId ?? ss.activeSheetId ?? ss.sheets[0]?.id;
+    const sheet = ss.sheets.find((s) => s.id === resolvedId);
+    if (!sheet) throw new Error(`Sheet not found: ${resolvedId}`);
+    return { sheetId: sheet.id, ...computeUsedRange(sheet.cells) };
   }
 
   // -----------------------------------------------------------------------

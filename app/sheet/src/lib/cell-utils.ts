@@ -1,3 +1,5 @@
+import type { CellData } from "../types/index.ts";
+
 export const MAX_SPREADSHEET_COLUMNS = 100;
 export const MAX_SPREADSHEET_ROWS = 1_000;
 export const MAX_RANGE_CELLS = 10_000;
@@ -152,4 +154,61 @@ export function getCellRange(
     }
   }
   return addresses;
+}
+
+/**
+ * Compute the bounding box of all non-empty cells in a sheet's cell map. A
+ * cell counts as occupied only when it has a non-whitespace `value`; absent or
+ * whitespace-only cells (and unparsable addresses) are ignored. Pure helper so
+ * it is unit-testable without a store.
+ */
+export function computeUsedRange(
+  cells: Record<string, CellData>,
+):
+  | {
+    range: string;
+    startRow: number;
+    startCol: number;
+    endRow: number;
+    endCol: number;
+    rows: number;
+    cols: number;
+  }
+  | { range: null; rows: 0; cols: 0 } {
+  let startRow = Infinity;
+  let startCol = Infinity;
+  let endRow = -Infinity;
+  let endCol = -Infinity;
+  let found = false;
+
+  for (const [addr, cell] of Object.entries(cells)) {
+    if (!cell || typeof cell.value !== "string" || cell.value.trim() === "") {
+      continue;
+    }
+    let parsed: { col: number; row: number };
+    try {
+      parsed = parseCellAddress(addr);
+    } catch {
+      continue;
+    }
+    found = true;
+    if (parsed.row < startRow) startRow = parsed.row;
+    if (parsed.col < startCol) startCol = parsed.col;
+    if (parsed.row > endRow) endRow = parsed.row;
+    if (parsed.col > endCol) endCol = parsed.col;
+  }
+
+  if (!found) return { range: null, rows: 0, cols: 0 };
+
+  return {
+    range: `${formatCellAddress(startCol, startRow)}:${
+      formatCellAddress(endCol, endRow)
+    }`,
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    rows: endRow - startRow + 1,
+    cols: endCol - startCol + 1,
+  };
 }

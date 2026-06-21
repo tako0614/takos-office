@@ -2,7 +2,7 @@
  * MCP Server for document editing tools.
  *
  * Exposes:
- * - docs_list, docs_create, docs_get, docs_delete, docs_search — Document management
+ * - docs_list, docs_create, docs_get, docs_get_text, docs_get_outline, docs_delete, docs_search — Document management
  * - docs_set_title, docs_set_content, docs_insert_text, docs_replace_text, docs_append_text — Content editing
  * - docs_format_selection, docs_insert_table, docs_insert_image, docs_insert_link — Formatting
  * - docs_screenshot — Screenshot
@@ -457,6 +457,64 @@ function docTextLength(doc: DocNode): number {
 }
 
 /**
+ * The document's rendered plain text: the concatenation of every text node in
+ * document order. This is exactly the offset space the editing tools index
+ * into (insertTextAtOffset / formatRangeInModel / docTextLength all walk the
+ * same `collectTextNodes` sequence), so positions returned alongside this text
+ * line up with `docs_insert_text` / `docs_format_selection` positions.
+ */
+function docRenderedText(doc: DocNode): string {
+  const nodes: TiptapNode[] = [];
+  collectTextNodes(doc, nodes);
+  return nodes.map((n) => String(n.text ?? "")).join("");
+}
+
+export interface DocOutlineHeading {
+  level: number;
+  text: string;
+  /** Rendered-text offset (in docRenderedText space) where the heading begins. */
+  offset: number;
+}
+
+/**
+ * Compute the document outline as an ordered list of heading entries, each with
+ * its rendered-text offset. The offset is the running total of text-node text
+ * preceding the heading, so it is consistent with `docRenderedText` (and thus
+ * with the editing tools' offsets). Pure function over a parsed doc model so it
+ * can be unit-tested without a store.
+ */
+export function computeDocOutline(doc: DocNode): DocOutlineHeading[] {
+  const headings: DocOutlineHeading[] = [];
+
+  const walk = (node: TiptapNode, offset: { value: number }): void => {
+    if (node.type === "text") {
+      offset.value += String(node.text ?? "").length;
+      return;
+    }
+    if (node.type === "heading") {
+      const rawLevel = typeof node.attrs?.level === "number"
+        ? node.attrs.level
+        : 1;
+      const level = Math.min(6, Math.max(1, Math.trunc(rawLevel)));
+      const start = offset.value;
+      const textNodes: TiptapNode[] = [];
+      collectTextNodes(node, textNodes);
+      const headingText = textNodes.map((n) => String(n.text ?? "")).join("");
+      headings.push({ level, text: headingText, offset: start });
+      // Still advance the offset cursor past this heading's text.
+      offset.value += headingText.length;
+      return;
+    }
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) walk(child, offset);
+    }
+  };
+
+  walk(doc, { value: 0 });
+  return headings;
+}
+
+/**
  * Insert text at a rendered-text offset, splicing it into the text node that
  * spans that offset (or appending a new paragraph when the offset is at/after
  * the document end and there is no trailing text node).
@@ -899,6 +957,39 @@ export function registerDocsTools(
       const doc = await store.get(id);
       if (!doc) return error(`Document not found: ${id}`);
       return json(doc);
+    },
+  );
+
+  server.tool(
+    "docs_get_text",
+    "Get the document's rendered plain text and its length. The text is the offset space the editing tools (docs_insert_text, docs_format_selection, docs_insert_table/image/link) index into: a character position into this text is the same position those tools accept.",
+    {
+      id: idSchema.describe("Document id"),
+    },
+    async ({ id }: { id: string }) => {
+      const doc = await store.get(id);
+      if (!doc) return error(`Document not found: ${id}`);
+      const model = loadDocModel(doc.content);
+      const renderedText = docRenderedText(model);
+      return json({
+        id: doc.id,
+        text: renderedText,
+        length: renderedText.length,
+      });
+    },
+  );
+
+  server.tool(
+    "docs_get_outline",
+    "Get the document outline: one entry per heading in document order with its level, text, and the rendered-text offset where the heading begins (consistent with docs_get_text offsets, so an agent can jump to a section).",
+    {
+      id: idSchema.describe("Document id"),
+    },
+    async ({ id }: { id: string }) => {
+      const doc = await store.get(id);
+      if (!doc) return error(`Document not found: ${id}`);
+      const model = loadDocModel(doc.content);
+      return json({ id: doc.id, headings: computeDocOutline(model) });
     },
   );
 

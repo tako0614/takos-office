@@ -49,6 +49,7 @@ function createDefaultSlide(): Slide {
 }
 
 const MAX_TEXT_LENGTH = 10_000;
+const MAX_NOTES_LENGTH = 20_000;
 const MAX_CSS_VALUE_LENGTH = 200;
 const MAX_URL_LENGTH = 2_048;
 const MIN_COORDINATE = -5_000;
@@ -106,6 +107,26 @@ function assertString(key: string, value: unknown, maxLength: number): string {
     const code = ch.charCodeAt(0);
     if (code <= 0x1f || code === 0x7f) {
       throw new Error(`${key} contains control characters`);
+    }
+  }
+  return value;
+}
+
+/**
+ * Speaker notes are free-form prose, so unlike single-line string fields they
+ * may contain newlines / tabs. Every other control character is rejected, in
+ * the same spirit as {@link assertString}.
+ */
+function assertNotes(value: unknown, maxLength: number): string {
+  if (typeof value !== "string") throw new Error("notes must be a string");
+  if (value.length > maxLength) {
+    throw new Error(`notes must be at most ${maxLength} characters`);
+  }
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code === 0x09 || code === 0x0a || code === 0x0d) continue; // tab / LF / CR
+    if (code <= 0x1f || code === 0x7f) {
+      throw new Error("notes contains control characters");
     }
   }
   return value;
@@ -288,6 +309,11 @@ export interface PresentationStore {
     slideIndex: number,
     background: string,
   ): Promise<void>;
+  setSlideNotes(
+    presentationId: string,
+    slideIndex: number,
+    notes: string,
+  ): Promise<Slide>;
   duplicateSlide(presentationId: string, slideIndex: number): Promise<Slide>;
 
   // Element operations
@@ -659,6 +685,15 @@ export function createPresentationStore(
       slide.background = background;
       touch(p);
       await persist(presentationId, p);
+    },
+
+    async setSlideNotes(presentationId, slideIndex, notes) {
+      const { p } = await mustGet(presentationId);
+      const slide = mustGetSlide(p, slideIndex);
+      slide.notes = assertNotes(notes, MAX_NOTES_LENGTH);
+      touch(p);
+      await persist(presentationId, p);
+      return slide;
     },
 
     async duplicateSlide(presentationId, slideIndex) {

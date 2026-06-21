@@ -4,6 +4,7 @@
  * Exposes:
  * - slide_list / slide_create / slide_get / slide_delete / slide_set_title
  * - slide_add / slide_remove / slide_reorder / slide_set_background / slide_duplicate
+ * - slide_get_slide / slide_list_elements / slide_set_notes
  * - slide_add_text / slide_add_shape / slide_add_image
  * - slide_remove_element / slide_update_element / slide_move_element / slide_resize_element
  * - slide_screenshot
@@ -61,6 +62,7 @@ export function registerSlideTools(
   const MAX_ID_LENGTH = 128;
   const MAX_TITLE_LENGTH = 200;
   const MAX_TEXT_LENGTH = 10_000;
+  const MAX_NOTES_LENGTH = 20_000;
   const MAX_CSS_VALUE_LENGTH = 200;
   const MAX_URL_LENGTH = 2_048;
   const MIN_COORDINATE = -5_000;
@@ -75,6 +77,7 @@ export function registerSlideTools(
 
   const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
   const titleSchema = z.string().max(MAX_TITLE_LENGTH);
+  const notesSchema = z.string().max(MAX_NOTES_LENGTH);
   const slideIndexSchema = z.number().int().min(0).max(MAX_SLIDES);
   const coordinateSchema = z.number().min(MIN_COORDINATE).max(MAX_COORDINATE);
   const sizeSchema = z.number().min(MIN_SIZE).max(MAX_SIZE);
@@ -317,6 +320,71 @@ export function registerSlideTools(
     }) => {
       try {
         return json(await store.duplicateSlide(presentationId, slideIndex));
+      } catch (e) {
+        return error(String(e));
+      }
+    },
+  );
+
+  server.tool(
+    "slide_get_slide",
+    "Get a single slide (including its elements, background, transition and speaker notes) by index without fetching the whole presentation.",
+    {
+      id: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+    },
+    async ({ id, slideIndex }: { id: string; slideIndex: number }) => {
+      const p = await store.get(id);
+      if (!p) return error(`Presentation not found: ${id}`);
+      const slide = p.slides[slideIndex];
+      if (!slide) {
+        return error(
+          `Slide index ${slideIndex} out of range (0..${p.slides.length - 1})`,
+        );
+      }
+      return json(slide);
+    },
+  );
+
+  server.tool(
+    "slide_list_elements",
+    "List the elements on a single slide (id, type, geometry and key style fields) so an agent can find an element ID without fetching the whole presentation.",
+    {
+      id: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+    },
+    async ({ id, slideIndex }: { id: string; slideIndex: number }) => {
+      const p = await store.get(id);
+      if (!p) return error(`Presentation not found: ${id}`);
+      const slide = p.slides[slideIndex];
+      if (!slide) {
+        return error(
+          `Slide index ${slideIndex} out of range (0..${p.slides.length - 1})`,
+        );
+      }
+      return json({ slideIndex, elements: slide.elements });
+    },
+  );
+
+  server.tool(
+    "slide_set_notes",
+    "Set the speaker notes for a slide. Notes are not shown to the audience. Returns the updated slide.",
+    {
+      id: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      notes: notesSchema.describe("Speaker notes text"),
+    },
+    async ({
+      id,
+      slideIndex,
+      notes,
+    }: {
+      id: string;
+      slideIndex: number;
+      notes: string;
+    }) => {
+      try {
+        return json(await store.setSlideNotes(id, slideIndex, notes));
       } catch (e) {
         return error(String(e));
       }

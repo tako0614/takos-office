@@ -353,6 +353,26 @@ export function registerExcelTools(
 
   registerTool(
     mcp,
+    "sheet_get_used_range",
+    "Get the bounding box of all non-empty cells on a sheet (where the data is)",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+    },
+    async (args) => {
+      try {
+        const used = await store.getUsedRange(args.id, args.sheetId);
+        return json({ id: args.id, ...used });
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  registerTool(
+    mcp,
     "sheet_set_range",
     "Set a range of values from a 2D array",
     {

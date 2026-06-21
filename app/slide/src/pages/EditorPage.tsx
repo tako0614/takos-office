@@ -198,6 +198,16 @@ export default function EditorPage() {
     persist({ ...pres, slides: newSlides });
   };
 
+  const handleUpdateNotes = (notes: string) => {
+    const pres = presentation();
+    if (!pres) return;
+    pushUndo();
+    const idx = selectedSlideIndex();
+    const newSlides = [...pres.slides];
+    newSlides[idx] = { ...newSlides[idx], notes };
+    persist({ ...pres, slides: newSlides });
+  };
+
   const handlePresent = () => {
     const id = presentation()?.id ?? params.id;
     navigate(`/${id}/present`);
@@ -343,6 +353,25 @@ export default function EditorPage() {
               </Show>
             );
           }}
+        </Show>
+
+        {/* Speaker notes */}
+        <Show when={currentSlide()}>
+          <div class="bg-gray-800 border-t border-gray-700 px-4 py-2">
+            <label
+              for="speaker-notes"
+              class="block text-xs font-medium text-gray-400 mb-1"
+            >
+              {t("speakerNotes")}
+            </label>
+            <textarea
+              id="speaker-notes"
+              class="w-full h-16 bg-gray-700 text-gray-100 text-xs px-3 py-2 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none"
+              value={currentSlide()!.notes ?? ""}
+              placeholder={t("speakerNotesPlaceholder")}
+              onInput={(e) => handleUpdateNotes(e.currentTarget.value)}
+            />
+          </div>
         </Show>
 
         {/* Bottom bar */}

@@ -58,6 +58,7 @@ export interface Slide {
   elements: SlideElement[];
   background: string; // CSS color or gradient
   transition?: SlideTransition;
+  notes?: string; // speaker notes (not shown to the audience)
 }
 
 export interface Presentation {
