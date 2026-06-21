@@ -26,6 +26,7 @@ import {
 } from "./lib/cell-utils.ts";
 import {
   evaluateSheet,
+  formatHfResult,
   getEngine,
   setCellValue,
   syncSheetToEngine,
@@ -461,24 +462,13 @@ export class SpreadsheetStore {
     const hf = getEngine();
     const hfSheetId = syncSheetToEngine(sheet);
 
-    const tmpRow = 9999;
-    const tmpCol = 99;
     try {
-      hf.setCellContents({ sheet: hfSheetId, row: tmpRow, col: tmpCol }, [
-        [formula],
-      ]);
-      const result = hf.getCellValue({
-        sheet: hfSheetId,
-        row: tmpRow,
-        col: tmpCol,
-      });
-      if (result !== null && result !== undefined) {
-        if (typeof result === "object" && "type" in result) {
-          return "#ERROR!";
-        }
-        return String(result);
-      }
-      return "";
+      // Evaluate the formula in the sheet's context without writing a scratch
+      // cell, so whole-column refs like =SUM(A:A) can't self-include a scratch
+      // row and we never exceed the sheet bounds.
+      const normalized = formula.startsWith("=") ? formula : `=${formula}`;
+      const result = hf.calculateFormula(normalized, hfSheetId);
+      return formatHfResult(result);
     } catch {
       return "#ERROR!";
     }

@@ -23,6 +23,7 @@ import {
 import {
   bytesToBase64,
   createAppMcpServer,
+  mcpError,
   mcpJson,
   mcpText,
 } from "../../shared/mcp-factory.ts";
@@ -55,6 +56,7 @@ export function registerSlideTools(
 ): void {
   const text = mcpText;
   const json = mcpJson;
+  const error = mcpError;
 
   const MAX_ID_LENGTH = 128;
   const MAX_TITLE_LENGTH = 200;
@@ -155,7 +157,7 @@ export function registerSlideTools(
     { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       const p = await store.get(id);
-      if (!p) return text(`Presentation not found: ${id}`);
+      if (!p) return error(`Presentation not found: ${id}`);
       return json(p);
     },
   );
@@ -166,7 +168,7 @@ export function registerSlideTools(
     { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       const ok = await store.delete(id);
-      if (!ok) return text(`Presentation not found: ${id}`);
+      if (!ok) return error(`Presentation not found: ${id}`);
       return text("Deleted");
     },
   );
@@ -182,7 +184,7 @@ export function registerSlideTools(
       try {
         return json(await store.setTitle(id, title));
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -219,7 +221,7 @@ export function registerSlideTools(
       try {
         return json(await store.addSlide(presentationId, index, background));
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -242,7 +244,7 @@ export function registerSlideTools(
         await store.removeSlide(presentationId, slideIndex);
         return text("Removed");
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -268,7 +270,7 @@ export function registerSlideTools(
         await store.reorderSlide(presentationId, fromIndex, toIndex);
         return text("Reordered");
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -294,7 +296,7 @@ export function registerSlideTools(
         await store.setSlideBackground(presentationId, slideIndex, background);
         return text("Background updated");
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -316,7 +318,7 @@ export function registerSlideTools(
       try {
         return json(await store.duplicateSlide(presentationId, slideIndex));
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -377,7 +379,7 @@ export function registerSlideTools(
           }),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -426,7 +428,7 @@ export function registerSlideTools(
           }),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -463,7 +465,7 @@ export function registerSlideTools(
           }),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -489,7 +491,7 @@ export function registerSlideTools(
         await store.removeElement(presentationId, slideIndex, elementId);
         return text("Removed");
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -526,7 +528,7 @@ export function registerSlideTools(
           ),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -559,7 +561,7 @@ export function registerSlideTools(
           await store.moveElement(presentationId, slideIndex, elementId, x, y),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -598,7 +600,7 @@ export function registerSlideTools(
           ),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -642,13 +644,13 @@ export function registerSlideTools(
       const unavailable = slideScreenshotUnavailableMessage(
         runtimeCapabilities.screenshot,
       );
-      if (unavailable) return text(unavailable);
+      if (unavailable) return error(unavailable);
 
       const p = await store.get(presentationId);
-      if (!p) return text(`Presentation not found: ${presentationId}`);
+      if (!p) return error(`Presentation not found: ${presentationId}`);
       const slide = p.slides[slideIndex];
       if (!slide) {
-        return text(
+        return error(
           `Slide index ${slideIndex} out of range (0..${p.slides.length - 1})`,
         );
       }
@@ -678,7 +680,7 @@ export function registerSlideTools(
           ],
         };
       } catch (e) {
-        return text(`Failed to render slide: ${String(e)}`);
+        return error(`Failed to render slide: ${String(e)}`);
       }
     },
   );
@@ -695,7 +697,7 @@ export function registerSlideTools(
       try {
         return json(await store.exportJson(id));
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -710,7 +712,7 @@ export function registerSlideTools(
         const base64 = bytesToBase64(pdfBytes);
         return text(base64);
       } catch (e) {
-        return text(`Failed to export PDF: ${String(e)}`);
+        return error(`Failed to export PDF: ${String(e)}`);
       }
     },
   );
@@ -723,7 +725,7 @@ export function registerSlideTools(
       try {
         return json({ slideCount: await store.getSlideCount(id) });
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -773,7 +775,7 @@ export function registerSlideTools(
         });
         return text("Transition updated");
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -802,7 +804,7 @@ export function registerSlideTools(
       try {
         return json(await store.createFromTemplate(title, templateId));
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );
@@ -835,7 +837,7 @@ export function registerSlideTools(
           await store.addSlideFromTemplate(presentationId, templateId, index),
         );
       } catch (e) {
-        return text(String(e));
+        return error(String(e));
       }
     },
   );

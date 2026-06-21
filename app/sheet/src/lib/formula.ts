@@ -17,6 +17,40 @@ export function getEngine(): HyperFormula {
 }
 
 /**
+ * Whether a raw cell string is an unambiguous, canonical number that is safe to
+ * coerce to a JS number without losing information. This deliberately rejects
+ * values that round-trip differently (leading zeros like "007", hex "0x1F",
+ * scientific "1e3", signed-with-plus "+15551234", Infinity/NaN) so that phone
+ * numbers, zip/postal codes and IDs are never silently mangled.
+ */
+export function looksNumeric(v: string): boolean {
+  const trimmed = v.trim();
+  if (trimmed === "") return false;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && String(n) === trimmed;
+}
+
+/**
+ * Render a HyperFormula cell value as the string we store in `computed`.
+ * Preserves the real Excel error token (#DIV/0!, #REF!, …) and uppercase
+ * booleans, instead of collapsing everything to a generic "#ERROR!".
+ */
+export function formatHfResult(result: unknown): string {
+  if (result === null || result === undefined) return "";
+  if (typeof result === "boolean") return result ? "TRUE" : "FALSE";
+  if (typeof result === "number") return String(result);
+  if (typeof result === "object") {
+    const err = result as { value?: unknown; type?: unknown };
+    if (typeof err.value === "string") return err.value; // e.g. "#DIV/0!"
+    if (typeof err.type === "string") {
+      return `#${String(err.type).toUpperCase()}!`;
+    }
+    return "#ERROR!";
+  }
+  return String(result);
+}
+
+/**
  * Sync a Sheet's cells into HyperFormula for evaluation
  */
 export function syncSheetToEngine(sheet: Sheet): number {
@@ -62,7 +96,7 @@ export function syncSheetToEngine(sheet: Sheet): number {
         const v = cell.value;
         if (v.startsWith("=")) {
           row.push(v);
-        } else if (v !== "" && !isNaN(Number(v))) {
+        } else if (looksNumeric(v)) {
           row.push(Number(v));
         } else {
           row.push(v || null);
@@ -101,6 +135,13 @@ export function evaluateSheet(
       continue;
     }
 
+    // Literal (non-formula) cells display exactly what the user typed. Only
+    // formulas are evaluated, so "007"/"+1555..." etc. are never coerced.
+    if (!cell.value.startsWith("=")) {
+      updatedCells[addr] = { ...cell, computed: cell.value };
+      continue;
+    }
+
     try {
       const { col, row } = parseCellAddress(addr);
       const result = hf.getCellValue({
@@ -108,25 +149,9 @@ export function evaluateSheet(
         row,
         col,
       });
-
-      if (result !== null && result !== undefined) {
-        if (typeof result === "object" && "type" in result) {
-          // HyperFormula error object
-          updatedCells[addr] = { ...cell, computed: "#ERROR!" };
-        } else {
-          updatedCells[addr] = {
-            ...cell,
-            computed: String(result),
-          };
-        }
-      } else {
-        updatedCells[addr] = { ...cell, computed: cell.value };
-      }
+      updatedCells[addr] = { ...cell, computed: formatHfResult(result) };
     } catch {
-      updatedCells[addr] = {
-        ...cell,
-        computed: cell.value.startsWith("=") ? "#ERROR!" : cell.value,
-      };
+      updatedCells[addr] = { ...cell, computed: "#ERROR!" };
     }
   }
 

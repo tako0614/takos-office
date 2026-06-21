@@ -21,6 +21,7 @@ import {
 import {
   bytesToBase64,
   createAppMcpServer,
+  mcpError as error,
   mcpJson as json,
   mcpText as text,
 } from "../../shared/mcp-factory.ts";
@@ -141,7 +142,11 @@ export function registerExcelTools(
     "List all spreadsheets",
     {},
     async (_args) => {
-      return json(await store.listSpreadsheets());
+      try {
+        return json(await store.listSpreadsheets());
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -151,8 +156,12 @@ export function registerExcelTools(
     "Create a new spreadsheet",
     { title: titleSchema.describe("Spreadsheet title") },
     async (args) => {
-      const id = await store.createSpreadsheet(args.title);
-      return json({ id });
+      try {
+        const id = await store.createSpreadsheet(args.title);
+        return json({ id });
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -162,14 +171,18 @@ export function registerExcelTools(
     "Get spreadsheet info (metadata + sheet names)",
     { id: idSchema.describe("Spreadsheet ID") },
     async (args) => {
-      const ss = await store.getSpreadsheet(args.id);
-      return json({
-        id: ss.id,
-        title: ss.title,
-        createdAt: ss.createdAt,
-        updatedAt: ss.updatedAt,
-        sheets: ss.sheets.map((s) => ({ id: s.id, name: s.name })),
-      });
+      try {
+        const ss = await store.getSpreadsheet(args.id);
+        return json({
+          id: ss.id,
+          title: ss.title,
+          createdAt: ss.createdAt,
+          updatedAt: ss.updatedAt,
+          sheets: ss.sheets.map((s) => ({ id: s.id, name: s.name })),
+        });
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -179,8 +192,12 @@ export function registerExcelTools(
     "Delete a spreadsheet",
     { id: idSchema.describe("Spreadsheet ID") },
     async (args) => {
-      await store.deleteSpreadsheet(args.id);
-      return text("Deleted");
+      try {
+        await store.deleteSpreadsheet(args.id);
+        return text("Deleted");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -193,8 +210,12 @@ export function registerExcelTools(
       title: titleSchema.describe("New title"),
     },
     async (args) => {
-      await store.setSpreadsheetTitle(args.id, args.title);
-      return text("OK");
+      try {
+        await store.setSpreadsheetTitle(args.id, args.title);
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -213,8 +234,12 @@ export function registerExcelTools(
       ),
     },
     async (args) => {
-      const sheetId = await store.addTab(args.spreadsheetId, args.name);
-      return json({ sheetId });
+      try {
+        const sheetId = await store.addTab(args.spreadsheetId, args.name);
+        return json({ sheetId });
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -227,8 +252,12 @@ export function registerExcelTools(
       sheetId: idSchema.describe("Sheet tab ID"),
     },
     async (args) => {
-      await store.removeTab(args.spreadsheetId, args.sheetId);
-      return text("Removed");
+      try {
+        await store.removeTab(args.spreadsheetId, args.sheetId);
+        return text("Removed");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -242,8 +271,12 @@ export function registerExcelTools(
       name: titleSchema.describe("New tab name"),
     },
     async (args) => {
-      await store.renameTab(args.spreadsheetId, args.sheetId, args.name);
-      return text("OK");
+      try {
+        await store.renameTab(args.spreadsheetId, args.sheetId, args.name);
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -261,9 +294,13 @@ export function registerExcelTools(
       cell: cellAddressSchema.describe('Cell address, e.g. "A1"'),
     },
     async (args) => {
-      return json(
-        await store.getCell(args.spreadsheetId, args.sheetId, args.cell),
-      );
+      try {
+        return json(
+          await store.getCell(args.spreadsheetId, args.sheetId, args.cell),
+        );
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -280,13 +317,17 @@ export function registerExcelTools(
       ),
     },
     async (args) => {
-      await store.setCell(
-        args.spreadsheetId,
-        args.sheetId,
-        args.cell,
-        args.value,
-      );
-      return text("OK");
+      try {
+        await store.setCell(
+          args.spreadsheetId,
+          args.sheetId,
+          args.cell,
+          args.value,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -300,9 +341,13 @@ export function registerExcelTools(
       range: cellRangeSchema.describe('Range, e.g. "A1:C10"'),
     },
     async (args) => {
-      return json(
-        await store.getRange(args.spreadsheetId, args.sheetId, args.range),
-      );
+      try {
+        return json(
+          await store.getRange(args.spreadsheetId, args.sheetId, args.range),
+        );
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -317,24 +362,28 @@ export function registerExcelTools(
       values: rangeValuesSchema.describe("2D array of string values"),
     },
     async (args) => {
-      const start = parseCellAddress(args.startCell);
-      const maxWidth = Math.max(
-        ...args.values.map((row: string[]) => row.length),
-      );
-      if (
-        start.row + args.values.length > MAX_SPREADSHEET_ROWS ||
-        start.col + maxWidth > MAX_SPREADSHEET_COLUMNS
-      ) {
-        return text("Range exceeds sheet bounds");
-      }
+      try {
+        const start = parseCellAddress(args.startCell);
+        const maxWidth = Math.max(
+          ...args.values.map((row: string[]) => row.length),
+        );
+        if (
+          start.row + args.values.length > MAX_SPREADSHEET_ROWS ||
+          start.col + maxWidth > MAX_SPREADSHEET_COLUMNS
+        ) {
+          return error("Range exceeds sheet bounds");
+        }
 
-      await store.setRange(
-        args.spreadsheetId,
-        args.sheetId,
-        args.startCell,
-        args.values,
-      );
-      return text("OK");
+        await store.setRange(
+          args.spreadsheetId,
+          args.sheetId,
+          args.startCell,
+          args.values,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -348,8 +397,12 @@ export function registerExcelTools(
       range: cellRangeSchema.describe('Range, e.g. "A1:C10"'),
     },
     async (args) => {
-      await store.clearRange(args.spreadsheetId, args.sheetId, args.range);
-      return text("Cleared");
+      try {
+        await store.clearRange(args.spreadsheetId, args.sheetId, args.range);
+        return text("Cleared");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -381,13 +434,17 @@ export function registerExcelTools(
       format: z.object(formatSchema).strict().describe("Format options"),
     },
     async (args) => {
-      await store.formatCell(
-        args.spreadsheetId,
-        args.sheetId,
-        args.cell,
-        args.format,
-      );
-      return text("OK");
+      try {
+        await store.formatCell(
+          args.spreadsheetId,
+          args.sheetId,
+          args.cell,
+          args.format,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -402,13 +459,17 @@ export function registerExcelTools(
       format: z.object(formatSchema).strict().describe("Format options"),
     },
     async (args) => {
-      await store.formatRange(
-        args.spreadsheetId,
-        args.sheetId,
-        args.range,
-        args.format,
-      );
-      return text("OK");
+      try {
+        await store.formatRange(
+          args.spreadsheetId,
+          args.sheetId,
+          args.range,
+          args.format,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -426,12 +487,16 @@ export function registerExcelTools(
       formula: formulaSchema.describe('Formula, e.g. "=SUM(A1:A10)"'),
     },
     async (args) => {
-      const result = await store.evaluate(
-        args.spreadsheetId,
-        args.sheetId,
-        args.formula,
-      );
-      return text(result);
+      try {
+        const result = await store.evaluate(
+          args.spreadsheetId,
+          args.sheetId,
+          args.formula,
+        );
+        return text(result);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -445,9 +510,13 @@ export function registerExcelTools(
       range: cellRangeSchema.describe('Range, e.g. "A1:C10"'),
     },
     async (args) => {
-      return json(
-        await store.getComputed(args.spreadsheetId, args.sheetId, args.range),
-      );
+      try {
+        return json(
+          await store.getComputed(args.spreadsheetId, args.sheetId, args.range),
+        );
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -466,13 +535,17 @@ export function registerExcelTools(
       width: z.number().int().min(40).max(500).describe("Width in pixels"),
     },
     async (args) => {
-      await store.setColumnWidth(
-        args.spreadsheetId,
-        args.sheetId,
-        args.column,
-        args.width,
-      );
-      return text("OK");
+      try {
+        await store.setColumnWidth(
+          args.spreadsheetId,
+          args.sheetId,
+          args.column,
+          args.width,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -489,13 +562,17 @@ export function registerExcelTools(
       height: z.number().int().min(18).max(200).describe("Height in pixels"),
     },
     async (args) => {
-      await store.setRowHeight(
-        args.spreadsheetId,
-        args.sheetId,
-        args.row,
-        args.height,
-      );
-      return text("OK");
+      try {
+        await store.setRowHeight(
+          args.spreadsheetId,
+          args.sheetId,
+          args.row,
+          args.height,
+        );
+        return text("OK");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -544,11 +621,11 @@ export function registerExcelTools(
         const unavailable = excelScreenshotUnavailableMessage(
           runtimeCapabilities.screenshot,
         );
-        if (unavailable) return text(unavailable);
+        if (unavailable) return error(unavailable);
 
         const ss = await store.getSpreadsheet(args.spreadsheetId);
         const sheet = ss.sheets.find((s) => s.id === args.sheetId);
-        if (!sheet) return text(`Sheet not found: ${args.sheetId}`);
+        if (!sheet) return error(`Sheet not found: ${args.sheetId}`);
         const rendererModule = "./lib/grid-renderer.ts";
         const { renderSheetToBuffer } = await import(
           rendererModule
@@ -580,7 +657,7 @@ export function registerExcelTools(
           ],
         };
       } catch (e) {
-        return text(`Failed to render sheet: ${String(e)}`);
+        return error(`Failed to render sheet: ${String(e)}`);
       }
     },
   );
@@ -602,13 +679,17 @@ export function registerExcelTools(
         .describe('Top-left cell to start import at (default "A1")'),
     },
     async (args) => {
-      await store.importCsv(
-        args.spreadsheetId,
-        args.sheetId,
-        args.csvContent,
-        args.startCell,
-      );
-      return text("Imported");
+      try {
+        await store.importCsv(
+          args.spreadsheetId,
+          args.sheetId,
+          args.csvContent,
+          args.startCell,
+        );
+        return text("Imported");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -646,17 +727,21 @@ export function registerExcelTools(
       ),
     },
     async (args) => {
-      const rule = {
-        id: crypto.randomUUID(),
-        range: args.range,
-        condition: {
-          type: args.conditionType,
-          values: args.conditionValues ?? [],
-        },
-        format: args.format,
-      };
-      await store.addConditionalRule(args.spreadsheetId, args.sheetId, rule);
-      return json({ id: rule.id });
+      try {
+        const rule = {
+          id: crypto.randomUUID(),
+          range: args.range,
+          condition: {
+            type: args.conditionType,
+            values: args.conditionValues ?? [],
+          },
+          format: args.format,
+        };
+        await store.addConditionalRule(args.spreadsheetId, args.sheetId, rule);
+        return json({ id: rule.id });
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -670,12 +755,16 @@ export function registerExcelTools(
       ruleId: idSchema.describe("Conditional rule ID"),
     },
     async (args) => {
-      await store.removeConditionalRule(
-        args.spreadsheetId,
-        args.sheetId,
-        args.ruleId,
-      );
-      return text("Removed");
+      try {
+        await store.removeConditionalRule(
+          args.spreadsheetId,
+          args.sheetId,
+          args.ruleId,
+        );
+        return text("Removed");
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -688,9 +777,13 @@ export function registerExcelTools(
       sheetId: idSchema.describe("Sheet tab ID"),
     },
     async (args) => {
-      return json(
-        await store.listConditionalRules(args.spreadsheetId, args.sheetId),
-      );
+      try {
+        return json(
+          await store.listConditionalRules(args.spreadsheetId, args.sheetId),
+        );
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -707,7 +800,11 @@ export function registerExcelTools(
       sheetId: idSchema.describe("Sheet tab ID"),
     },
     async (args) => {
-      return text(await store.exportCsv(args.spreadsheetId, args.sheetId));
+      try {
+        return text(await store.exportCsv(args.spreadsheetId, args.sheetId));
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 
@@ -719,7 +816,11 @@ export function registerExcelTools(
       spreadsheetId: idSchema.describe("Spreadsheet ID"),
     },
     async (args) => {
-      return text(await store.exportJson(args.spreadsheetId));
+      try {
+        return text(await store.exportJson(args.spreadsheetId));
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
     },
   );
 }

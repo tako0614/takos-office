@@ -62,15 +62,17 @@ export const EditorPage: Component = () => {
     setCanRedo(mgr.canRedo());
   };
 
-  /** Push a snapshot of the current sheet cells for undo. */
-  const pushHistory = () => {
+  /**
+   * Apply new cells and record them as the next undo checkpoint. The snapshot
+   * is taken AFTER the mutation (the initial state is seeded on load), so
+   * redo restores the edit instead of replaying a stale pre-edit copy.
+   */
+  const commitCells = (cells: Record<string, CellData>) => {
+    updateCells(cells);
     const ss = spreadsheet();
     if (!ss) return;
-    const sheet = ss.sheets.find((s) => s.id === ss.activeSheetId);
-    if (!sheet) return;
     const mgr = getHistory(ss.activeSheetId);
-    // Deep clone cells
-    mgr.push(JSON.parse(JSON.stringify(sheet.cells)));
+    mgr.push(JSON.parse(JSON.stringify(cells)));
     refreshUndoRedo();
   };
 
@@ -161,11 +163,10 @@ export const EditorPage: Component = () => {
     const sheet = activeSheet();
     if (!sheet) return;
 
-    pushHistory();
     const address = selectedCell();
     const value = editValue();
     const updatedCells = setCellValue(sheet, address, value);
-    updateCells(updatedCells);
+    commitCells(updatedCells);
     setIsEditing(false);
 
     // Move down after submit
@@ -192,12 +193,11 @@ export const EditorPage: Component = () => {
     const sheet = activeSheet();
     if (!sheet) return;
 
-    pushHistory();
     // Submit current value first
     const address = selectedCell();
     const value = editValue();
     const updatedCells = setCellValue(sheet, address, value);
-    updateCells(updatedCells);
+    commitCells(updatedCells);
     setIsEditing(false);
 
     // Move to next/prev cell
@@ -231,7 +231,6 @@ export const EditorPage: Component = () => {
     const sheet = activeSheet();
     if (!sheet) return;
 
-    pushHistory();
     const address = selectedCell();
     const cell = sheet.cells[address] ?? { value: "" };
     const updatedCells = {
@@ -241,7 +240,7 @@ export const EditorPage: Component = () => {
         format: { ...cell.format, ...format },
       },
     };
-    updateCells(updatedCells);
+    commitCells(updatedCells);
   };
 
   // Title change
@@ -280,7 +279,6 @@ export const EditorPage: Component = () => {
     const sheet = activeSheet();
     if (!sheet) return;
 
-    pushHistory();
     const rows = parseCsv(content);
     const updatedCells = { ...sheet.cells };
     for (let r = 0; r < rows.length; r++) {
@@ -295,7 +293,7 @@ export const EditorPage: Component = () => {
       }
     }
     const evaluated = evaluateSheet({ ...sheet, cells: updatedCells });
-    updateCells(evaluated);
+    commitCells(evaluated);
   };
 
   // Keyboard shortcut handler for undo/redo

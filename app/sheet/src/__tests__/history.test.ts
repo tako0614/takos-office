@@ -100,6 +100,19 @@ test("multiple undo/redo cycles work correctly", () => {
   expect(mgr.redo()).toEqual(null);
 });
 
+test("editor commit pattern: redo restores the edit (not a stale pre-edit copy)", () => {
+  // Mirrors EditorPage: seed the initial state on load, then snapshot AFTER
+  // each mutation. The old code snapshotted the pre-edit state, so redo
+  // replayed the duplicate and lost the last edit.
+  const mgr = new UndoRedoManager<string>();
+  mgr.push("initial"); // seeded on load
+  // user edits "initial" -> "edited"; commit snapshots the post-edit state
+  mgr.push("edited");
+
+  expect(mgr.undo()).toEqual("initial");
+  expect(mgr.redo()).toEqual("edited"); // the edit is recoverable
+});
+
 test("default max size is 50", () => {
   const mgr = new UndoRedoManager<number>();
   for (let i = 0; i < 60; i++) {

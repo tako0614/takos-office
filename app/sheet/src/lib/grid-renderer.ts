@@ -8,6 +8,7 @@
 import { createCanvas } from "canvas";
 import type { CellFormat, Sheet } from "../types/index.ts";
 import { columnToLetter, formatCellAddress } from "./cell-utils.ts";
+import { applyNumberFormat } from "./number-format.ts";
 
 interface RenderOptions {
   width?: number;
@@ -215,7 +216,10 @@ function drawCells(
       const cellData = sheet.cells[addr];
       if (!cellData) continue;
 
-      const displayValue = cellData.computed ?? cellData.value;
+      const displayValue = applyNumberFormat(
+        cellData.computed ?? cellData.value,
+        cellData.format?.numberFormat,
+      );
       if (!displayValue) continue;
 
       // Compute cell position

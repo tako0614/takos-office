@@ -14,6 +14,7 @@ import {
   parseCellAddress,
 } from "../lib/cell-utils";
 import { evaluateConditionalRules } from "../lib/conditional-format";
+import { applyNumberFormat } from "../lib/number-format";
 import { CellEditor } from "./CellEditor";
 
 const TOTAL_COLS = 100;
@@ -174,7 +175,7 @@ export const Grid: Component<GridProps> = (props) => {
     const addr = formatCellAddress(col, row);
     const cell = props.sheet.cells[addr];
     if (!cell) return "";
-    return cell.computed ?? cell.value;
+    return applyNumberFormat(cell.computed ?? cell.value, cell.format?.numberFormat);
   };
 
   // Get cell data

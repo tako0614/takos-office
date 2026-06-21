@@ -1,16 +1,10 @@
 /**
- * Shared MCP-server factory for takos-apps (docs / slide / excel).
+ * Shared MCP-server factory for the takos-office editors (docs / slide / sheet).
  *
- * CANONICAL COPY (owner): `takos-apps/takos-docs/src/mcp-factory.ts`.
- * This file is byte-identical in takos-apps/{takos-slide,takos-excel}. The
- * copies are deliberately vendored rather than factored into a shared package
- * because each takos-app ships as a standalone git repo / OpenTofu module
- * installable from a Git URL; a cross-submodule alias library would break that
- * standalone build.
- *
- * Edit ONLY this canonical copy, then propagate to the other apps with
- * `bun run check:takos-apps-dedupe --fix` in the ecosystem root. Verify mode
- * (`bun run check:takos-apps-dedupe`) is wired into `bun run check:all`.
+ * The three editors were folded into one `takos-office` worker, so this is the
+ * single shared copy they all import (`app/docs`, `app/slide`, `app/sheet` →
+ * `../../shared/mcp-factory.ts`); there are no longer vendored per-app copies to
+ * keep in sync.
  *
  * The factory lifts genuinely-shared boilerplate that previously lived in
  * each app's mcp.ts / server.ts:
@@ -38,6 +32,7 @@ export type McpAuthOptions = {
 
 export type McpTextContent = {
   content: [{ type: "text"; text: string }];
+  isError?: boolean;
 };
 
 export function bytesToBase64(bytes: Uint8Array): string {
@@ -57,6 +52,15 @@ export function mcpText(s: string): McpTextContent {
 
 export function mcpJson(v: unknown): McpTextContent {
   return mcpText(JSON.stringify(v, null, 2));
+}
+
+/**
+ * A failure result. Sets MCP's `isError: true` so an agent can tell a failed
+ * tool call apart from a successful one that happens to return text. Use this
+ * for not-found, validation and caught-exception paths instead of `mcpText`.
+ */
+export function mcpError(message: string): McpTextContent {
+  return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 
 export async function constantTimeEqual(

@@ -24,6 +24,7 @@ import {
   MAX_MCP_REQUEST_BYTES,
   mcpAuthMisconfigured as sharedMcpAuthMisconfigured,
   type McpAuthOptions,
+  mcpError,
   mcpJson,
   mcpText,
 } from "../../shared/mcp-factory.ts";
@@ -844,6 +845,7 @@ export function registerDocsTools(
 ): void {
   const text = mcpText;
   const json = mcpJson;
+  const error = mcpError;
 
   // ---------------------------------------------------------------------------
   // Document Management
@@ -891,7 +893,7 @@ export function registerDocsTools(
     },
     async ({ id }: { id: string }) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
       return json(doc);
     },
   );
@@ -904,9 +906,8 @@ export function registerDocsTools(
     },
     async ({ id }: { id: string }) => {
       const deleted = await store.delete(id);
-      return text(
-        deleted ? `Deleted document ${id}` : `Document not found: ${id}`,
-      );
+      if (!deleted) return error(`Document not found: ${id}`);
+      return text(`Deleted document ${id}`);
     },
   );
 
@@ -939,7 +940,7 @@ export function registerDocsTools(
     },
     async ({ id, title }: { id: string; title: string }) => {
       const doc = await store.update(id, { title });
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
       return json({ id: doc.id, title: doc.title });
     },
   );
@@ -958,7 +959,7 @@ export function registerDocsTools(
       // browser editor and the export path read the same shape.
       const normalized = serializeDocModel(loadDocModel(content));
       const doc = await store.update(id, { content: normalized });
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
       return json({
         id: doc.id,
         title: doc.title,
@@ -985,7 +986,7 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
       const model = loadDocModel(doc.content);
       const { insertedAt } = insertTextAtOffset(model, position, insertText);
       const updated = await store.update(id, {
@@ -1021,14 +1022,14 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       const model = loadDocModel(doc.content);
       // Find/replace operates on the rendered text, splicing matches into the
       // spanning text nodes rather than the raw JSON string.
       const count = replaceTextInModel(model, find, replace, all ?? false);
       if (count === 0) {
-        return text(`Text not found in document ${id}: "${find}"`);
+        return error(`Text not found in document ${id}: "${find}"`);
       }
 
       const updated = await store.update(id, {
@@ -1051,7 +1052,7 @@ export function registerDocsTools(
     },
     async ({ id, text: appendText }: { id: string; text: string }) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
       const model = loadDocModel(doc.content);
       // Append as new trailing paragraph block(s) instead of concatenating onto
       // the raw JSON string.
@@ -1100,7 +1101,7 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       const model = loadDocModel(doc.content);
       const { from: start, to: end } = formatRangeInModel(
@@ -1144,7 +1145,7 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       const model = loadDocModel(doc.content);
       const table = buildTableNode(rows, cols);
@@ -1186,10 +1187,10 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       const safeUrl = getSafeUrl(url, { image: true });
-      if (!safeUrl) return text("Invalid image URL");
+      if (!safeUrl) return error("Invalid image URL");
 
       const model = loadDocModel(doc.content);
       const imageNode: TiptapNode = {
@@ -1235,10 +1236,10 @@ export function registerDocsTools(
       },
     ) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       const safeUrl = getSafeUrl(url);
-      if (!safeUrl) return text("Invalid link URL");
+      if (!safeUrl) return error("Invalid link URL");
 
       const model = loadDocModel(doc.content);
       const pos = position !== undefined ? position : docTextLength(model);
@@ -1276,10 +1277,10 @@ export function registerDocsTools(
       const unavailable = docsScreenshotUnavailableMessage(
         runtimeCapabilities.screenshot,
       );
-      if (unavailable) return text(unavailable);
+      if (unavailable) return error(unavailable);
 
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       try {
         const size = normalizeScreenshotDimensions(width, height);
@@ -1303,7 +1304,7 @@ export function registerDocsTools(
           ],
         };
       } catch (e) {
-        return text(`Failed to render document: ${String(e)}`);
+        return error(`Failed to render document: ${String(e)}`);
       }
     },
   );
@@ -1320,7 +1321,7 @@ export function registerDocsTools(
     },
     async ({ id }: { id: string }) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       return text(buildExportHtml(doc.title, doc.content));
     },
@@ -1334,7 +1335,7 @@ export function registerDocsTools(
     },
     async ({ id }: { id: string }) => {
       const doc = await store.get(id);
-      if (!doc) return text(`Document not found: ${id}`);
+      if (!doc) return error(`Document not found: ${id}`);
 
       // Normalize browser-created TipTap JSON to HTML first, then strip tags
       // for plain text export so JSON docs don't dump raw JSON.
