@@ -12,6 +12,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { DocumentStore } from "./document-store.ts";
+import { htmlToTiptapBlocks } from "./lib/html-to-tiptap.ts";
 import {
   createDocsRuntimeCapabilityManifest,
   type DocsRuntimeCapabilityManifest,
@@ -400,10 +401,10 @@ function htmlToPlainText(html: string): string {
  * Load doc.content as a canonical TipTap doc node.
  *
  * - Valid TipTap JSON ({"type":"doc",...}) is used directly.
- * - Legacy HTML or plain-text content is converted once into paragraph nodes
- *   (HTML is stripped to plain text first; we deliberately do not embed raw
- *   tags as literal text). This keeps legacy docs editable without pulling a
- *   full ProseMirror HTML parser into the worker build.
+ * - Legacy HTML is parsed into TipTap block/inline nodes (headings, lists,
+ *   blockquotes, bold/italic/underline/links/code), preserving formatting
+ *   rather than flattening it. Content with no recognisable block structure
+ *   (or plain text) becomes paragraph nodes.
  */
 function loadDocModel(content: string): DocNode {
   const trimmed = content.trim();
@@ -422,10 +423,13 @@ function loadDocModel(content: string): DocNode {
     }
   }
 
-  const plain = /<[a-z!/][^>]*>/i.test(content)
-    ? htmlToPlainText(content)
-    : content;
-  return { type: "doc", content: plainTextToParagraphs(plain) };
+  if (/<[a-z!/][^>]*>/i.test(content)) {
+    const blocks = htmlToTiptapBlocks(content);
+    if (blocks) return { type: "doc", content: blocks as TiptapNode[] };
+    // No block structure: strip inline tags to text rather than show raw tags.
+    return { type: "doc", content: plainTextToParagraphs(htmlToPlainText(content)) };
+  }
+  return { type: "doc", content: plainTextToParagraphs(content) };
 }
 
 function serializeDocModel(doc: DocNode): string {
