@@ -54,14 +54,50 @@ async function requestJson<T>(
   return await response.json() as T;
 }
 
-function syncDocumentToApi(doc: Document): Promise<Document> {
-  return requestJson<Document>(
-    `${API_DOCUMENTS_PATH}/${encodeURIComponent(doc.id)}`,
+/** Thrown by a save that lost an optimistic-concurrency check (HTTP 409). */
+export class DocumentConflictError extends Error {
+  constructor(public readonly current: Document) {
+    super("Document was modified elsewhere");
+    this.name = "DocumentConflictError";
+  }
+}
+
+async function syncDocumentToApi(
+  doc: Document,
+  baseUpdatedAt?: string,
+): Promise<Document> {
+  const response = await fetch(
+    withCurrentSpaceId(`${API_DOCUMENTS_PATH}/${encodeURIComponent(doc.id)}`),
     {
       method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        // Send the loaded version so the server can reject a stale overwrite.
+        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+      },
       body: JSON.stringify(doc),
+      credentials: "same-origin",
     },
   );
+  if (response.status === 401) {
+    clearDocumentsCache();
+    redirectToLogin();
+  }
+  if (response.status === 409) {
+    const body = await response.json() as { current: Document };
+    // Adopt the server's current version locally so the next save is based
+    // on it, then surface the conflict to the caller to reload.
+    const docs = loadDocuments();
+    const index = docs.findIndex((entry) => entry.id === body.current.id);
+    if (index >= 0) docs[index] = body.current;
+    else docs.push(body.current);
+    saveDocuments(docs);
+    throw new DocumentConflictError(body.current);
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return await response.json() as Document;
 }
 
 async function deleteDocumentFromApi(id: string): Promise<void> {
@@ -132,13 +168,15 @@ export async function updateDocumentInStorage(
   const docs = loadDocuments();
   const index = docs.findIndex((d) => d.id === id);
   if (index === -1) return null;
+  // The version we loaded — used as the optimistic-concurrency precondition.
+  const baseUpdatedAt = docs[index].updatedAt;
   docs[index] = {
     ...docs[index],
     ...updates,
     updatedAt: new Date().toISOString(),
   };
   saveDocuments(docs);
-  return await syncDocumentToApi(docs[index]);
+  return await syncDocumentToApi(docs[index], baseUpdatedAt);
 }
 
 export function removeDocument(id: string): Promise<void> {

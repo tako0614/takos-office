@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { TakosDocumentStore } from "./document-store.ts";
+import { DocumentConflictError, TakosDocumentStore } from "./document-store.ts";
 import {
   createDocsMcpServer,
   createMcpRequestHandler,
@@ -190,11 +190,21 @@ export function createDocsApp(env: DocsRuntimeEnv = runtimeEnv()) {
     const body = await c.req.json<Document>();
     const id = c.req.param("id");
     const current = await store.get(id);
-    const doc = await store.upsert({
-      ...body,
-      id: current?.id ?? body.id ?? id,
-    });
-    return c.json(doc);
+    // `If-Match: <updatedAt>` enables optimistic concurrency: the autosave
+    // refuses to overwrite a doc that changed since it was loaded.
+    const ifMatch = c.req.header("If-Match");
+    try {
+      const doc = await store.upsert(
+        { ...body, id: current?.id ?? body.id ?? id },
+        ifMatch ? { expectedUpdatedAt: ifMatch } : undefined,
+      );
+      return c.json(doc);
+    } catch (e) {
+      if (e instanceof DocumentConflictError) {
+        return c.json({ error: "conflict", current: e.current }, 409);
+      }
+      throw e;
+    }
   });
   app.patch("/api/documents/:id", async (c) => {
     const store = storeForRequest(c);

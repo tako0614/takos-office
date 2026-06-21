@@ -3,7 +3,11 @@ import { useNavigate, useParams } from "@solidjs/router";
 import { ArrowLeft, Cloud, CloudOff } from "lucide-solid";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Document } from "../types";
-import { loadDocumentFromApi, updateDocumentInStorage } from "../lib/storage";
+import {
+  DocumentConflictError,
+  loadDocumentFromApi,
+  updateDocumentInStorage,
+} from "../lib/storage";
 import Editor from "../components/Editor";
 import Toolbar from "../components/Toolbar";
 import Sidebar from "../components/Sidebar";
@@ -61,6 +65,15 @@ export default function EditorPage() {
           );
         })
         .catch((error) => {
+          if (error instanceof DocumentConflictError) {
+            // Another writer (e.g. an agent over MCP) changed the doc between
+            // load and this autosave. Adopt their version instead of silently
+            // overwriting it; the editor reloads from the refreshed content.
+            setDoc(error.current);
+            setTitle(error.current.title);
+            setSaveStatus("saved");
+            return;
+          }
           console.error("[takos-docs] Failed to save document", error);
           setSaveStatus("failed");
         });

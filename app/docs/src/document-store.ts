@@ -20,11 +20,30 @@ const FOLDER_NAME = "takos-docs";
 const FILE_EXTENSION = ".takosdoc";
 const MIME_TYPE = "application/vnd.takos.docs+json";
 
+/** Optimistic-concurrency options for a write. */
+export interface WriteOptions {
+  /**
+   * If set, the write only proceeds when the stored doc's `updatedAt` still
+   * equals this value. Otherwise a {@link DocumentConflictError} is thrown so
+   * the caller can reload instead of clobbering a concurrent edit (e.g. an
+   * agent's MCP write landing between the browser's load and its autosave).
+   */
+  expectedUpdatedAt?: string;
+}
+
+/** Thrown when a write loses an optimistic-concurrency check. */
+export class DocumentConflictError extends Error {
+  constructor(public readonly current: Document) {
+    super("Document was modified by another writer");
+    this.name = "DocumentConflictError";
+  }
+}
+
 export interface DocumentStore {
   list(): Promise<Document[]>;
   get(id: string): Promise<Document | null>;
   create(title: string, content?: string): Promise<Document>;
-  upsert(doc: Document): Promise<Document>;
+  upsert(doc: Document, opts?: WriteOptions): Promise<Document>;
   update(
     id: string,
     data: Partial<Pick<Document, "title" | "content">>,
@@ -167,7 +186,7 @@ export class TakosDocumentStore implements DocumentStore {
     return doc;
   }
 
-  async upsert(doc: Document): Promise<Document> {
+  async upsert(doc: Document, opts?: WriteOptions): Promise<Document> {
     await this.ensureFolder();
 
     // Resolve the current fileId from storage (source of truth) rather than
@@ -179,6 +198,14 @@ export class TakosDocumentStore implements DocumentStore {
     }
 
     if (fileId) {
+      // Best-effort optimistic concurrency: re-read just before writing and
+      // refuse to overwrite a doc that changed since the caller loaded it.
+      if (opts?.expectedUpdatedAt !== undefined) {
+        const latest = await this.loadFile(fileId);
+        if (latest && latest.doc.updatedAt !== opts.expectedUpdatedAt) {
+          throw new DocumentConflictError(latest.doc);
+        }
+      }
       await this.client.putContent(fileId, JSON.stringify(doc), MIME_TYPE);
       this.fileIds.set(doc.id, fileId);
       return doc;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { TakosDocumentStore } from "../document-store.ts";
+import { DocumentConflictError, TakosDocumentStore } from "../document-store.ts";
 import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
 import type { Document } from "../types/index.ts";
 
@@ -193,4 +193,71 @@ test("TakosDocumentStore update reads current storage state before writing", asy
   const persisted = JSON.parse(storage.content.get(docFile.id)!) as Document;
   expect(persisted.content).toEqual("body-b");
   expect(persisted.title).toEqual("Retitled");
+});
+
+test("upsert with a matching expectedUpdatedAt overwrites", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-docs", "folder");
+  const file = storage.makeFile("doc-1.takosdoc", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeDocument({ id: "doc-1", updatedAt: "2026-01-01T00:00:00.000Z" })),
+  );
+
+  const store = new TakosDocumentStore(storage.client);
+  await store.list(); // warm fileId memo
+
+  const saved = await store.upsert(
+    makeDocument({ id: "doc-1", content: "new", updatedAt: "2026-01-02T00:00:00.000Z" }),
+    { expectedUpdatedAt: "2026-01-01T00:00:00.000Z" },
+  );
+  expect(saved.content).toEqual("new");
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Document;
+  expect(persisted.content).toEqual("new");
+});
+
+test("upsert with a stale expectedUpdatedAt throws DocumentConflictError and does not overwrite", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-docs", "folder");
+  const file = storage.makeFile("doc-1.takosdoc", "file", folder.id);
+  storage.content.set(file.id, JSON.stringify(makeDocument({ id: "doc-1" })));
+
+  const store = new TakosDocumentStore(storage.client);
+  await store.list();
+
+  // Another writer (e.g. an MCP edit) advances the stored version.
+  const theirs = makeDocument({
+    id: "doc-1",
+    content: "theirs",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  });
+  storage.content.set(file.id, JSON.stringify(theirs));
+
+  let conflict: DocumentConflictError | null = null;
+  try {
+    await store.upsert(
+      makeDocument({ id: "doc-1", content: "mine", updatedAt: "2026-06-01T00:00:00.000Z" }),
+      { expectedUpdatedAt: "2026-04-30T00:00:00.000Z" }, // the version we loaded
+    );
+  } catch (e) {
+    conflict = e instanceof DocumentConflictError ? e : null;
+  }
+  expect(conflict).not.toBeNull();
+  expect(conflict?.current.content).toEqual("theirs");
+  // The concurrent write must survive — we did not clobber it.
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Document;
+  expect(persisted.content).toEqual("theirs");
+});
+
+test("upsert without options overwrites unconditionally (back-compat)", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-docs", "folder");
+  const file = storage.makeFile("doc-1.takosdoc", "file", folder.id);
+  storage.content.set(file.id, JSON.stringify(makeDocument({ id: "doc-1" })));
+
+  const store = new TakosDocumentStore(storage.client);
+  await store.list();
+
+  const saved = await store.upsert(makeDocument({ id: "doc-1", content: "forced" }));
+  expect(saved.content).toEqual("forced");
 });
