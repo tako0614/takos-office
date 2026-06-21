@@ -9,8 +9,18 @@ import {
   renameSheet,
   updateSpreadsheet,
 } from "../lib/storage";
-import { evaluateSheet, setCellValue } from "../lib/formula";
-import { formatCellAddress, parseCellAddress } from "../lib/cell-utils";
+import {
+  evaluateSheet,
+  setCellValue,
+  shiftSheetStructure,
+  type StructuralOp,
+} from "../lib/formula";
+import {
+  computeUsedRange,
+  formatCellAddress,
+  parseCellAddress,
+} from "../lib/cell-utils";
+import { sortRangeRows } from "../lib/sheet-ops";
 import { parseCsv } from "../lib/csv-parser";
 import { UndoRedoManager } from "../lib/history";
 import { Grid } from "../components/Grid";
@@ -93,7 +103,7 @@ export const EditorPage: Component = () => {
     const activeSheet = ss.sheets.find((s) => s.id === ss.activeSheetId) ??
       ss.sheets[0];
     if (activeSheet) {
-      activeSheet.cells = evaluateSheet(activeSheet);
+      activeSheet.cells = evaluateSheet(activeSheet, ss.sheets);
       // Seed undo history with the initial state
       const mgr = getHistory(activeSheet.id);
       mgr.push(JSON.parse(JSON.stringify(activeSheet.cells)));
@@ -165,7 +175,7 @@ export const EditorPage: Component = () => {
 
     const address = selectedCell();
     const value = editValue();
-    const updatedCells = setCellValue(sheet, address, value);
+    const updatedCells = setCellValue(sheet, address, value, spreadsheet()?.sheets);
     commitCells(updatedCells);
     setIsEditing(false);
 
@@ -196,7 +206,7 @@ export const EditorPage: Component = () => {
     // Submit current value first
     const address = selectedCell();
     const value = editValue();
-    const updatedCells = setCellValue(sheet, address, value);
+    const updatedCells = setCellValue(sheet, address, value, spreadsheet()?.sheets);
     commitCells(updatedCells);
     setIsEditing(false);
 
@@ -292,8 +302,61 @@ export const EditorPage: Component = () => {
         };
       }
     }
-    const evaluated = evaluateSheet({ ...sheet, cells: updatedCells });
+    const evaluated = evaluateSheet({ ...sheet, cells: updatedCells }, spreadsheet()?.sheets);
     commitCells(evaluated);
+  };
+
+  // Insert / delete rows & columns at the selected cell, adjusting formula
+  // references via HyperFormula (whole workbook loaded for cross-sheet refs).
+  const applyStructuralOp = (op: StructuralOp) => {
+    const ss = spreadsheet();
+    const sheet = activeSheet();
+    if (!ss || !sheet) return;
+    try {
+      const { col, row } = parseCellAddress(selectedCell());
+      const at = op === "insertRows" || op === "deleteRows" ? row : col;
+      const shifted = shiftSheetStructure(sheet, op, at, 1, ss.sheets);
+      const evaluated = evaluateSheet({ ...sheet, cells: shifted }, ss.sheets);
+      commitCells(evaluated);
+    } catch {
+      // Out-of-bounds selection: no-op.
+    }
+  };
+
+  const handleInsertRow = () => applyStructuralOp("insertRows");
+  const handleDeleteRow = () => applyStructuralOp("deleteRows");
+  const handleInsertColumn = () => applyStructuralOp("insertColumns");
+  const handleDeleteColumn = () => applyStructuralOp("deleteColumns");
+
+  // Sort the used range by the selected cell's column.
+  const handleSort = (direction: "asc" | "desc") => {
+    const ss = spreadsheet();
+    const sheet = activeSheet();
+    if (!ss || !sheet) return;
+    const used = computeUsedRange(sheet.cells);
+    if (used.range === null) return;
+    try {
+      const { col } = parseCellAddress(selectedCell());
+      const columnIndex = Math.min(
+        Math.max(col - used.startCol, 0),
+        used.endCol - used.startCol,
+      );
+      const sorted = sortRangeRows(
+        sheet.cells,
+        {
+          startCol: used.startCol,
+          startRow: used.startRow,
+          endCol: used.endCol,
+          endRow: used.endRow,
+        },
+        columnIndex,
+        direction,
+      );
+      const evaluated = evaluateSheet({ ...sheet, cells: sorted }, ss.sheets);
+      commitCells(evaluated);
+    } catch {
+      // No-op on bad selection.
+    }
   };
 
   // Keyboard shortcut handler for undo/redo
@@ -318,7 +381,7 @@ export const EditorPage: Component = () => {
     // Evaluate formulas for the new sheet
     const newSheet = updated.sheets.find((s) => s.id === sheetId);
     if (newSheet) {
-      newSheet.cells = evaluateSheet(newSheet);
+      newSheet.cells = evaluateSheet(newSheet, updated.sheets);
       // Seed undo history for this sheet if not already present
       const mgr = getHistory(sheetId);
       if (!mgr.canUndo() && !mgr.canRedo()) {
@@ -421,6 +484,12 @@ export const EditorPage: Component = () => {
               onRedo={handleRedo}
               canUndo={canUndo()}
               canRedo={canRedo()}
+              onInsertRow={handleInsertRow}
+              onDeleteRow={handleDeleteRow}
+              onInsertColumn={handleInsertColumn}
+              onDeleteColumn={handleDeleteColumn}
+              onSortAsc={() => handleSort("asc")}
+              onSortDesc={() => handleSort("desc")}
             />
 
             {/* Formula Bar */}

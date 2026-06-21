@@ -1,6 +1,7 @@
 import { HyperFormula } from "hyperformula";
-import type { CellData, Sheet } from "../types/index.ts";
+import type { CellData, CellFormat, Sheet } from "../types/index.ts";
 import { columnToLetter, parseCellAddress } from "./cell-utils.ts";
+import { rebuildCellsFromEngine, shiftCells } from "./sheet-ops.ts";
 
 /**
  * Whether a raw cell string is an unambiguous, canonical number that is safe to
@@ -117,8 +118,10 @@ export function evaluateSheet(
   sheet: Sheet,
   allSheets: Sheet[] = [sheet],
 ): Record<string, CellData> {
+  // The passed `sheet` is authoritative for the target — override any stale
+  // same-id copy in `allSheets` so we evaluate its current cells.
   const sheets = allSheets.some((s) => s.id === sheet.id)
-    ? allSheets
+    ? allSheets.map((s) => (s.id === sheet.id ? sheet : s))
     : [...allSheets, sheet];
   const { hf, idBySheetId } = buildEngine(sheets);
   const sheetId = idBySheetId.get(sheet.id) ?? 0;
@@ -161,7 +164,7 @@ export function evaluateFormula(
   allSheets: Sheet[] = [contextSheet],
 ): string {
   const sheets = allSheets.some((s) => s.id === contextSheet.id)
-    ? allSheets
+    ? allSheets.map((s) => (s.id === contextSheet.id ? contextSheet : s))
     : [...allSheets, contextSheet];
   const { hf, idBySheetId } = buildEngine(sheets);
   const sheetId = idBySheetId.get(contextSheet.id) ?? 0;
@@ -208,4 +211,72 @@ export function getCellValue(
   const cell = sheet.cells[address];
   if (!cell) return "";
   return cell.computed ?? cell.value;
+}
+
+export type StructuralOp =
+  | "insertRows"
+  | "deleteRows"
+  | "insertColumns"
+  | "deleteColumns";
+
+/**
+ * Insert or delete rows/columns on `sheet`, adjusting formula references via
+ * HyperFormula. The whole workbook (`allSheets`) is loaded so cross-sheet
+ * references survive, but only the target sheet is shifted. Returns the target
+ * sheet's rebuilt `cells` map (uncomputed values; the caller re-evaluates).
+ *
+ * Per-cell formats are carried to their shifted addresses by replaying the same
+ * structural shift over the pre-shift format map (`shiftCells`), so a format
+ * that sat on a moved cell follows it.
+ */
+export function shiftSheetStructure(
+  sheet: Sheet,
+  op: StructuralOp,
+  at: number,
+  count: number,
+  allSheets: Sheet[] = [sheet],
+): Record<string, CellData> {
+  const sheets = allSheets.some((s) => s.id === sheet.id)
+    ? allSheets
+    : [...allSheets, sheet];
+  const { hf, idBySheetId } = buildEngine(sheets);
+  const sheetId = idBySheetId.get(sheet.id) ?? 0;
+
+  const axis = op === "insertRows" || op === "deleteRows" ? "row" : "col";
+  const delta = op === "insertRows" || op === "insertColumns"
+    ? count
+    : -count;
+
+  switch (op) {
+    case "insertRows":
+      hf.addRows(sheetId, [at, count]);
+      break;
+    case "deleteRows":
+      hf.removeRows(sheetId, [at, count]);
+      break;
+    case "insertColumns":
+      hf.addColumns(sheetId, [at, count]);
+      break;
+    case "deleteColumns":
+      hf.removeColumns(sheetId, [at, count]);
+      break;
+  }
+
+  // Carry per-cell formats to their post-shift addresses.
+  const formatMap: Record<string, CellFormat> = {};
+  for (const [addr, cell] of Object.entries(sheet.cells)) {
+    if (cell.format) formatMap[addr] = cell.format;
+  }
+  const shiftedFormats = shiftCells(formatMap, axis, at, delta);
+
+  const { width, height } = hf.getSheetDimensions(sheetId);
+  return rebuildCellsFromEngine(
+    {
+      width,
+      height,
+      formulaAt: (col, row) => hf.getCellFormula({ sheet: sheetId, col, row }),
+      valueAt: (col, row) => hf.getCellValue({ sheet: sheetId, col, row }),
+    },
+    shiftedFormats,
+  );
 }

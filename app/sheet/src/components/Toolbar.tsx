@@ -15,6 +15,12 @@ interface ToolbarProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onInsertRow?: () => void;
+  onDeleteRow?: () => void;
+  onInsertColumn?: () => void;
+  onDeleteColumn?: () => void;
+  onSortAsc?: () => void;
+  onSortDesc?: () => void;
 }
 
 export const Toolbar: Component<ToolbarProps> = (props) => {
@@ -225,6 +231,70 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="17 8 12 3 7 8" />
           <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+      </ToolBtn>
+
+      <Separator />
+
+      {/* Insert / delete rows & columns */}
+      <ToolBtn onClick={() => props.onInsertRow?.()} title={t("insertRow")}>
+        <span class="text-xs">+R</span>
+      </ToolBtn>
+      <ToolBtn onClick={() => props.onDeleteRow?.()} title={t("deleteRow")}>
+        <span class="text-xs">-R</span>
+      </ToolBtn>
+      <ToolBtn
+        onClick={() => props.onInsertColumn?.()}
+        title={t("insertColumn")}
+      >
+        <span class="text-xs">+C</span>
+      </ToolBtn>
+      <ToolBtn
+        onClick={() => props.onDeleteColumn?.()}
+        title={t("deleteColumn")}
+      >
+        <span class="text-xs">-C</span>
+      </ToolBtn>
+
+      <Separator />
+
+      {/* Sort the used range by the selected column */}
+      <ToolBtn onClick={() => props.onSortAsc?.()} title={t("sortAscending")}>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M11 5h4" />
+          <path d="M11 9h7" />
+          <path d="M11 13h10" />
+          <path d="M3 8l3-3 3 3" />
+          <path d="M6 5v14" />
+        </svg>
+      </ToolBtn>
+      <ToolBtn onClick={() => props.onSortDesc?.()} title={t("sortDescending")}>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M11 19h4" />
+          <path d="M11 15h7" />
+          <path d="M11 11h10" />
+          <path d="M3 16l3 3 3-3" />
+          <path d="M6 5v14" />
         </svg>
       </ToolBtn>
 

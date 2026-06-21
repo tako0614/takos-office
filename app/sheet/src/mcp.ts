@@ -597,6 +597,189 @@ export function registerExcelTools(
   );
 
   // -----------------------------------------------------------------------
+  // Structure (insert / delete rows & columns) + sort
+  // -----------------------------------------------------------------------
+
+  const atSchema = z
+    .number()
+    .int()
+    .min(0)
+    .describe("0-based index to insert/delete at");
+  const countSchema = z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_SPREADSHEET_ROWS)
+    .optional()
+    .describe("Number of rows/columns (default 1)");
+
+  /**
+   * Resolve the target sheet id, defaulting to the spreadsheet's active sheet
+   * (then its first sheet) when `sheetId` is omitted, mirroring
+   * sheet_get_used_range.
+   */
+  const resolveSheetId = async (
+    spreadsheetId: string,
+    sheetId?: string,
+  ): Promise<string> => {
+    if (sheetId) return sheetId;
+    const ss = await store.getSpreadsheet(spreadsheetId);
+    const resolved = ss.activeSheetId ?? ss.sheets[0]?.id;
+    if (!resolved) throw new Error("Spreadsheet has no sheets");
+    return resolved;
+  };
+
+  registerTool(
+    mcp,
+    "sheet_insert_rows",
+    "Insert rows, shifting existing rows down and adjusting formula references",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+      at: atSchema,
+      count: countSchema,
+    },
+    async (args) => {
+      try {
+        const sheetId = await resolveSheetId(args.id, args.sheetId);
+        const sheet = await store.insertRows(
+          args.id,
+          sheetId,
+          args.at,
+          args.count ?? 1,
+        );
+        return json(sheet);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  registerTool(
+    mcp,
+    "sheet_delete_rows",
+    "Delete rows, shifting rows below up and adjusting formula references",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+      at: atSchema,
+      count: countSchema,
+    },
+    async (args) => {
+      try {
+        const sheetId = await resolveSheetId(args.id, args.sheetId);
+        const sheet = await store.deleteRows(
+          args.id,
+          sheetId,
+          args.at,
+          args.count ?? 1,
+        );
+        return json(sheet);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  registerTool(
+    mcp,
+    "sheet_insert_columns",
+    "Insert columns, shifting existing columns right and adjusting formulas",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+      at: atSchema,
+      count: countSchema,
+    },
+    async (args) => {
+      try {
+        const sheetId = await resolveSheetId(args.id, args.sheetId);
+        const sheet = await store.insertColumns(
+          args.id,
+          sheetId,
+          args.at,
+          args.count ?? 1,
+        );
+        return json(sheet);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  registerTool(
+    mcp,
+    "sheet_delete_columns",
+    "Delete columns, shifting columns right of them left and adjusting formulas",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+      at: atSchema,
+      count: countSchema,
+    },
+    async (args) => {
+      try {
+        const sheetId = await resolveSheetId(args.id, args.sheetId);
+        const sheet = await store.deleteColumns(
+          args.id,
+          sheetId,
+          args.at,
+          args.count ?? 1,
+        );
+        return json(sheet);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  registerTool(
+    mcp,
+    "sheet_sort_range",
+    "Sort the rows of a range by a column",
+    {
+      id: idSchema.describe("Spreadsheet ID"),
+      sheetId: idSchema
+        .optional()
+        .describe("Sheet tab ID (defaults to the active sheet)"),
+      range: cellRangeSchema.describe('Range, e.g. "A1:C10"'),
+      column: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_SPREADSHEET_COLUMNS - 1)
+        .describe("Sort column index, 0-based relative to the range start"),
+      direction: z
+        .enum(["asc", "desc"])
+        .optional()
+        .describe("Sort direction (default 'asc')"),
+    },
+    async (args) => {
+      try {
+        const sheetId = await resolveSheetId(args.id, args.sheetId);
+        const sheet = await store.sortRange(
+          args.id,
+          sheetId,
+          args.range,
+          args.column,
+          args.direction ?? "asc",
+        );
+        return json(sheet);
+      } catch (e) {
+        return error(e instanceof Error ? e.message : String(e));
+      }
+    },
+  );
+
+  // -----------------------------------------------------------------------
   // Screenshot
   // -----------------------------------------------------------------------
 

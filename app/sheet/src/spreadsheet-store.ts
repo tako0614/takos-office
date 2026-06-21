@@ -23,13 +23,18 @@ import {
   computeUsedRange,
   formatCellAddress,
   letterToColumn,
+  MAX_SPREADSHEET_COLUMNS,
+  MAX_SPREADSHEET_ROWS,
   parseCellAddress,
 } from "./lib/cell-utils.ts";
 import {
   evaluateFormula,
   evaluateSheet,
   setCellValue,
+  shiftSheetStructure,
+  type StructuralOp,
 } from "./lib/formula.ts";
+import { sortRangeRows } from "./lib/sheet-ops.ts";
 import { parseCsv } from "./lib/csv-parser.ts";
 import type { TakosStorageClient } from "../../shared/lib/takos-storage.ts";
 
@@ -446,6 +451,136 @@ export class SpreadsheetStore {
     }
     this.touch(ss);
     await this.persist(spreadsheetId);
+  }
+
+  // -----------------------------------------------------------------------
+  // Structure operations (insert / delete rows & columns)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Run a structural insert/delete on a sheet, adjusting formula references via
+   * HyperFormula (loaded with the whole workbook so cross-sheet refs survive),
+   * preserving per-cell formats, then re-evaluate and persist. Returns the
+   * updated sheet. `at` is a 0-based axis index; `count` >= 1.
+   */
+  private async applyStructuralOp(
+    spreadsheetId: string,
+    sheetId: string,
+    op: StructuralOp,
+    at: number,
+    count: number,
+  ): Promise<Sheet> {
+    if (!Number.isInteger(at) || at < 0) {
+      throw new Error(`Invalid index: ${at}`);
+    }
+    if (!Number.isInteger(count) || count < 1) {
+      throw new Error(`Invalid count: ${count}`);
+    }
+    const axisMax = op === "insertRows" || op === "deleteRows"
+      ? MAX_SPREADSHEET_ROWS
+      : MAX_SPREADSHEET_COLUMNS;
+    if (at >= axisMax) throw new Error(`Index out of bounds: ${at}`);
+    if (op === "deleteRows" || op === "deleteColumns") {
+      if (at + count > axisMax) throw new Error(`Range out of bounds`);
+    }
+
+    const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    sheet.cells = shiftSheetStructure(sheet, op, at, count, ss.sheets);
+    sheet.cells = evaluateSheet(sheet, ss.sheets);
+    this.touch(ss);
+    await this.persist(spreadsheetId);
+    return sheet;
+  }
+
+  insertRows(
+    spreadsheetId: string,
+    sheetId: string,
+    at: number,
+    count = 1,
+  ): Promise<Sheet> {
+    return this.applyStructuralOp(
+      spreadsheetId,
+      sheetId,
+      "insertRows",
+      at,
+      count,
+    );
+  }
+
+  deleteRows(
+    spreadsheetId: string,
+    sheetId: string,
+    at: number,
+    count = 1,
+  ): Promise<Sheet> {
+    return this.applyStructuralOp(
+      spreadsheetId,
+      sheetId,
+      "deleteRows",
+      at,
+      count,
+    );
+  }
+
+  insertColumns(
+    spreadsheetId: string,
+    sheetId: string,
+    at: number,
+    count = 1,
+  ): Promise<Sheet> {
+    return this.applyStructuralOp(
+      spreadsheetId,
+      sheetId,
+      "insertColumns",
+      at,
+      count,
+    );
+  }
+
+  deleteColumns(
+    spreadsheetId: string,
+    sheetId: string,
+    at: number,
+    count = 1,
+  ): Promise<Sheet> {
+    return this.applyStructuralOp(
+      spreadsheetId,
+      sheetId,
+      "deleteColumns",
+      at,
+      count,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Sort
+  // -----------------------------------------------------------------------
+
+  /**
+   * Reorder the rows within `range` by the value in the column at
+   * `columnIndex` (0-based, relative to the range's left edge). Whole row-slices
+   * (values + formats) move together; cells outside the range are untouched.
+   * Re-evaluates and persists, returning the updated sheet.
+   */
+  async sortRange(
+    spreadsheetId: string,
+    sheetId: string,
+    range: string,
+    columnIndex: number,
+    direction: "asc" | "desc",
+  ): Promise<Sheet> {
+    const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    const bounds = parseRange(range);
+    const width = bounds.endCol - bounds.startCol + 1;
+    if (!Number.isInteger(columnIndex) || columnIndex < 0 ||
+      columnIndex >= width) {
+      throw new Error(`Sort column out of range: ${columnIndex}`);
+    }
+    sheet.cells = sortRangeRows(sheet.cells, bounds, columnIndex, direction);
+    sheet.cells = evaluateSheet(sheet, ss.sheets);
+    this.touch(ss);
+    await this.persist(spreadsheetId);
+    return sheet;
   }
 
   // -----------------------------------------------------------------------
