@@ -14,6 +14,7 @@ import Sidebar from "../components/Sidebar";
 import WordCount from "../components/WordCount";
 import FindReplace from "../components/FindReplace";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
 export default function EditorPage() {
@@ -115,6 +116,8 @@ export default function EditorPage() {
         >
           <ArrowLeft size={20} />
         </button>
+
+        <OfficeNav />
 
         <div class="flex flex-col flex-1 min-w-0">
           <input

@@ -9,6 +9,7 @@ import {
 } from "../lib/storage";
 import DocumentCard from "../components/DocumentCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
 export default function DocumentListPage() {
@@ -64,12 +65,7 @@ export default function DocumentListPage() {
       {/* Header */}
       <header class="border-b border-gray-200 bg-white sticky top-0 z-10">
         <div class="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
-          <div class="flex items-center gap-2.5 shrink-0">
-            <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <FileText size={22} class="text-white" />
-            </div>
-            <span class="text-lg font-medium text-gray-800">Takos Docs</span>
-          </div>
+          <OfficeNav />
 
           {/* Search */}
           <div class="flex-1 max-w-xl mx-auto">

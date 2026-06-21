@@ -7,6 +7,7 @@ import {
 } from "../lib/storage";
 import { SpreadsheetCard } from "../components/SpreadsheetCard";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import type { Spreadsheet } from "../types";
 
@@ -52,11 +53,14 @@ export const SpreadsheetListPage: Component = () => {
       {/* Header */}
       <header class="border-b border-neutral-800 bg-neutral-900">
         <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-          <div>
-            <h1 class="text-xl font-bold text-neutral-100">Takos Excel</h1>
-            <p class="mt-0.5 text-sm text-neutral-500">
-              {t("spreadsheetEditor")}
-            </p>
+          <div class="flex items-center gap-4">
+            <OfficeNav />
+            <div class="hidden sm:block">
+              <h1 class="text-xl font-bold text-neutral-100">Takos Sheets</h1>
+              <p class="mt-0.5 text-sm text-neutral-500">
+                {t("spreadsheetEditor")}
+              </p>
+            </div>
           </div>
           <div class="flex items-center gap-3">
             <LanguageSwitcher />

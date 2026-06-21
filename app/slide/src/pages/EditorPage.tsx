@@ -19,6 +19,7 @@ import SlideCanvas from "../components/SlideCanvas";
 import SlidePanel from "../components/SlidePanel";
 import ShapeToolbar from "../components/ShapeToolbar";
 import PropertyPanel from "../components/PropertyPanel";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
 export default function EditorPage() {
@@ -285,6 +286,11 @@ export default function EditorPage() {
       fallback={<div class="p-8 text-gray-400">{t("loading")}</div>}
     >
       <div class="h-screen flex flex-col bg-gray-900">
+        {/* Office nav - return to the shell / switch apps from inside a deck */}
+        <div class="bg-gray-800 border-b border-gray-700 px-4 py-2">
+          <OfficeNav />
+        </div>
+
         {/* Toolbar */}
         <ShapeToolbar
           presentationTitle={presentation()!.title}

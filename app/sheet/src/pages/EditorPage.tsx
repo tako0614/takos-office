@@ -27,6 +27,7 @@ import { Grid } from "../components/Grid";
 import { Toolbar } from "../components/Toolbar";
 import { FormulaBar } from "../components/FormulaBar";
 import { SheetTabs } from "../components/SheetTabs";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
 export const EditorPage: Component = () => {
@@ -497,6 +498,11 @@ export const EditorPage: Component = () => {
       >
         {(ss) => (
           <>
+            {/* Office nav - return to the shell / switch apps from inside a sheet */}
+            <div class="border-b border-neutral-800 bg-neutral-900 px-4 py-2">
+              <OfficeNav />
+            </div>
+
             {/* Toolbar */}
             <Toolbar
               format={selectedCellData()?.format}

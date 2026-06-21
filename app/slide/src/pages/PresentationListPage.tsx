@@ -9,6 +9,7 @@ import {
 } from "../lib/storage";
 import PresentationCard from "../components/PresentationCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
 export default function PresentationListPage() {
@@ -57,7 +58,7 @@ export default function PresentationListPage() {
       {/* Header */}
       <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
         <div class="max-w-6xl mx-auto flex items-center justify-between">
-          <h1 class="text-xl font-bold text-gray-100">Takos Slide</h1>
+          <OfficeNav />
           <div class="flex items-center gap-3">
             <LanguageSwitcher />
             <button
