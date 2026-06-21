@@ -201,6 +201,16 @@ body {
   font-size: 0.75em;
 }
 
+/* Find & Replace match highlights */
+.docs-search-match {
+  background-color: #fff3a3;
+  border-radius: 0.125rem;
+}
+
+.docs-search-match-active {
+  background-color: #ffb74d;
+}
+
 /* ========================================================================
    Toolbar select dropdowns
    ======================================================================== */

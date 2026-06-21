@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { useNavigate, useParams } from "@solidjs/router";
 import { ArrowLeft, Cloud, CloudOff } from "lucide-solid";
 import type { Editor as TipTapEditor } from "@tiptap/core";
@@ -12,6 +12,7 @@ import Editor from "../components/Editor";
 import Toolbar from "../components/Toolbar";
 import Sidebar from "../components/Sidebar";
 import WordCount from "../components/WordCount";
+import FindReplace from "../components/FindReplace";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { useI18n } from "../i18n";
 
@@ -26,9 +27,22 @@ export default function EditorPage() {
   const [saveStatus, setSaveStatus] = createSignal<
     "saved" | "saving" | "failed" | "idle"
   >("idle");
+  const [showFind, setShowFind] = createSignal(false);
 
   let saveTimeout: ReturnType<typeof setTimeout> | undefined;
   let saveStatusResetTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  // Open Find & Replace on Ctrl/Cmd+F, suppressing the browser's own find bar.
+  onMount(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        setShowFind(true);
+      }
+    };
+    globalThis.addEventListener("keydown", handler);
+    onCleanup(() => globalThis.removeEventListener("keydown", handler));
+  });
 
   createEffect(() => {
     const id = params.id;
@@ -131,7 +145,18 @@ export default function EditorPage() {
       </header>
 
       {/* Toolbar */}
-      <Toolbar editor={editor()} />
+      <Toolbar
+        editor={editor()}
+        documentTitle={title()}
+        documentContent={doc()?.content ?? ""}
+      />
+
+      {/* Find & Replace */}
+      <FindReplace
+        editor={editor()}
+        open={showFind()}
+        onClose={() => setShowFind(false)}
+      />
 
       {/* Main area: sidebar + paper */}
       <div class="flex flex-1 overflow-hidden">

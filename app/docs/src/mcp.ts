@@ -352,9 +352,35 @@ function tryRenderTiptapJson(content: string): string | null {
   }
 }
 
-function documentContentToSafeHtml(content: string): string {
+export function documentContentToSafeHtml(content: string): string {
   const fromJson = tryRenderTiptapJson(content);
   return fromJson ?? sanitizeHtmlForExport(content);
+}
+
+/**
+ * Serialize stored document content to plain text, exactly as the
+ * docs_export_text MCP tool does. Pure function so the browser Export menu can
+ * reuse the same normalization without re-implementing it; the tool below calls
+ * this helper so its observable output is unchanged.
+ */
+export function documentContentToPlainText(content: string): string {
+  const html = documentContentToSafeHtml(content);
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/td>/gi, "\t")
+    .replace(/<\/th>/gi, "\t")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,24 +1460,7 @@ export function registerDocsTools(
 
       // Normalize browser-created TipTap JSON to HTML first, then strip tags
       // for plain text export so JSON docs don't dump raw JSON.
-      const html = documentContentToSafeHtml(doc.content);
-      const plainText = html
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<\/h[1-6]>/gi, "\n\n")
-        .replace(/<\/li>/gi, "\n")
-        .replace(/<\/tr>/gi, "\n")
-        .replace(/<\/td>/gi, "\t")
-        .replace(/<\/th>/gi, "\t")
-        .replace(/<[^>]*>/g, "")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-      return text(plainText);
+      return text(documentContentToPlainText(doc.content));
     },
   );
 }

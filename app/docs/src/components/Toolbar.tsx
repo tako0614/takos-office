@@ -6,6 +6,10 @@ import {
   AlignRight,
   Bold,
   Code,
+  Download,
+  FileCode,
+  FileText,
+  FileType,
   Heading1,
   Heading2,
   Heading3,
@@ -28,6 +32,10 @@ import {
   Undo,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
+import {
+  downloadDocument,
+  type ExportFormat,
+} from "../lib/export-download.ts";
 
 const FONT_FAMILIES = [
   "Arial",
@@ -99,6 +107,8 @@ const COLORS = [
 
 interface ToolbarProps {
   editor: Editor | null;
+  documentTitle?: string;
+  documentContent?: string;
 }
 
 export default function Toolbar(props: ToolbarProps) {
@@ -109,6 +119,20 @@ export default function Toolbar(props: ToolbarProps) {
   const [imageUrl, setImageUrl] = createSignal("");
   const [showTextColor, setShowTextColor] = createSignal(false);
   const [showHighlight, setShowHighlight] = createSignal(false);
+  const [showExport, setShowExport] = createSignal(false);
+
+  // Prefer the live editor's JSON (freshest, before autosave debounce) and fall
+  // back to the persisted document content when the editor isn't ready yet.
+  const currentContent = (): string => {
+    const editor = props.editor;
+    if (editor && !editor.isDestroyed) return JSON.stringify(editor.getJSON());
+    return props.documentContent ?? "";
+  };
+
+  const handleExport = (format: ExportFormat) => {
+    downloadDocument(format, props.documentTitle ?? "", currentContent());
+    setShowExport(false);
+  };
 
   const [, setTick] = createSignal(0);
 
@@ -151,6 +175,7 @@ export default function Toolbar(props: ToolbarProps) {
     setShowHighlight(false);
     setShowLinkInput(false);
     setShowImageInput(false);
+    setShowExport(false);
   };
 
   const handleSetLink = () => {
@@ -519,6 +544,59 @@ export default function Toolbar(props: ToolbarProps) {
         >
           <TableIcon size={16} />
         </button>
+
+        {/* Export menu — pushed to the right edge of the toolbar row */}
+        <div class="relative ml-auto">
+          <button
+            type="button"
+            class="flex items-center gap-1 px-2 py-1.5 rounded text-gray-700 text-sm hover:bg-gray-100 transition-colors"
+            onClick={() => {
+              const next = !showExport();
+              closePopups();
+              setShowExport(next);
+            }}
+            title={t("export")}
+            aria-haspopup="menu"
+            aria-expanded={showExport()}
+          >
+            <Download size={16} />
+            <span class="hidden sm:inline">{t("export")}</span>
+          </button>
+          <Show when={showExport()}>
+            <div
+              class="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1 min-w-44"
+              role="menu"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => handleExport("markdown")}
+              >
+                <FileText size={16} class="text-gray-500" />
+                {t("exportMarkdown")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => handleExport("text")}
+              >
+                <FileType size={16} class="text-gray-500" />
+                {t("exportPlainText")}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => handleExport("html")}
+              >
+                <FileCode size={16} class="text-gray-500" />
+                {t("exportHtml")}
+              </button>
+            </div>
+          </Show>
+        </div>
       </div>
 
       {/* Link URL input */}
