@@ -29,6 +29,20 @@ body {
   min-height: 100vh;
 }
 
+/* Visible keyboard-focus ring for interactive controls. Only shows for
+   keyboard navigation (not mouse clicks) thanks to :focus-visible, and is
+   themed for both light and dark. The grid container opts out (it manages its
+   own cell-selection outline). */
+:where(button, a, [role="button"], summary):focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+[data-theme="dark"]
+  :where(button, a, [role="button"], summary):focus-visible {
+  outline-color: #60a5fa;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 10px;

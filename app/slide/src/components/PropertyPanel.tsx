@@ -146,32 +146,36 @@ export default function PropertyPanel(props: PropertyPanelProps) {
               <div class="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={t("bringToFront")}
+                  aria-label={t("bringToFront")}
                   onClick={() => props.onReorderElement("front")}
                 >
                   {t("bringToFront")}
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={t("sendToBack")}
+                  aria-label={t("sendToBack")}
                   onClick={() => props.onReorderElement("back")}
                 >
                   {t("sendToBack")}
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={t("bringForward")}
+                  aria-label={t("bringForward")}
                   onClick={() => props.onReorderElement("forward")}
                 >
                   {t("bringForward")}
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   title={t("sendBackward")}
+                  aria-label={t("sendBackward")}
                   onClick={() => props.onReorderElement("backward")}
                 >
                   {t("sendBackward")}
@@ -224,26 +228,30 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 <div class="flex gap-2">
                   <button
                     type="button"
-                    class="flex-1 text-xs py-1 rounded transition-colors"
+                    class="flex-1 text-xs py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     classList={{
                       "bg-blue-600 text-white": el()!.bold,
                       "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600":
                         !el()!
                         .bold,
                     }}
+                    aria-label={t("bold")}
+                    aria-pressed={el()!.bold ? "true" : "false"}
                     onClick={() => update({ bold: !el()!.bold })}
                   >
                     B
                   </button>
                   <button
                     type="button"
-                    class="flex-1 text-xs py-1 rounded transition-colors italic"
+                    class="flex-1 text-xs py-1 rounded transition-colors italic focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     classList={{
                       "bg-blue-600 text-white": el()!.italic,
                       "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600":
                         !el()!
                         .italic,
                     }}
+                    aria-label={t("italic")}
+                    aria-pressed={el()!.italic ? "true" : "false"}
                     onClick={() => update({ italic: !el()!.italic })}
                   >
                     I

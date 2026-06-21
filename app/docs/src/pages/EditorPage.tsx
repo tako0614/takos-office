@@ -1,6 +1,6 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { useNavigate, useParams } from "@solidjs/router";
-import { ArrowLeft, Cloud, CloudOff } from "lucide-solid";
+import { ArrowLeft, Cloud, CloudOff, Keyboard } from "lucide-solid";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Document } from "../types";
 import {
@@ -13,10 +13,23 @@ import Toolbar from "../components/Toolbar";
 import Sidebar from "../components/Sidebar";
 import WordCount from "../components/WordCount";
 import FindReplace from "../components/FindReplace";
+import ShortcutsHelp from "../components/ShortcutsHelp";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+
+/**
+ * Whether keyboard input is currently going into an editable field (an input,
+ * textarea, select, or any contenteditable host such as the TipTap surface), so
+ * single-key shortcuts like `?` don't fire while the user is typing.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return target.isContentEditable;
+}
 
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -30,16 +43,26 @@ export default function EditorPage() {
     "saved" | "saving" | "failed" | "idle"
   >("idle");
   const [showFind, setShowFind] = createSignal(false);
+  const [showShortcuts, setShowShortcuts] = createSignal(false);
 
   let saveTimeout: ReturnType<typeof setTimeout> | undefined;
   let saveStatusResetTimeout: ReturnType<typeof setTimeout> | undefined;
 
-  // Open Find & Replace on Ctrl/Cmd+F, suppressing the browser's own find bar.
+  // Open Find & Replace on Ctrl/Cmd+F (suppressing the browser's own find bar)
+  // and the shortcuts help on `?` (Shift+/) when not typing in a field.
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setShowFind(true);
+        return;
+      }
+      if (
+        e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !isTypingTarget(e.target)
+      ) {
+        e.preventDefault();
+        setShowShortcuts(true);
       }
     };
     globalThis.addEventListener("keydown", handler);
@@ -111,9 +134,10 @@ export default function EditorPage() {
       <header class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
         <button
           type="button"
-          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => navigate("/")}
           title={t("backToDocuments")}
+          aria-label={t("backToDocuments")}
         >
           <ArrowLeft size={20} />
         </button>
@@ -145,6 +169,16 @@ export default function EditorPage() {
             <span class="text-red-600">{t("saveFailed")}</span>
           </Show>
         </div>
+        <button
+          type="button"
+          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          onClick={() => setShowShortcuts(true)}
+          title={t("keyboardShortcuts")}
+          aria-label={t("keyboardShortcuts")}
+          aria-haspopup="dialog"
+        >
+          <Keyboard size={18} />
+        </button>
         <ThemeToggle />
         <LanguageSwitcher />
       </header>
@@ -161,6 +195,12 @@ export default function EditorPage() {
         editor={editor()}
         open={showFind()}
         onClose={() => setShowFind(false)}
+      />
+
+      {/* Keyboard shortcut help */}
+      <ShortcutsHelp
+        open={showShortcuts()}
+        onClose={() => setShowShortcuts(false)}
       />
 
       {/* Main area: sidebar + paper */}

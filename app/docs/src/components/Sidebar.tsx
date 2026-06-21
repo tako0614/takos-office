@@ -77,9 +77,11 @@ export default function Sidebar(props: SidebarProps) {
         </span>
         <button
           type="button"
-          class="p-1 rounded text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+          class="p-1 rounded text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => setCollapsed(!collapsed())}
           title={collapsed() ? t("expand") : t("collapse")}
+          aria-label={t("toggleOutline")}
+          aria-expanded={!collapsed()}
         >
           <List size={14} />
         </button>

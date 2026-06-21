@@ -275,13 +275,14 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class={`p-1.5 rounded transition-colors ${
+          class={`p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
             caseSensitive()
               ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
               : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
           }`}
           onClick={() => setCaseSensitive((v) => !v)}
           title={t("caseSensitive")}
+          aria-label={t("caseSensitive")}
           aria-pressed={caseSensitive()}
         >
           <CaseSensitive size={16} />
@@ -289,19 +290,21 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={goPrevious}
           disabled={matches().length === 0}
           title={t("previousMatch")}
+          aria-label={t("previousMatch")}
         >
           <ChevronUp size={16} />
         </button>
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={goNext}
           disabled={matches().length === 0}
           title={t("nextMatch")}
+          aria-label={t("nextMatch")}
         >
           <ChevronDown size={16} />
         </button>
@@ -320,11 +323,11 @@ export default function FindReplace(props: FindReplaceProps) {
             }
           }}
           aria-label={t("replace")}
-          class="w-44 bg-gray-50 text-gray-800 text-sm px-3 py-1.5 rounded-md border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+          class="w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
         />
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={replaceCurrent}
           disabled={matches().length === 0}
         >
@@ -332,7 +335,7 @@ export default function FindReplace(props: FindReplaceProps) {
         </button>
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={replaceAll}
           disabled={matches().length === 0}
         >
@@ -341,7 +344,7 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="ml-auto p-1.5 rounded text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+          class="ml-auto p-1.5 rounded text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={props.onClose}
           title={t("closeFind")}
           aria-label={t("closeFind")}

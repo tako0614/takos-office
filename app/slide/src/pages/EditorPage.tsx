@@ -20,6 +20,7 @@ import SlidePanel from "../components/SlidePanel";
 import ShapeToolbar from "../components/ShapeToolbar";
 import PropertyPanel from "../components/PropertyPanel";
 import OfficeNav from "../components/OfficeNav";
+import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
 
 export default function EditorPage() {
@@ -37,6 +38,7 @@ export default function EditorPage() {
   const [undoStack, setUndoStack] = createSignal<Presentation[]>([]);
   const [redoStack, setRedoStack] = createSignal<Presentation[]>([]);
   const [editingTextId, setEditingTextId] = createSignal<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = createSignal(false);
 
   // Load presentation
   createEffect(() => {
@@ -254,6 +256,17 @@ export default function EditorPage() {
       return;
     }
 
+    // While the shortcuts help is open, let it own the keyboard (it handles its
+    // own Esc / focus trap) and don't run editor shortcuts underneath it.
+    if (showShortcuts()) return;
+
+    // "?" (Shift + /) opens the shortcuts help when not typing in a field.
+    if (e.key === "?") {
+      e.preventDefault();
+      setShowShortcuts(true);
+      return;
+    }
+
     if (e.key === "Delete" || e.key === "Backspace") {
       handleDelete();
     }
@@ -306,6 +319,7 @@ export default function EditorPage() {
           onUndo={handleUndo}
           onRedo={handleRedo}
           onPresent={handlePresent}
+          onShowHelp={() => setShowShortcuts(true)}
           canUndo={undoStack().length > 0}
           canRedo={redoStack().length > 0}
           hasSelection={selectedElementId() !== null}
@@ -410,6 +424,14 @@ export default function EditorPage() {
           </div>
         </Show>
 
+        {/* Keyboard shortcuts help */}
+        <Show when={showShortcuts()}>
+          <ShortcutsHelp
+            open={showShortcuts()}
+            onClose={() => setShowShortcuts(false)}
+          />
+        </Show>
+
         {/* Bottom bar */}
         <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-500">
           <span>
@@ -421,7 +443,8 @@ export default function EditorPage() {
           <span class="mx-2">|</span>
           <button
             type="button"
-            class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors"
+            class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            aria-label={t("backToList")}
             onClick={() => navigate("/")}
           >
             {t("backToList")}

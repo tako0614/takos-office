@@ -15,7 +15,7 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors"
+      class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       onClick={toggleTheme}
       title={t("toggleTheme")}
       aria-label={theme() === "dark" ? t("themeLight") : t("themeDark")}

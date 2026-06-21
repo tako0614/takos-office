@@ -20,13 +20,6 @@ export const SpreadsheetListPage: Component = () => {
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
 
-  onMount(() => {
-    void loadSpreadsheetsFromApi()
-      .then(setSpreadsheets)
-      .catch(() => undefined)
-      .finally(() => setIsLoading(false));
-  });
-
   const handleCreate = () => {
     const title = newTitle().trim() || t("untitledSpreadsheet");
     const result = createSpreadsheet(title, t("defaultSheetName"));
@@ -38,6 +31,26 @@ export const SpreadsheetListPage: Component = () => {
     setNewTitle("");
     navigate(`/${ss.id}`);
   };
+
+  onMount(() => {
+    void loadSpreadsheetsFromApi()
+      .then(setSpreadsheets)
+      .catch(() => undefined)
+      .finally(() => setIsLoading(false));
+
+    // Quick-create entry point from the Office shell: `?new=1` immediately
+    // fires the same create action as the "New Spreadsheet" button and then
+    // strips the param so a refresh doesn't create another spreadsheet.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      params.delete("new");
+      const query = params.toString();
+      const url = window.location.pathname +
+        (query ? `?${query}` : "") + window.location.hash;
+      window.history.replaceState(window.history.state, "", url);
+      handleCreate();
+    }
+  });
 
   const handleDelete = (e: Event, id: string) => {
     e.stopPropagation();
@@ -93,6 +106,28 @@ export const SpreadsheetListPage: Component = () => {
 
       {/* Content */}
       <main class="mx-auto max-w-5xl px-6 py-6">
+        <Show when={isLoading()}>
+          {/* Lightweight skeleton while the list loads from the API. */}
+          <div
+            class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            role="status"
+            aria-label={t("loadingSpreadsheets")}
+            aria-busy="true"
+          >
+            <For each={[0, 1, 2, 3, 4, 5]}>
+              {() => (
+                <div class="animate-pulse rounded-xl border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+                  <div class="mb-4 h-24 rounded-lg bg-gray-100 dark:bg-neutral-800" />
+                  <div class="mb-2 h-4 w-2/3 rounded bg-gray-100 dark:bg-neutral-800" />
+                  <div class="h-3 w-1/3 rounded bg-gray-100 dark:bg-neutral-800" />
+                </div>
+              )}
+            </For>
+            <span class="sr-only">{t("loadingSpreadsheets")}</span>
+          </div>
+        </Show>
+
+        <Show when={!isLoading()}>
         <Show
           when={spreadsheets().length > 0}
           fallback={
@@ -153,6 +188,7 @@ export const SpreadsheetListPage: Component = () => {
               )}
             </For>
           </div>
+        </Show>
         </Show>
       </main>
 

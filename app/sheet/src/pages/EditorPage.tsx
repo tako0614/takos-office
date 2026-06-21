@@ -27,6 +27,7 @@ import { Grid } from "../components/Grid";
 import { Toolbar } from "../components/Toolbar";
 import { FormulaBar } from "../components/FormulaBar";
 import { SheetTabs } from "../components/SheetTabs";
+import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -45,6 +46,7 @@ export const EditorPage: Component = () => {
   >(null);
   const [isEditing, setIsEditing] = createSignal(false);
   const [editValue, setEditValue] = createSignal("");
+  const [showShortcuts, setShowShortcuts] = createSignal(false);
 
   // Undo/redo managers keyed by sheet id
   const historyManagers = new Map<
@@ -385,7 +387,21 @@ export const EditorPage: Component = () => {
   };
   const handleClearFilter = () => setActiveSheetFilter(undefined);
 
-  // Keyboard shortcut handler for undo/redo
+  // True when keyboard focus is in a text input / textarea / select / editable
+  // element, so global single-key shortcuts (like `?`) don't hijack typing.
+  const isTypingTarget = (target: EventTarget | null): boolean => {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName;
+    return (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      el.isContentEditable === true
+    );
+  };
+
+  // Keyboard shortcut handler for undo/redo + shortcut help.
   const handleGlobalKeyDown = (e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
       e.preventDefault();
@@ -396,6 +412,17 @@ export const EditorPage: Component = () => {
     ) {
       e.preventDefault();
       handleRedo();
+    } else if (
+      e.key === "?" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !isEditing() &&
+      !isTypingTarget(e.target)
+    ) {
+      // Shift+/ opens the keyboard-shortcut help.
+      e.preventDefault();
+      setShowShortcuts(true);
     }
   };
 
@@ -499,8 +526,32 @@ export const EditorPage: Component = () => {
         {(ss) => (
           <>
             {/* Office nav - return to the shell / switch apps from inside a sheet */}
-            <div class="border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+            <div class="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
               <OfficeNav />
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                onClick={() => setShowShortcuts(true)}
+                aria-label={t("shortcutsOpen")}
+                title={t("shortcutsOpen")}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </button>
             </div>
 
             {/* Toolbar */}
@@ -565,6 +616,11 @@ export const EditorPage: Component = () => {
               onRenameSheet={handleRenameSheet}
               onDeleteSheet={handleDeleteSheet}
             />
+
+            {/* Keyboard-shortcut help modal */}
+            <Show when={showShortcuts()}>
+              <ShortcutsHelp onClose={() => setShowShortcuts(false)} />
+            </Show>
           </>
         )}
       </Show>

@@ -18,7 +18,7 @@ export default function LanguageSwitcher() {
         {(lang) => (
           <button
             type="button"
-            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             classList={{
               "bg-white text-gray-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100":
                 language() === lang.value,

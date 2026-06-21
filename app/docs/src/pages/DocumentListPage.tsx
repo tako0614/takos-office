@@ -20,13 +20,6 @@ export default function DocumentListPage() {
   const [isLoading, setIsLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
 
-  onMount(() => {
-    void loadDocumentsFromApi()
-      .then(setDocuments)
-      .catch(() => undefined)
-      .finally(() => setIsLoading(false));
-  });
-
   const handleCreate = () => {
     const now = new Date().toISOString();
     const doc: Document = {
@@ -42,6 +35,29 @@ export default function DocumentListPage() {
     setDocuments((prev) => [...prev, doc]);
     navigate(`/${doc.id}`);
   };
+
+  onMount(() => {
+    void loadDocumentsFromApi()
+      .then(setDocuments)
+      .catch(() => undefined)
+      .finally(() => setIsLoading(false));
+
+    // Quick-create entry point from the Office shell: `?new=1` fires the same
+    // blank-document create action as the create card, then strips the param so
+    // a refresh doesn't create another document.
+    try {
+      const params = new URLSearchParams(globalThis.location?.search ?? "");
+      if (params.get("new") === "1") {
+        params.delete("new");
+        const query = params.toString();
+        const url = `${globalThis.location.pathname}${query ? `?${query}` : ""}${globalThis.location.hash ?? ""}`;
+        globalThis.history?.replaceState(globalThis.history.state, "", url);
+        handleCreate();
+      }
+    } catch {
+      // Ignore environments without a usable location/history (e.g. tests).
+    }
+  });
 
   const handleDelete = (id: string) => {
     if (!confirm(t("deleteDocumentConfirm"))) return;
@@ -102,7 +118,7 @@ export default function DocumentListPage() {
           <button
             type="button"
             onClick={handleCreate}
-            class="group w-40 h-52 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg flex flex-col items-center justify-center gap-2 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10 transition-all cursor-pointer"
+            class="group w-40 h-52 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg flex flex-col items-center justify-center gap-2 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
               <Plus size={24} class="text-white" />
@@ -115,37 +131,62 @@ export default function DocumentListPage() {
 
         {/* Recent documents */}
         <Show
-          when={filtered().length > 0}
+          when={!isLoading()}
           fallback={
-            <Show when={!isLoading() && documents().length === 0}>
-              <div class="flex flex-col items-center justify-center py-20 text-center">
-                <div class="w-20 h-20 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
-                  <FileText size={36} class="text-gray-400 dark:text-neutral-500" />
-                </div>
-                <h2 class="text-base font-medium text-gray-700 dark:text-neutral-200 mb-1">
-                  {t("noDocumentsTitle")}
-                </h2>
-                <p class="text-sm text-gray-500 dark:text-neutral-400">
-                  {t("noDocumentsDescription")}
-                </p>
+            <div aria-busy="true" aria-label={t("loadingDocuments")}>
+              <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
+                {t("recentDocuments")}
+              </h2>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <For each={[0, 1, 2, 3]}>
+                  {() => (
+                    <div class="border border-gray-200 dark:border-neutral-700 rounded-lg overflow-hidden animate-pulse">
+                      <div class="h-32 bg-gray-100 dark:bg-neutral-800" />
+                      <div class="p-3 space-y-2">
+                        <div class="h-3.5 w-3/4 rounded bg-gray-200 dark:bg-neutral-700" />
+                        <div class="h-3 w-1/2 rounded bg-gray-100 dark:bg-neutral-800" />
+                      </div>
+                    </div>
+                  )}
+                </For>
               </div>
-            </Show>
+              <span class="sr-only">{t("loadingDocuments")}</span>
+            </div>
           }
         >
-          <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
-            {t("recentDocuments")}
-          </h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <For each={filtered()}>
-              {(doc) => (
-                <DocumentCard
-                  document={doc}
-                  onClick={() => navigate(`/${doc.id}`)}
-                  onDelete={() => handleDelete(doc.id)}
-                />
-              )}
-            </For>
-          </div>
+          <Show
+            when={filtered().length > 0}
+            fallback={
+              <Show when={documents().length === 0}>
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                  <div class="w-20 h-20 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+                    <FileText size={36} class="text-gray-400 dark:text-neutral-500" />
+                  </div>
+                  <h2 class="text-base font-medium text-gray-700 dark:text-neutral-200 mb-1">
+                    {t("noDocumentsTitle")}
+                  </h2>
+                  <p class="text-sm text-gray-500 dark:text-neutral-400">
+                    {t("noDocumentsDescription")}
+                  </p>
+                </div>
+              </Show>
+            }
+          >
+            <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
+              {t("recentDocuments")}
+            </h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <For each={filtered()}>
+                {(doc) => (
+                  <DocumentCard
+                    document={doc}
+                    onClick={() => navigate(`/${doc.id}`)}
+                    onDelete={() => handleDelete(doc.id)}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
         </Show>
       </main>
     </div>

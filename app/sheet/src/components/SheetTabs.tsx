@@ -81,6 +81,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
           >
             <input
               class="mr-0.5 h-6 w-24 rounded bg-white px-2 text-xs text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
+              aria-label={t("renameSheet")}
               value={renameValue()}
               onInput={(e) => setRenameValue(e.currentTarget.value)}
               onBlur={finishRename}
@@ -100,6 +101,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
         class="flex h-6 w-6 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
         onClick={props.onAddSheet}
         title={t("addSheet")}
+        aria-label={t("addSheet")}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

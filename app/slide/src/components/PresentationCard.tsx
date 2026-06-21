@@ -65,7 +65,10 @@ export default function PresentationCard(props: PresentationCardProps) {
           </span>
           <button
             type="button"
-            class="text-xs text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 dark:hover:text-red-300 transition-opacity px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
+            class="text-xs text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-600 dark:hover:text-red-300 transition-opacity px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            aria-label={t("deletePresentationLabel", {
+              title: props.presentation.title,
+            })}
             onClick={(e) => {
               e.stopPropagation();
               props.onDelete(e);

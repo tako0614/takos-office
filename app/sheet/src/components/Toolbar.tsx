@@ -83,6 +83,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       }`}
       onClick={btnProps.onClick}
       title={btnProps.title}
+      aria-label={btnProps.title}
+      aria-pressed={btnProps.active}
     >
       {btnProps.children}
     </button>
@@ -100,6 +102,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         class="mr-2 flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
         onClick={props.onNavigateHome}
         title={t("backToList")}
+        aria-label={t("backToList")}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -127,6 +130,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
               setTitleValue(props.title);
               setEditingTitle(true);
             }}
+            aria-label={t("editTitle")}
+            title={t("editTitle")}
           >
             {props.title}
           </button>
@@ -134,6 +139,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       >
         <input
           class="mr-4 w-48 rounded bg-white px-2 py-0.5 text-sm text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
+          aria-label={t("editTitle")}
           value={titleValue()}
           onInput={(e) => setTitleValue(e.currentTarget.value)}
           onBlur={() => {
@@ -312,6 +318,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           class="ml-1 h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-400 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-500"
           placeholder={t("filterPlaceholder")}
           title={t("filterColumn")}
+          aria-label={t("filterColumn")}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               props.onApplyFilter?.(e.currentTarget.value);
@@ -364,6 +371,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         onChange={(e) =>
           props.onFormatChange({ fontSize: Number(e.currentTarget.value) })}
         title={t("fontSize")}
+        aria-label={t("fontSize")}
       >
         {fontSizes.map((size) => (
           <option value={size}>
@@ -400,6 +408,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                 type="button"
                 class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
                 style={{ background: color }}
+                aria-label={color}
+                title={color}
                 onClick={() => {
                   props.onFormatChange({ textColor: color });
                   setShowTextColor(false);
@@ -447,6 +457,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                 type="button"
                 class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
                 style={{ background: color }}
+                aria-label={color}
+                title={color}
                 onClick={() => {
                   props.onFormatChange({ bgColor: color });
                   setShowBgColor(false);
@@ -548,6 +560,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             numberFormat: e.currentTarget.value || undefined,
           })}
         title={t("numberFormat")}
+        aria-label={t("numberFormat")}
       >
         {numberFormats().map((nf) => (
           <option value={nf.value}>

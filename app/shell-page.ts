@@ -47,17 +47,19 @@ const APPS: AppDef[] = [
 
 function appCard(a: AppDef): string {
   return `
-    <a class="card" data-app="${a.app}" href="${a.href}" style="--accent:${a.accent}">
-      <span class="card-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-             stroke-linecap="round" stroke-linejoin="round" width="22" height="22">${a.icon}</svg>
-      </span>
-      <span class="card-body">
-        <span class="card-label">${a.label}</span>
-        <span class="card-desc">${a.desc}</span>
-      </span>
-      <span class="card-open" aria-hidden="true">→</span>
-    </a>`;
+    <div class="card" data-accent="${a.app}" style="--accent:${a.accent}">
+      <a class="card-open-link" data-app="${a.app}" href="${a.href}">
+        <span class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" width="22" height="22">${a.icon}</svg>
+        </span>
+        <span class="card-body">
+          <span class="card-label">${a.label}</span>
+          <span class="card-desc">${a.desc}</span>
+        </span>
+      </a>
+      <a class="card-new" data-app-new="${a.app}" href="${a.href}?new=1" title="New ${a.label.replace(/s$/, "")}">+ New</a>
+    </div>`;
 }
 
 export function renderShellPage(): string {
@@ -112,12 +114,13 @@ export function renderShellPage(): string {
   .hero p { margin: 0; color: #6b7280; font-size: 15px; }
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 22px 0 30px; }
   .card {
-    display: flex; align-items: flex-start; gap: 12px; padding: 18px;
+    display: flex; flex-direction: column; gap: 10px; padding: 16px;
     background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
-    text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s, transform .1s;
+    transition: border-color .15s, box-shadow .15s, transform .1s;
   }
   .card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.07); transform: translateY(-1px); }
-  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card-open-link { display: flex; align-items: flex-start; gap: 12px; text-decoration: none; color: inherit; }
+  .card-open-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
   .card-icon {
     display: flex; align-items: center; justify-content: center;
     width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
@@ -126,8 +129,13 @@ export function renderShellPage(): string {
   .card-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .card-label { font-weight: 600; font-size: 15px; }
   .card-desc { font-size: 12.5px; color: #6b7280; line-height: 1.35; }
-  .card-open { color: var(--accent); font-size: 16px; opacity: 0; transition: opacity .15s; }
-  .card:hover .card-open { opacity: 1; }
+  .card-new {
+    align-self: flex-start; font-size: 12px; color: var(--accent); text-decoration: none;
+    padding: 4px 11px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 999px; transition: background .12s, color .12s, border-color .12s;
+  }
+  .card-new:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  [data-theme="dark"] .card-desc { color: #9ca3af; }
   .search { position: relative; margin-bottom: 8px; }
   .search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
   .search input {
@@ -204,7 +212,7 @@ export function renderShellPage(): string {
     if (!spaceId) return path;
     return path + (path.indexOf("?") >= 0 ? "&" : "?") + "space_id=" + encodeURIComponent(spaceId);
   }
-  document.querySelectorAll("[data-app], [data-app-link], a.brand").forEach(function (el) {
+  document.querySelectorAll("[data-app], [data-app-new], [data-app-link], a.brand").forEach(function (el) {
     el.setAttribute("href", withSpace(el.getAttribute("href")));
   });
 
