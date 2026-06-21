@@ -124,6 +124,31 @@ export default function EditorPage() {
     setSelectedElementId(null);
   };
 
+  // Restack the selected element within the slide's draw order. Elements are
+  // painted in array order, so the last element is on top.
+  const handleReorderElement = (
+    action: "front" | "back" | "forward" | "backward",
+  ) => {
+    const id = selectedElementId();
+    if (!id) return;
+    updateSlide((elements) => {
+      const idx = elements.findIndex((e) => e.id === id);
+      if (idx === -1) return elements;
+      const next = [...elements];
+      const [el] = next.splice(idx, 1);
+      if (action === "front") {
+        next.push(el);
+      } else if (action === "back") {
+        next.unshift(el);
+      } else if (action === "forward") {
+        next.splice(Math.min(idx + 1, next.length), 0, el);
+      } else {
+        next.splice(Math.max(idx - 1, 0), 0, el);
+      }
+      return next;
+    });
+  };
+
   const handleUndo = () => {
     const stack = undoStack();
     if (stack.length === 0) return;
@@ -307,6 +332,7 @@ export default function EditorPage() {
             onUpdateElement={handleUpdateElement}
             slideBackground={currentSlide()?.background ?? "#ffffff"}
             onUpdateBackground={handleUpdateBackground}
+            onReorderElement={handleReorderElement}
           />
         </div>
 

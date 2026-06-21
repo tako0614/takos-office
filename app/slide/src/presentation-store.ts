@@ -388,6 +388,29 @@ export interface PresentationStore {
     height: number,
   ): Promise<SlideElement>;
 
+  // Z-order (stacking) — `slide.elements` is painted front-to-back in array
+  // order, so the LAST element is drawn on top. Returns the updated slide.
+  bringElementToFront(
+    presentationId: string,
+    slideIndex: number,
+    elementId: string,
+  ): Promise<Slide>;
+  sendElementToBack(
+    presentationId: string,
+    slideIndex: number,
+    elementId: string,
+  ): Promise<Slide>;
+  raiseElement(
+    presentationId: string,
+    slideIndex: number,
+    elementId: string,
+  ): Promise<Slide>;
+  lowerElement(
+    presentationId: string,
+    slideIndex: number,
+    elementId: string,
+  ): Promise<Slide>;
+
   // Transitions
   setSlideTransition(
     presentationId: string,
@@ -536,6 +559,12 @@ export function createPresentationStore(
     const el = slide.elements.find((e) => e.id === elementId);
     if (!el) throw new Error(`Element not found: ${elementId}`);
     return el;
+  }
+
+  function requireElementIndex(slide: Slide, elementId: string): number {
+    const idx = slide.elements.findIndex((e) => e.id === elementId);
+    if (idx === -1) throw new Error(`Element not found: ${elementId}`);
+    return idx;
   }
 
   function touch(p: Presentation): void {
@@ -822,6 +851,60 @@ export function createPresentationStore(
       touch(p);
       await persist(presentationId, p);
       return el;
+    },
+
+    // Z-order (stacking) ---------------------------------------------------
+    // `slide.elements` is painted in array order, so index 0 is the bottom-most
+    // and the last index is on top. Reorderings move the element within the
+    // array and persist; a no-op move (already front/back/top/bottom) still
+    // succeeds and returns the slide.
+
+    async bringElementToFront(presentationId, slideIndex, elementId) {
+      const { p } = await mustGet(presentationId);
+      const slide = mustGetSlide(p, slideIndex);
+      const idx = requireElementIndex(slide, elementId);
+      const [el] = slide.elements.splice(idx, 1);
+      slide.elements.push(el);
+      touch(p);
+      await persist(presentationId, p);
+      return slide;
+    },
+
+    async sendElementToBack(presentationId, slideIndex, elementId) {
+      const { p } = await mustGet(presentationId);
+      const slide = mustGetSlide(p, slideIndex);
+      const idx = requireElementIndex(slide, elementId);
+      const [el] = slide.elements.splice(idx, 1);
+      slide.elements.unshift(el);
+      touch(p);
+      await persist(presentationId, p);
+      return slide;
+    },
+
+    async raiseElement(presentationId, slideIndex, elementId) {
+      const { p } = await mustGet(presentationId);
+      const slide = mustGetSlide(p, slideIndex);
+      const idx = requireElementIndex(slide, elementId);
+      if (idx < slide.elements.length - 1) {
+        const [el] = slide.elements.splice(idx, 1);
+        slide.elements.splice(idx + 1, 0, el);
+        touch(p);
+        await persist(presentationId, p);
+      }
+      return slide;
+    },
+
+    async lowerElement(presentationId, slideIndex, elementId) {
+      const { p } = await mustGet(presentationId);
+      const slide = mustGetSlide(p, slideIndex);
+      const idx = requireElementIndex(slide, elementId);
+      if (idx > 0) {
+        const [el] = slide.elements.splice(idx, 1);
+        slide.elements.splice(idx - 1, 0, el);
+        touch(p);
+        await persist(presentationId, p);
+      }
+      return slide;
     },
 
     // Transitions ----------------------------------------------------------

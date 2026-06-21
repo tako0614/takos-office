@@ -3,11 +3,14 @@ import type { JSX } from "solid-js";
 import type { SlideElement } from "../types";
 import { useI18n } from "../i18n";
 
+export type ZOrderAction = "front" | "back" | "forward" | "backward";
+
 interface PropertyPanelProps {
   element: SlideElement | null;
   onUpdateElement: (element: SlideElement) => void;
   slideBackground: string;
   onUpdateBackground: (color: string) => void;
+  onReorderElement: (action: ZOrderAction) => void;
 }
 
 function PropertyRow(props: { label: string; children: JSX.Element }) {
@@ -134,6 +137,47 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 onChange={(v) => update({ rotation: v })}
               />
             </PropertyRow>
+
+            {/* Z-order (stacking) */}
+            <div class="space-y-2">
+              <span class="text-xs font-medium text-gray-300">
+                {t("zOrder")}
+              </span>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  title={t("bringToFront")}
+                  onClick={() => props.onReorderElement("front")}
+                >
+                  {t("bringToFront")}
+                </button>
+                <button
+                  type="button"
+                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  title={t("sendToBack")}
+                  onClick={() => props.onReorderElement("back")}
+                >
+                  {t("sendToBack")}
+                </button>
+                <button
+                  type="button"
+                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  title={t("bringForward")}
+                  onClick={() => props.onReorderElement("forward")}
+                >
+                  {t("bringForward")}
+                </button>
+                <button
+                  type="button"
+                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  title={t("sendBackward")}
+                  onClick={() => props.onReorderElement("backward")}
+                >
+                  {t("sendBackward")}
+                </button>
+              </div>
+            </div>
 
             {/* Text properties */}
             <Show when={el()!.type === "text"}>

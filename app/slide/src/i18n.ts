@@ -26,6 +26,8 @@ const en = {
   alignRight: "Right",
   arrow: "Arrow",
   backToList: "Back to list",
+  bringForward: "Bring Forward",
+  bringToFront: "Bring to Front",
   cancel: "Cancel",
   color: "Color",
   create: "Create",
@@ -57,6 +59,8 @@ const en = {
   redo: "Redo",
   rotation: "Rotation",
   selectElementToEdit: "Select an element to edit its properties",
+  sendBackward: "Send Backward",
+  sendToBack: "Send to Back",
   shape: "Shape",
   size: "Size",
   slideBackground: "Slide Background",
@@ -71,6 +75,7 @@ const en = {
   triangle: "Triangle",
   undo: "Undo",
   untitledPresentation: "Untitled Presentation",
+  zOrder: "Layer",
 } as const;
 
 type TranslationKey = keyof typeof en;
@@ -83,6 +88,8 @@ const ja: Record<TranslationKey, string> = {
   alignRight: "右",
   arrow: "矢印",
   backToList: "一覧に戻る",
+  bringForward: "前面へ",
+  bringToFront: "最前面へ",
   cancel: "キャンセル",
   color: "色",
   create: "作成",
@@ -114,6 +121,8 @@ const ja: Record<TranslationKey, string> = {
   redo: "やり直し",
   rotation: "回転",
   selectElementToEdit: "編集する要素を選択してください",
+  sendBackward: "背面へ",
+  sendToBack: "最背面へ",
   shape: "図形",
   size: "サイズ",
   slideBackground: "スライド背景",
@@ -128,6 +137,7 @@ const ja: Record<TranslationKey, string> = {
   triangle: "三角形",
   undo: "元に戻す",
   untitledPresentation: "無題のプレゼンテーション",
+  zOrder: "レイヤー",
 };
 
 const translations: Record<Language, Record<TranslationKey, string>> = {

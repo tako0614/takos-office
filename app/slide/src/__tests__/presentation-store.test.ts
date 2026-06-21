@@ -210,6 +210,105 @@ test("PresentationStore creates template presentations as .takosslide files", as
   expect(createdFile?.mimeType).toEqual("application/vnd.takos.slide+json");
 });
 
+async function seedThreeElementSlide(client: TakosStorageClient) {
+  const store = createPresentationStore(client);
+  const presentation = await store.create("Deck");
+  const a = await store.addShapeElement(presentation.id, 0, {
+    shapeType: "rect",
+    x: 0,
+    y: 0,
+    width: 50,
+    height: 50,
+  });
+  const b = await store.addShapeElement(presentation.id, 0, {
+    shapeType: "rect",
+    x: 10,
+    y: 10,
+    width: 50,
+    height: 50,
+  });
+  const c = await store.addShapeElement(presentation.id, 0, {
+    shapeType: "rect",
+    x: 20,
+    y: 20,
+    width: 50,
+    height: 50,
+  });
+  return { store, presentationId: presentation.id, a, b, c };
+}
+
+async function orderOf(
+  store: ReturnType<typeof createPresentationStore>,
+  presentationId: string,
+): Promise<string[]> {
+  const p = await store.get(presentationId);
+  return (p?.slides[0].elements ?? []).map((e) => e.id);
+}
+
+test("z-order: bringElementToFront moves element to the end (top)", async () => {
+  const storage = createMemoryStorage();
+  const { store, presentationId, a, b, c } = await seedThreeElementSlide(
+    storage.client,
+  );
+  // Initial draw order: a (bottom), b, c (top).
+  expect(await orderOf(store, presentationId)).toEqual([a.id, b.id, c.id]);
+
+  const slide = await store.bringElementToFront(presentationId, 0, a.id);
+  expect(slide.elements.map((e) => e.id)).toEqual([b.id, c.id, a.id]);
+  // Round-trips through storage.
+  expect(await orderOf(store, presentationId)).toEqual([b.id, c.id, a.id]);
+});
+
+test("z-order: sendElementToBack moves element to the start (bottom)", async () => {
+  const storage = createMemoryStorage();
+  const { store, presentationId, a, b, c } = await seedThreeElementSlide(
+    storage.client,
+  );
+
+  const slide = await store.sendElementToBack(presentationId, 0, c.id);
+  expect(slide.elements.map((e) => e.id)).toEqual([c.id, a.id, b.id]);
+  expect(await orderOf(store, presentationId)).toEqual([c.id, a.id, b.id]);
+});
+
+test("z-order: raiseElement moves element up one step", async () => {
+  const storage = createMemoryStorage();
+  const { store, presentationId, a, b, c } = await seedThreeElementSlide(
+    storage.client,
+  );
+
+  await store.raiseElement(presentationId, 0, a.id);
+  expect(await orderOf(store, presentationId)).toEqual([b.id, a.id, c.id]);
+
+  // Raising the top element is a no-op but still succeeds.
+  const slide = await store.raiseElement(presentationId, 0, c.id);
+  expect(slide.elements.map((e) => e.id)).toEqual([b.id, a.id, c.id]);
+  expect(await orderOf(store, presentationId)).toEqual([b.id, a.id, c.id]);
+});
+
+test("z-order: lowerElement moves element down one step", async () => {
+  const storage = createMemoryStorage();
+  const { store, presentationId, a, b, c } = await seedThreeElementSlide(
+    storage.client,
+  );
+
+  await store.lowerElement(presentationId, 0, c.id);
+  expect(await orderOf(store, presentationId)).toEqual([a.id, c.id, b.id]);
+
+  // Lowering the bottom element is a no-op but still succeeds.
+  const slide = await store.lowerElement(presentationId, 0, a.id);
+  expect(slide.elements.map((e) => e.id)).toEqual([a.id, c.id, b.id]);
+  expect(await orderOf(store, presentationId)).toEqual([a.id, c.id, b.id]);
+});
+
+test("z-order: reordering rejects unknown element ids", async () => {
+  const storage = createMemoryStorage();
+  const { store, presentationId } = await seedThreeElementSlide(storage.client);
+  await rejects(
+    () => store.bringElementToFront(presentationId, 0, "nope"),
+    /Element not found/,
+  );
+});
+
 test("PresentationStore reflects external writes on re-read (no stale cache)", async () => {
   const storage = createMemoryStorage();
   const folder = storage.makeFile("takos-slide", "folder");

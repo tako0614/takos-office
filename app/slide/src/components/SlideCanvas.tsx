@@ -6,6 +6,7 @@ import {
   renderSlide,
   type ResizeHandle,
 } from "../lib/canvas-renderer";
+import { resizeRotatedBox } from "../lib/geometry";
 
 // Internal slide coordinate space
 const SLIDE_W = 960;
@@ -157,32 +158,21 @@ export default function SlideCanvas(props: SlideCanvasProps) {
       if (!el) return;
 
       const handle = resizing()!;
-      let newX = start.x;
-      let newY = start.y;
-      let newW = start.w;
-      let newH = start.h;
-
-      if (handle.includes("e")) {
-        newW = Math.max(20, start.w + dx);
-      }
-      if (handle.includes("w")) {
-        newW = Math.max(20, start.w - dx);
-        newX = start.x + dx;
-      }
-      if (handle.includes("s")) {
-        newH = Math.max(20, start.h + dy);
-      }
-      if (handle.includes("n")) {
-        newH = Math.max(20, start.h - dy);
-        newY = start.y + dy;
-      }
+      // Resize in the element's local frame so rotated elements resize from the
+      // dragged edge with the opposite edge held fixed (identity for rotation 0).
+      const box = resizeRotatedBox(
+        { x: start.x, y: start.y, width: start.w, height: start.h, rotation: el.rotation },
+        handle,
+        dragStart(),
+        pos,
+      );
 
       props.onUpdateElement({
         ...el,
-        x: Math.round(newX),
-        y: Math.round(newY),
-        width: Math.round(newW),
-        height: Math.round(newH),
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
       });
     }
   };

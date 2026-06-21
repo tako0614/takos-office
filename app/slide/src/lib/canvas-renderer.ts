@@ -1,4 +1,5 @@
 import type { Slide, SlideElement } from "../types/index.ts";
+import { elementCenter, rotatePoint, toElementLocal } from "./geometry.ts";
 
 const SLIDE_ASPECT = 16 / 9;
 
@@ -381,14 +382,36 @@ function drawSelectionHandles(
 ): void {
   const { x, y, width, height } = element;
   const handleSize = 8;
+  const rotation = element.rotation ?? 0;
+  const center = elementCenter(element);
 
-  // Selection border
+  // Rotate a box-local point into the drawing frame so the selection overlay
+  // tracks the rotated element. For rotation 0 this is the identity, leaving the
+  // unrotated selection box pixel-identical to before.
+  const place = (hx: number, hy: number) =>
+    rotation === 0
+      ? { x: hx, y: hy }
+      : rotatePoint(hx, hy, center.x, center.y, rotation);
+
+  // Selection border (rotated rectangle, drawn as a closed path of its corners).
   ctx.strokeStyle = "#3b82f6";
   ctx.lineWidth = 2;
   ctx.setLineDash([]);
-  ctx.strokeRect(x - 1, y - 1, width + 2, height + 2);
+  const borderCorners = [
+    place(x - 1, y - 1),
+    place(x + width + 1, y - 1),
+    place(x + width + 1, y + height + 1),
+    place(x - 1, y + height + 1),
+  ];
+  ctx.beginPath();
+  ctx.moveTo(borderCorners[0].x, borderCorners[0].y);
+  for (let i = 1; i < borderCorners.length; i++) {
+    ctx.lineTo(borderCorners[i].x, borderCorners[i].y);
+  }
+  ctx.closePath();
+  ctx.stroke();
 
-  // Corner handles
+  // Corner + edge-midpoint handles.
   ctx.fillStyle = "#ffffff";
   ctx.strokeStyle = "#3b82f6";
   ctx.lineWidth = 2;
@@ -406,15 +429,16 @@ function drawSelectionHandles(
   ];
 
   for (const h of handles) {
+    const p = place(h.hx, h.hy);
     ctx.fillRect(
-      h.hx - handleSize / 2,
-      h.hy - handleSize / 2,
+      p.x - handleSize / 2,
+      p.y - handleSize / 2,
       handleSize,
       handleSize,
     );
     ctx.strokeRect(
-      h.hx - handleSize / 2,
-      h.hy - handleSize / 2,
+      p.x - handleSize / 2,
+      p.y - handleSize / 2,
       handleSize,
       handleSize,
     );
@@ -465,11 +489,15 @@ export function hitTestElements(
   // Iterate in reverse (top-most first)
   for (let i = elements.length - 1; i >= 0; i--) {
     const el = elements[i];
+    // Inverse-rotate the pointer into the element's unrotated local frame so the
+    // axis-aligned bbox test is correct even for rotated elements. For rotation
+    // 0 this is the identity, preserving the original behaviour exactly.
+    const local = toElementLocal({ x: px, y: py }, el);
     if (
-      px >= el.x &&
-      px <= el.x + el.width &&
-      py >= el.y &&
-      py <= el.y + el.height
+      local.x >= el.x &&
+      local.x <= el.x + el.width &&
+      local.y >= el.y &&
+      local.y <= el.y + el.height
     ) {
       return el;
     }
@@ -500,6 +528,11 @@ export function hitTestHandles(
   const { x, y, width, height } = element;
   const hs = handleSize;
 
+  // Handle positions are defined on the unrotated box, so inverse-rotate the
+  // pointer into the element's local frame before testing. For rotation 0 this
+  // is the identity, preserving the original behaviour exactly.
+  const local = toElementLocal({ x: px, y: py }, element);
+
   const handles: { id: ResizeHandle; hx: number; hy: number }[] = [
     { id: "nw", hx: x, hy: y },
     { id: "ne", hx: x + width, hy: y },
@@ -513,10 +546,10 @@ export function hitTestHandles(
 
   for (const h of handles) {
     if (
-      px >= h.hx - hs / 2 &&
-      px <= h.hx + hs / 2 &&
-      py >= h.hy - hs / 2 &&
-      py <= h.hy + hs / 2
+      local.x >= h.hx - hs / 2 &&
+      local.x <= h.hx + hs / 2 &&
+      local.y >= h.hy - hs / 2 &&
+      local.y <= h.hy + hs / 2
     ) {
       return h.id;
     }

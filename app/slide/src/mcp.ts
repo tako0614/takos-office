@@ -6,7 +6,7 @@
  * - slide_add / slide_remove / slide_reorder / slide_set_background / slide_duplicate
  * - slide_get_slide / slide_list_elements / slide_set_notes
  * - slide_add_text / slide_add_shape / slide_add_image
- * - slide_remove_element / slide_update_element / slide_move_element / slide_resize_element
+ * - slide_remove_element / slide_update_element / slide_move_element / slide_resize_element / slide_reorder_element
  * - slide_screenshot
  * - slide_export_json / slide_export_pdf / slide_get_slide_count
  * - slide_set_transition
@@ -667,6 +667,52 @@ export function registerSlideTools(
             height,
           ),
         );
+      } catch (e) {
+        return error(String(e));
+      }
+    },
+  );
+
+  server.tool(
+    "slide_reorder_element",
+    "Change an element's stacking order (z-order) on its slide. Elements are " +
+      "painted in array order, so the last element is drawn on top. Actions: " +
+      '"front" brings to top, "back" sends to bottom, "forward" raises one ' +
+      'step, "backward" lowers one step. Returns the updated slide.',
+    {
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      elementId: idSchema.describe("Element ID"),
+      action: z
+        .enum(["front", "back", "forward", "backward"])
+        .describe(
+          "Reorder action: front (top), back (bottom), forward (up one), backward (down one)",
+        ),
+    },
+    async ({
+      presentationId,
+      slideIndex,
+      elementId,
+      action,
+    }: {
+      presentationId: string;
+      slideIndex: number;
+      elementId: string;
+      action: "front" | "back" | "forward" | "backward";
+    }) => {
+      try {
+        const slide = action === "front"
+          ? await store.bringElementToFront(
+            presentationId,
+            slideIndex,
+            elementId,
+          )
+          : action === "back"
+          ? await store.sendElementToBack(presentationId, slideIndex, elementId)
+          : action === "forward"
+          ? await store.raiseElement(presentationId, slideIndex, elementId)
+          : await store.lowerElement(presentationId, slideIndex, elementId);
+        return json(slide);
       } catch (e) {
         return error(String(e));
       }
