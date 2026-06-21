@@ -212,3 +212,27 @@ function stringifyEngineValue(raw: unknown): string {
   }
   return String(raw);
 }
+
+/**
+ * Rows to hide for a column filter. Row 0 is treated as a header and always
+ * kept; within `[1, maxRow]` a row is hidden when the filter column's cell
+ * (computed value, falling back to raw) does not contain `query`
+ * (case-insensitive). Rows beyond `maxRow` (the used range) are left visible so
+ * the empty tail stays editable.
+ */
+export function filterHiddenRows(
+  cells: Record<string, CellData>,
+  column: number,
+  query: string,
+  maxRow: number,
+): Set<number> {
+  const hidden = new Set<number>();
+  const q = query.trim().toLowerCase();
+  if (!q) return hidden;
+  for (let r = 1; r <= maxRow; r++) {
+    const cell = cells[formatCellAddress(column, r)];
+    const text = (cell?.computed ?? cell?.value ?? "").toLowerCase();
+    if (!text.includes(q)) hidden.add(r);
+  }
+  return hidden;
+}

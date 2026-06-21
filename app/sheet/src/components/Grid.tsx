@@ -10,11 +10,13 @@ import {
 import type { CellData, CellFormat, Sheet } from "../types";
 import {
   columnToLetter,
+  computeUsedRange,
   formatCellAddress,
   parseCellAddress,
 } from "../lib/cell-utils";
 import { evaluateConditionalRules } from "../lib/conditional-format";
 import { applyNumberFormat } from "../lib/number-format";
+import { filterHiddenRows } from "../lib/sheet-ops";
 import { CellEditor } from "./CellEditor";
 
 const TOTAL_COLS = 100;
@@ -55,9 +57,25 @@ export const Grid: Component<GridProps> = (props) => {
   const getColWidth = (col: number) =>
     props.sheet.colWidths[col] ?? DEFAULT_COL_WIDTH;
 
-  // Get row height
+  // Rows hidden by the active column filter (view-only; row 0 stays as header).
+  const hiddenRows = createMemo(() => {
+    const filter = props.sheet.filter;
+    if (!filter) return new Set<number>();
+    const used = computeUsedRange(props.sheet.cells);
+    return filterHiddenRows(
+      props.sheet.cells,
+      filter.column,
+      filter.query,
+      used.range ? used.endRow : 0,
+    );
+  });
+
+  // Get row height (a filtered-out row collapses to 0 so existing position /
+  // virtual-scroll / hit-test machinery hides it without any remapping).
   const getRowHeight = (row: number) =>
-    props.sheet.rowHeights[row] ?? DEFAULT_ROW_HEIGHT;
+    hiddenRows().has(row)
+      ? 0
+      : props.sheet.rowHeights[row] ?? DEFAULT_ROW_HEIGHT;
 
   // Compute cumulative column positions
   const colPositions = createMemo(() => {
@@ -404,11 +422,14 @@ export const Grid: Component<GridProps> = (props) => {
     return indices;
   });
 
-  // Build visible row indices
+  // Build visible row indices (skip rows the filter collapsed to 0 height).
   const visibleRowIndices = createMemo(() => {
     const { start, end } = visibleRows();
+    const hidden = hiddenRows();
     const indices: number[] = [];
-    for (let r = start; r < end; r++) indices.push(r);
+    for (let r = start; r < end; r++) {
+      if (!hidden.has(r)) indices.push(r);
+    }
     return indices;
   });
 

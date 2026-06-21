@@ -35,6 +35,11 @@ export interface ConditionalRule {
   format: CellFormat; // format to apply when condition is true
 }
 
+export interface SheetFilter {
+  column: number; // 0-based column index the filter applies to
+  query: string; // case-insensitive substring rows must contain to stay visible
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -42,6 +47,7 @@ export interface Sheet {
   colWidths: Record<number, number>; // column index -> width
   rowHeights: Record<number, number>; // row index -> height
   conditionalRules?: ConditionalRule[];
+  filter?: SheetFilter; // view-only row filter (row 0 is kept as a header)
 }
 
 export interface Spreadsheet {

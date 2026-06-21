@@ -21,6 +21,9 @@ interface ToolbarProps {
   onDeleteColumn?: () => void;
   onSortAsc?: () => void;
   onSortDesc?: () => void;
+  onApplyFilter?: (query: string) => void;
+  onClearFilter?: () => void;
+  filterActive?: boolean;
 }
 
 export const Toolbar: Component<ToolbarProps> = (props) => {
@@ -297,6 +300,27 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           <path d="M6 5v14" />
         </svg>
       </ToolBtn>
+
+      {/* Column filter (operates on the selected column) */}
+      <Show when={props.onApplyFilter}>
+        <input
+          type="search"
+          class="ml-1 h-7 w-32 rounded border border-neutral-600 bg-neutral-800 px-2 text-xs text-neutral-200 placeholder-neutral-500 outline-none focus:border-blue-500"
+          placeholder={t("filterPlaceholder")}
+          title={t("filterColumn")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              props.onApplyFilter?.(e.currentTarget.value);
+            }
+          }}
+          onChange={(e) => props.onApplyFilter?.(e.currentTarget.value)}
+        />
+        <Show when={props.filterActive}>
+          <ToolBtn onClick={() => props.onClearFilter?.()} title={t("clearFilter")}>
+            <span class="text-xs">✕</span>
+          </ToolBtn>
+        </Show>
+      </Show>
 
       <Separator />
 

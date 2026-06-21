@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   compareCellValues,
+  filterHiddenRows,
   shiftCells,
   sortRangeRows,
 } from "../lib/sheet-ops.ts";
@@ -242,4 +243,22 @@ test("inserting a row preserves the format on the shifted formula cell", () => {
   });
   const result = shiftSheetStructure(sheet, "insertRows", 0, 1);
   expect(result.B2?.format).toEqual({ bold: true });
+});
+
+test("filterHiddenRows keeps the header and matching rows, hides the rest", () => {
+  const cells: Record<string, import("../types/index.ts").CellData> = {
+    A1: { value: "Name" },
+    A2: { value: "Apple", computed: "Apple" },
+    A3: { value: "Banana", computed: "Banana" },
+    A4: { value: "apricot", computed: "apricot" },
+  };
+  const hidden = filterHiddenRows(cells, 0, "ap", 3); // maxRow=3 (A4 is row index 3)
+  // row 0 (header) always visible; A2 "Apple" and A4 "apricot" match "ap";
+  // A3 "Banana" hidden.
+  expect([...hidden].sort()).toEqual([2]);
+});
+
+test("filterHiddenRows returns empty for a blank query", () => {
+  const cells = { A1: { value: "x" }, A2: { value: "y" } };
+  expect(filterHiddenRows(cells, 0, "  ", 1).size).toBe(0);
 });

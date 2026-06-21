@@ -359,6 +359,31 @@ export const EditorPage: Component = () => {
     }
   };
 
+  // View-only column filter on the selected column (row 0 stays as a header).
+  const setActiveSheetFilter = (filter: Sheet["filter"]) => {
+    const ss = spreadsheet();
+    const sheet = activeSheet();
+    if (!ss || !sheet) return;
+    save({
+      ...ss,
+      sheets: ss.sheets.map((s) => (s.id === sheet.id ? { ...s, filter } : s)),
+    });
+  };
+  const handleApplyFilter = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setActiveSheetFilter(undefined);
+      return;
+    }
+    try {
+      const { col } = parseCellAddress(selectedCell());
+      setActiveSheetFilter({ column: col, query: trimmed });
+    } catch {
+      // ignore bad selection
+    }
+  };
+  const handleClearFilter = () => setActiveSheetFilter(undefined);
+
   // Keyboard shortcut handler for undo/redo
   const handleGlobalKeyDown = (e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -490,6 +515,9 @@ export const EditorPage: Component = () => {
               onDeleteColumn={handleDeleteColumn}
               onSortAsc={() => handleSort("asc")}
               onSortDesc={() => handleSort("desc")}
+              onApplyFilter={handleApplyFilter}
+              onClearFilter={handleClearFilter}
+              filterActive={!!activeSheet()?.filter}
             />
 
             {/* Formula Bar */}
