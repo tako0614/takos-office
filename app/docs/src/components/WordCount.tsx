@@ -28,7 +28,7 @@ export default function WordCount(props: WordCountProps) {
   });
 
   return (
-    <footer class="flex items-center justify-end gap-4 px-4 py-1.5 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 shrink-0">
+    <footer class="flex items-center justify-end gap-4 px-4 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800 text-xs text-gray-500 dark:text-neutral-400 shrink-0">
       <span>
         {t(words() === 1 ? "wordCountSingular" : "wordCount", {
           count: words(),

@@ -1,13 +1,26 @@
 @import "tailwindcss";
 
+/* Drive Tailwind's `dark:` variant from `<html data-theme="dark">` (set by
+   lib/theme.ts) instead of the OS `prefers-color-scheme`, so the in-app toggle
+   is authoritative and stays in sync with the rest of the office suite. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: light;
+}
+[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/* Light is the default; dark is the toggled variant. */
 body {
   margin: 0;
   padding: 0;
+  background-color: #ffffff;
+  color: #1f2937;
+}
+[data-theme="dark"] body {
   background-color: #171717;
   color: #e5e5e5;
 }
@@ -23,19 +36,32 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #262626;
+  background: #f3f4f6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #525252;
+  background: #c7cdd6;
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #737373;
+  background: #aab2bf;
 }
 
 ::-webkit-scrollbar-corner {
+  background: #f3f4f6;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #262626;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #525252;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #737373;
+}
+[data-theme="dark"] ::-webkit-scrollbar-corner {
   background: #262626;
 }
 
@@ -52,6 +78,10 @@ body {
 
 /* Grid lines */
 .grid-cell {
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+[data-theme="dark"] .grid-cell {
   border-right: 1px solid #404040;
   border-bottom: 1px solid #404040;
 }
@@ -60,11 +90,12 @@ body {
 .context-menu {
   position: fixed;
   z-index: 1000;
-  background: #262626;
-  border: 1px solid #404040;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 4px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  color: #1f2937;
 }
 
 .context-menu-item {
@@ -75,5 +106,15 @@ body {
 }
 
 .context-menu-item:hover {
+  background: #f3f4f6;
+}
+
+[data-theme="dark"] .context-menu {
+  background: #262626;
+  border: 1px solid #404040;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  color: #e5e5e5;
+}
+[data-theme="dark"] .context-menu-item:hover {
   background: #374151;
 }

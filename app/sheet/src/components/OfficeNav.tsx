@@ -37,11 +37,11 @@ export default function OfficeNav() {
       {/* Brand returns to the Office shell (NOT /sheet). */}
       <a
         href={withSpaceId("/")}
-        class="text-lg font-bold text-neutral-100 transition-colors hover:text-white"
+        class="text-lg font-bold text-gray-900 transition-colors hover:text-black dark:text-neutral-100 dark:hover:text-white"
       >
         Takos
       </a>
-      <div class="inline-flex rounded-lg border border-neutral-700 bg-neutral-950 p-0.5">
+      <div class="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5 dark:border-neutral-700 dark:bg-neutral-950">
         <For each={APPS}>
           {(app) => {
             const isCurrent = app.key === CURRENT_APP;
@@ -51,7 +51,8 @@ export default function OfficeNav() {
                 class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
                 classList={{
                   "bg-emerald-600 text-white": isCurrent,
-                  "text-neutral-500 hover:text-neutral-200": !isCurrent,
+                  "text-gray-500 hover:text-gray-800 dark:text-neutral-500 dark:hover:text-neutral-200":
+                    !isCurrent,
                 }}
                 aria-current={isCurrent ? "page" : undefined}
               >

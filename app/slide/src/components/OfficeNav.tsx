@@ -33,12 +33,12 @@ export default function OfficeNav() {
       {/* Brand returns to the Office shell (NOT /slide). */}
       <a
         href={withSpaceId("/")}
-        class="text-lg font-bold text-gray-100 hover:text-white transition-colors"
+        class="text-lg font-bold text-gray-900 hover:text-black dark:text-gray-100 dark:hover:text-white transition-colors"
       >
         Takos
       </a>
       <div
-        class="inline-flex rounded-lg border border-gray-700 bg-gray-900 p-0.5"
+        class="inline-flex rounded-lg border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-900 p-0.5"
       >
         <For each={APPS}>
           {(app) => {
@@ -48,8 +48,10 @@ export default function OfficeNav() {
                 href={withSpaceId(app.path)}
                 class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
                 classList={{
-                  "bg-gray-700 text-gray-100": isCurrent,
-                  "text-gray-500 hover:text-gray-200": !isCurrent,
+                  "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100":
+                    isCurrent,
+                  "text-gray-500 hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200":
+                    !isCurrent,
                 }}
                 aria-current={isCurrent ? "page" : undefined}
               >

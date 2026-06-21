@@ -29,24 +29,24 @@ export default function DocumentCard(props: DocumentCardProps) {
 
   return (
     <div
-      class="group relative rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer overflow-hidden bg-white"
+      class="group relative rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md dark:hover:shadow-black/40 transition-all cursor-pointer overflow-hidden bg-white dark:bg-neutral-900"
       onClick={() => props.onClick()}
     >
       {/* Preview area */}
-      <div class="h-40 bg-white border-b border-gray-100 p-4 overflow-hidden">
-        <div class="text-[8px] leading-tight text-gray-400 line-clamp-[12]">
+      <div class="h-40 bg-white dark:bg-neutral-800 border-b border-gray-100 dark:border-neutral-700 p-4 overflow-hidden">
+        <div class="text-[8px] leading-tight text-gray-400 dark:text-neutral-500 line-clamp-[12]">
           {props.document.title}
         </div>
       </div>
 
       {/* Info */}
       <div class="px-3 py-2.5">
-        <h3 class="text-sm font-medium text-gray-800 truncate">
+        <h3 class="text-sm font-medium text-gray-800 dark:text-neutral-100 truncate">
           {props.document.title}
         </h3>
         <div class="flex items-center gap-1.5 mt-1">
-          <FileText size={14} class="text-blue-600" />
-          <span class="text-xs text-gray-500">
+          <FileText size={14} class="text-blue-600 dark:text-blue-400" />
+          <span class="text-xs text-gray-500 dark:text-neutral-400">
             {t("opened", { date: formatDate(props.document.updatedAt) })}
           </span>
         </div>
@@ -54,7 +54,7 @@ export default function DocumentCard(props: DocumentCardProps) {
 
       <button
         type="button"
-        class="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm"
+        class="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-400 dark:text-neutral-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-500 dark:hover:text-red-400 transition-all shadow-sm"
         onClick={(e) => {
           e.stopPropagation();
           props.onDelete(e);

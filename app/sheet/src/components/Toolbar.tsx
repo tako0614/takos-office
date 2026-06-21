@@ -2,6 +2,8 @@ import { Component, createSignal, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { CellFormat } from "../types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import ThemeToggle from "./ThemeToggle";
+import { theme } from "../lib/theme";
 import { useI18n } from "../i18n";
 
 interface ToolbarProps {
@@ -76,8 +78,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       type="button"
       class={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors ${
         btnProps.active
-          ? "bg-neutral-600 text-white"
-          : "text-neutral-300 hover:bg-neutral-700"
+          ? "bg-gray-300 text-gray-900 dark:bg-neutral-600 dark:text-white"
+          : "text-gray-700 hover:bg-gray-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
       }`}
       onClick={btnProps.onClick}
       title={btnProps.title}
@@ -86,14 +88,16 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     </button>
   );
 
-  const Separator = () => <div class="mx-1 h-5 w-px bg-neutral-600" />;
+  const Separator = () => (
+    <div class="mx-1 h-5 w-px bg-gray-300 dark:bg-neutral-600" />
+  );
 
   return (
-    <div class="flex items-center gap-1 border-b border-neutral-700 bg-neutral-800 px-3 py-1.5">
+    <div class="flex items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800">
       {/* Home button */}
       <button
         type="button"
-        class="mr-2 flex h-7 w-7 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+        class="mr-2 flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
         onClick={props.onNavigateHome}
         title={t("backToList")}
       >
@@ -118,7 +122,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         fallback={
           <button
             type="button"
-            class="mr-4 max-w-[200px] truncate text-sm font-medium text-neutral-100 hover:text-white"
+            class="mr-4 max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
             onClick={() => {
               setTitleValue(props.title);
               setEditingTitle(true);
@@ -129,7 +133,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         }
       >
         <input
-          class="mr-4 w-48 rounded bg-neutral-700 px-2 py-0.5 text-sm text-neutral-100 outline-none ring-1 ring-blue-500"
+          class="mr-4 w-48 rounded bg-white px-2 py-0.5 text-sm text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
           value={titleValue()}
           onInput={(e) => setTitleValue(e.currentTarget.value)}
           onBlur={() => {
@@ -305,7 +309,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Show when={props.onApplyFilter}>
         <input
           type="search"
-          class="ml-1 h-7 w-32 rounded border border-neutral-600 bg-neutral-800 px-2 text-xs text-neutral-200 placeholder-neutral-500 outline-none focus:border-blue-500"
+          class="ml-1 h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-400 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-500"
           placeholder={t("filterPlaceholder")}
           title={t("filterColumn")}
           onKeyDown={(e) => {
@@ -355,7 +359,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Font size */}
       <select
-        class="h-7 rounded bg-neutral-700 px-1 text-xs text-neutral-200 outline-none"
+        class="h-7 rounded bg-gray-200 px-1 text-xs text-gray-800 outline-none dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().fontSize ?? 13}
         onChange={(e) =>
           props.onFormatChange({ fontSize: Number(e.currentTarget.value) })}
@@ -381,17 +385,20 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         >
           <span
             class="text-sm font-bold"
-            style={{ color: fmt().textColor ?? "#e5e5e5" }}
+            style={{
+              color: fmt().textColor ??
+                (theme() === "dark" ? "#e5e5e5" : "#1f2937"),
+            }}
           >
             A
           </span>
         </ToolBtn>
         <Show when={showTextColor()}>
-          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-neutral-600 bg-neutral-800 p-2 shadow-xl">
+          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800">
             {colors.map((color) => (
               <button
                 type="button"
-                class="h-5 w-5 rounded border border-neutral-600 transition-transform hover:scale-110"
+                class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
                 style={{ background: color }}
                 onClick={() => {
                   props.onFormatChange({ textColor: color });
@@ -401,7 +408,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             ))}
             <button
               type="button"
-              class="col-span-6 mt-1 rounded bg-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-600"
+              class="col-span-6 mt-1 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
               onClick={() => {
                 props.onFormatChange({ textColor: undefined });
                 setShowTextColor(false);
@@ -425,17 +432,20 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           <div
             class="h-4 w-4 rounded"
             style={{
-              background: fmt().bgColor ?? "#404040",
-              border: "1px solid #525252",
+              background: fmt().bgColor ??
+                (theme() === "dark" ? "#404040" : "#e5e7eb"),
+              border: theme() === "dark"
+                ? "1px solid #525252"
+                : "1px solid #cbd5e1",
             }}
           />
         </ToolBtn>
         <Show when={showBgColor()}>
-          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-neutral-600 bg-neutral-800 p-2 shadow-xl">
+          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800">
             {colors.map((color) => (
               <button
                 type="button"
-                class="h-5 w-5 rounded border border-neutral-600 transition-transform hover:scale-110"
+                class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
                 style={{ background: color }}
                 onClick={() => {
                   props.onFormatChange({ bgColor: color });
@@ -445,7 +455,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             ))}
             <button
               type="button"
-              class="col-span-6 mt-1 rounded bg-neutral-700 px-2 py-0.5 text-xs text-neutral-300 hover:bg-neutral-600"
+              class="col-span-6 mt-1 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
               onClick={() => {
                 props.onFormatChange({ bgColor: undefined });
                 setShowBgColor(false);
@@ -531,7 +541,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Number format */}
       <select
-        class="h-7 rounded bg-neutral-700 px-1 text-xs text-neutral-200 outline-none"
+        class="h-7 rounded bg-gray-200 px-1 text-xs text-gray-800 outline-none dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().numberFormat ?? ""}
         onChange={(e) =>
           props.onFormatChange({
@@ -547,6 +557,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       </select>
 
       <div class="flex-1" />
+      <ThemeToggle />
       <LanguageSwitcher />
     </div>
   );

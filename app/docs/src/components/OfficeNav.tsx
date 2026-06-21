@@ -54,16 +54,16 @@ export default function OfficeNav() {
       {/* Brand → Office shell (home, NOT the docs list) */}
       <a
         href={withSpace("/")}
-        class="flex items-center gap-2.5 mr-1 rounded-lg px-1 py-0.5 hover:bg-gray-100 transition-colors"
+        class="flex items-center gap-2.5 mr-1 rounded-lg px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
         title={t("openOffice")}
         aria-label={t("openOffice")}
       >
         <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
           <FileText size={20} class="text-white" />
         </div>
-        <span class="text-base font-medium text-gray-800 hidden sm:inline">
+        <span class="text-base font-medium text-gray-800 dark:text-neutral-100 hidden sm:inline">
           <b class="font-semibold">Takos</b>{" "}
-          <span class="text-gray-500 font-normal">{t("office")}</span>
+          <span class="text-gray-500 dark:text-neutral-400 font-normal">{t("office")}</span>
         </span>
       </a>
 
@@ -80,8 +80,9 @@ export default function OfficeNav() {
                 title={t(app.labelKey)}
                 class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
                 classList={{
-                  "bg-blue-50 text-blue-700": active,
-                  "text-gray-500 hover:bg-gray-100 hover:text-gray-800":
+                  "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300":
+                    active,
+                  "text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100":
                     !active,
                 }}
               >

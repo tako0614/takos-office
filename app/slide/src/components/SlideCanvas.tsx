@@ -193,7 +193,7 @@ export default function SlideCanvas(props: SlideCanvasProps) {
   return (
     <div
       ref={containerRef}
-      class="flex-1 flex items-center justify-center bg-gray-900 p-4 overflow-hidden"
+      class="flex-1 flex items-center justify-center bg-gray-200 dark:bg-gray-900 p-4 overflow-hidden"
     >
       <canvas
         ref={canvasRef}

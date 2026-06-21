@@ -16,7 +16,7 @@ interface PropertyPanelProps {
 function PropertyRow(props: { label: string; children: JSX.Element }) {
   return (
     <div class="flex items-center justify-between gap-2">
-      <label class="text-xs text-gray-400 shrink-0 w-20">{props.label}</label>
+      <label class="text-xs text-gray-500 dark:text-gray-400 shrink-0 w-20">{props.label}</label>
       <div class="flex-1">{props.children}</div>
     </div>
   );
@@ -31,7 +31,7 @@ function NumberInput(props: {
   return (
     <input
       type="number"
-      class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none focus:border-blue-500 transition-colors"
+      class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500 transition-colors"
       value={props.value}
       min={props.min}
       step={props.step ?? 1}
@@ -54,7 +54,7 @@ function ColorInput(props: { value: string; onChange: (v: string) => void }) {
       />
       <input
         type="text"
-        class="flex-1 bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none focus:border-blue-500"
+        class="flex-1 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500"
         value={props.value}
         onInput={(e) => props.onChange(e.currentTarget.value)}
       />
@@ -71,9 +71,9 @@ export default function PropertyPanel(props: PropertyPanelProps) {
   };
 
   return (
-    <div class="w-60 bg-gray-800 border-l border-gray-700 flex flex-col h-full overflow-y-auto">
-      <div class="p-3 border-b border-gray-700">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+    <div class="w-60 bg-white border-l border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-col h-full overflow-y-auto">
+      <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+        <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
           {t("properties")}
         </span>
       </div>
@@ -81,7 +81,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
       <div class="p-3 space-y-3">
         {/* Slide background */}
         <div class="space-y-2">
-          <span class="text-xs font-medium text-gray-300">
+          <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
             {t("slideBackground")}
           </span>
           <ColorInput
@@ -91,9 +91,9 @@ export default function PropertyPanel(props: PropertyPanelProps) {
         </div>
 
         <Show when={el()}>
-          <div class="border-t border-gray-700 pt-3 space-y-3">
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-3">
             {/* Position */}
-            <span class="text-xs font-medium text-gray-300">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
               {t("position")}
             </span>
             <div class="grid grid-cols-2 gap-2">
@@ -112,7 +112,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             </div>
 
             {/* Size */}
-            <span class="text-xs font-medium text-gray-300">{t("size")}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{t("size")}</span>
             <div class="grid grid-cols-2 gap-2">
               <PropertyRow label="W">
                 <NumberInput
@@ -140,13 +140,13 @@ export default function PropertyPanel(props: PropertyPanelProps) {
 
             {/* Z-order (stacking) */}
             <div class="space-y-2">
-              <span class="text-xs font-medium text-gray-300">
+              <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
                 {t("zOrder")}
               </span>
               <div class="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
                   title={t("bringToFront")}
                   onClick={() => props.onReorderElement("front")}
                 >
@@ -154,7 +154,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
                   title={t("sendToBack")}
                   onClick={() => props.onReorderElement("back")}
                 >
@@ -162,7 +162,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
                   title={t("bringForward")}
                   onClick={() => props.onReorderElement("forward")}
                 >
@@ -170,7 +170,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </button>
                 <button
                   type="button"
-                  class="text-xs py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                  class="text-xs py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors"
                   title={t("sendBackward")}
                   onClick={() => props.onReorderElement("backward")}
                 >
@@ -181,12 +181,12 @@ export default function PropertyPanel(props: PropertyPanelProps) {
 
             {/* Text properties */}
             <Show when={el()!.type === "text"}>
-              <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">
+              <div class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   {t("text")}
                 </span>
                 <textarea
-                  class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1.5 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none"
+                  class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1.5 rounded border outline-none focus:border-blue-500 resize-none"
                   rows={3}
                   value={el()!.text ?? ""}
                   onInput={(e) => update({ text: e.currentTarget.value })}
@@ -206,7 +206,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </PropertyRow>
                 <PropertyRow label={t("align")}>
                   <select
-                    class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none"
+                    class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none"
                     value={el()!.textAlign ?? "left"}
                     onChange={(e) =>
                       update({
@@ -227,7 +227,8 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                     class="flex-1 text-xs py-1 rounded transition-colors"
                     classList={{
                       "bg-blue-600 text-white": el()!.bold,
-                      "bg-gray-700 text-gray-300 hover:bg-gray-600": !el()!
+                      "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600":
+                        !el()!
                         .bold,
                     }}
                     onClick={() => update({ bold: !el()!.bold })}
@@ -239,7 +240,8 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                     class="flex-1 text-xs py-1 rounded transition-colors italic"
                     classList={{
                       "bg-blue-600 text-white": el()!.italic,
-                      "bg-gray-700 text-gray-300 hover:bg-gray-600": !el()!
+                      "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600":
+                        !el()!
                         .italic,
                     }}
                     onClick={() => update({ italic: !el()!.italic })}
@@ -252,8 +254,8 @@ export default function PropertyPanel(props: PropertyPanelProps) {
 
             {/* Shape properties */}
             <Show when={el()!.type === "shape"}>
-              <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">
+              <div class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   {t("shape")}
                 </span>
                 <PropertyRow label={t("fill")}>
@@ -280,14 +282,14 @@ export default function PropertyPanel(props: PropertyPanelProps) {
 
             {/* Image properties */}
             <Show when={el()!.type === "image"}>
-              <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">
+              <div class="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">
                   {t("image")}
                 </span>
                 <PropertyRow label={t("imageUrl")}>
                   <input
                     type="text"
-                    class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none focus:border-blue-500"
+                    class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500"
                     value={el()!.imageUrl ?? ""}
                     onInput={(e) => update({ imageUrl: e.currentTarget.value })}
                     placeholder="https://..."

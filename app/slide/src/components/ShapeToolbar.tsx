@@ -1,4 +1,5 @@
 import LanguageSwitcher from "./LanguageSwitcher";
+import ThemeToggle from "./ThemeToggle";
 import { useI18n } from "../i18n";
 
 interface ShapeToolbarProps {
@@ -28,8 +29,9 @@ function ToolButton(props: {
       type="button"
       class="px-3 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       classList={{
-        "bg-gray-700 hover:bg-gray-600 text-gray-200": variant() === "default",
-        "bg-red-700/60 hover:bg-red-600/80 text-red-200":
+        "bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200":
+          variant() === "default",
+        "bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-700/60 dark:hover:bg-red-600/80 dark:text-red-200":
           variant() === "danger",
         "bg-blue-600 hover:bg-blue-500 text-white": variant() === "primary",
       }}
@@ -45,18 +47,18 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
   const { t } = useI18n();
 
   return (
-    <div class="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-2">
+    <div class="h-12 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 gap-2">
       {/* Title */}
       <input
-        class="bg-transparent text-sm font-semibold text-gray-100 border-none outline-none hover:bg-gray-700 focus:bg-gray-700 px-2 py-1 rounded w-48 transition-colors"
+        class="bg-transparent text-sm font-semibold text-gray-900 dark:text-gray-100 border-none outline-none hover:bg-gray-100 focus:bg-gray-100 dark:hover:bg-gray-700 dark:focus:bg-gray-700 px-2 py-1 rounded w-48 transition-colors"
         value={props.presentationTitle}
         onInput={(e) => props.onTitleChange(e.currentTarget.value)}
       />
 
-      <div class="w-px h-6 bg-gray-600 mx-2" />
+      <div class="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
 
       {/* Insert tools */}
-      <span class="text-xs text-gray-500 mr-1">{t("insert")}</span>
+      <span class="text-xs text-gray-500 dark:text-gray-500 mr-1">{t("insert")}</span>
       <ToolButton label={t("text")} onClick={() => props.onInsertText()} />
       <ToolButton
         label={t("rect")}
@@ -76,7 +78,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
       />
       <ToolButton label={t("image")} onClick={() => props.onInsertImage()} />
 
-      <div class="w-px h-6 bg-gray-600 mx-2" />
+      <div class="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
 
       {/* Edit tools */}
       <ToolButton
@@ -100,6 +102,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
 
       {/* Present */}
       <LanguageSwitcher />
+      <ThemeToggle />
       <ToolButton
         label={t("present")}
         onClick={() => props.onPresent()}

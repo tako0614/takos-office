@@ -9,6 +9,7 @@ import {
 } from "../lib/storage";
 import PresentationCard from "../components/PresentationCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -54,13 +55,14 @@ export default function PresentationListPage() {
   };
 
   return (
-    <div class="min-h-screen bg-gray-900">
+    <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
+      <header class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-6 py-4">
         <div class="max-w-6xl mx-auto flex items-center justify-between">
           <OfficeNav />
           <div class="flex items-center gap-3">
             <LanguageSwitcher />
+            <ThemeToggle />
             <button
               type="button"
               class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -79,11 +81,11 @@ export default function PresentationListPage() {
           fallback={
             <Show when={!isLoading()}>
               <div class="text-center py-24">
-                <div class="text-6xl mb-4 text-gray-600">&#9657;</div>
-                <h2 class="text-lg font-semibold text-gray-300 mb-2">
+                <div class="text-6xl mb-4 text-gray-300 dark:text-gray-600">&#9657;</div>
+                <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   {t("noPresentationsTitle")}
                 </h2>
-                <p class="text-sm text-gray-500 mb-6">
+                <p class="text-sm text-gray-500 dark:text-gray-500 mb-6">
                   {t("noPresentationsDescription")}
                 </p>
                 <button
@@ -118,15 +120,15 @@ export default function PresentationListPage() {
           onClick={() => setShowNewDialog(false)}
         >
           <div
-            class="bg-gray-800 rounded-xl border border-gray-700 p-6 w-full max-w-md shadow-2xl"
+            class="bg-white border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 class="text-lg font-semibold text-gray-100 mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {t("newPresentation")}
             </h2>
             <input
               type="text"
-              class="w-full bg-gray-700 text-gray-100 px-4 py-2.5 rounded-lg border border-gray-600 outline-none focus:border-blue-500 text-sm mb-6"
+              class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-4 py-2.5 rounded-lg border outline-none focus:border-blue-500 text-sm mb-6"
               placeholder={t("titlePlaceholder")}
               value={newTitle()}
               onInput={(e) => setNewTitle(e.currentTarget.value)}
@@ -136,7 +138,7 @@ export default function PresentationListPage() {
             <div class="flex justify-end gap-3">
               <button
                 type="button"
-                class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+                class="px-4 py-2 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
                 onClick={() => setShowNewDialog(false)}
               >
                 {t("cancel")}

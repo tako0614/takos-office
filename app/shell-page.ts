@@ -71,13 +71,26 @@ export function renderShellPage(): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Takos Office</title>
+<script>
+  // Apply the shared suite theme before paint (no flash). Same key as the editors.
+  (function () {
+    try {
+      var s = localStorage.getItem("takos-theme");
+      var dark = s ? s === "dark"
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    } catch (e) { document.documentElement.dataset.theme = "light"; }
+  })();
+</script>
 <style>
   :root { color-scheme: light; }
+  [data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     background: #f7f8fa; color: #1f2937;
   }
+  [data-theme="dark"] body { background: #0f1115; color: #e5e7eb; }
   a { color: inherit; }
   header {
     display: flex; align-items: center; gap: 12px;
@@ -139,6 +152,25 @@ export function renderShellPage(): string {
   .empty, .loading {
     color: #9ca3af; font-size: 14px; padding: 28px 8px; text-align: center;
   }
+  .theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e5e7eb;
+    background: #fff; color: #4b5563; cursor: pointer;
+  }
+  .theme-toggle:hover { background: #f3f4f6; color: #111827; }
+  /* Dark theme */
+  [data-theme="dark"] header { background: #161a22; border-bottom-color: #262b36; }
+  [data-theme="dark"] .brand b { color: #f3f4f6; }
+  [data-theme="dark"] header nav a { color: #9ca3af; }
+  [data-theme="dark"] header nav a:hover { background: #20262f; color: #f3f4f6; }
+  [data-theme="dark"] .theme-toggle { background: #1b2029; border-color: #2c323d; color: #9ca3af; }
+  [data-theme="dark"] .theme-toggle:hover { background: #20262f; color: #f3f4f6; }
+  [data-theme="dark"] .hero p, [data-theme="dark"] .card-desc { color: #9ca3af; }
+  [data-theme="dark"] .card { background: #161a22; border-color: #262b36; }
+  [data-theme="dark"] .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+  [data-theme="dark"] .search input { background: #161a22; border-color: #2c323d; color: #e5e7eb; }
+  [data-theme="dark"] li.item a:hover { background: #20262f; }
+  [data-theme="dark"] .item-time, [data-theme="dark"] h2, [data-theme="dark"] .empty, [data-theme="dark"] .loading { color: #6b7280; }
   @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -147,6 +179,7 @@ export function renderShellPage(): string {
     <a class="brand" href="/"><span class="mark"></span><b>Takos</b> <span>Office</span></a>
     <span class="spacer"></span>
     <nav>${navLinks}</nav>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme"></button>
   </header>
   <main>
     <div class="hero">
@@ -173,6 +206,21 @@ export function renderShellPage(): string {
   }
   document.querySelectorAll("[data-app], [data-app-link], a.brand").forEach(function (el) {
     el.setAttribute("href", withSpace(el.getAttribute("href")));
+  });
+
+  // Theme toggle (sun in dark, moon in light) — persists to the shared key.
+  var SUN = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  var MOON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  var toggleBtn = document.getElementById("theme-toggle");
+  function paintToggle() {
+    toggleBtn.innerHTML = document.documentElement.dataset.theme === "dark" ? SUN : MOON;
+  }
+  paintToggle();
+  toggleBtn.addEventListener("click", function () {
+    var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("takos-theme", next); } catch (e) { /* ignore */ }
+    paintToggle();
   });
 
   var itemsEl = document.getElementById("items");

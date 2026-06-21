@@ -64,20 +64,20 @@ export default function Sidebar(props: SidebarProps) {
 
   const textStyle = (level: number) =>
     level === 1
-      ? "text-sm font-semibold text-gray-800"
+      ? "text-sm font-semibold text-gray-800 dark:text-neutral-100"
       : level === 2
-      ? "text-sm text-gray-600"
-      : "text-xs text-gray-500";
+      ? "text-sm text-gray-600 dark:text-neutral-300"
+      : "text-xs text-gray-500 dark:text-neutral-400";
 
   return (
-    <div class="w-56 border-r border-gray-200 bg-white flex flex-col shrink-0">
-      <div class="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-        <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">
+    <div class="w-56 border-r border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col shrink-0">
+      <div class="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-neutral-800">
+        <span class="text-xs font-medium text-gray-400 dark:text-neutral-500 uppercase tracking-wider">
           {t("outline")}
         </span>
         <button
           type="button"
-          class="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          class="p-1 rounded text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           onClick={() => setCollapsed(!collapsed())}
           title={collapsed() ? t("expand") : t("collapse")}
         >
@@ -90,7 +90,7 @@ export default function Sidebar(props: SidebarProps) {
           <Show
             when={headings().length > 0}
             fallback={
-              <p class="text-gray-400 text-xs italic">
+              <p class="text-gray-400 dark:text-neutral-500 text-xs italic">
                 {t("noHeadings")}
               </p>
             }
@@ -100,7 +100,7 @@ export default function Sidebar(props: SidebarProps) {
                 {(heading) => (
                   <button
                     type="button"
-                    class={`text-left py-1 px-2 rounded truncate hover:bg-gray-100 transition-colors ${
+                    class={`text-left py-1 px-2 rounded truncate hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors ${
                       indent(heading.level)
                     } ${textStyle(heading.level)}`}
                     onClick={() => scrollToHeading(heading.pos)}

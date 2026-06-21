@@ -7,6 +7,7 @@ import {
 } from "../lib/storage";
 import { SpreadsheetCard } from "../components/SpreadsheetCard";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import type { Spreadsheet } from "../types";
@@ -49,20 +50,21 @@ export const SpreadsheetListPage: Component = () => {
   };
 
   return (
-    <div class="min-h-screen bg-neutral-900">
+    <div class="min-h-screen bg-white dark:bg-neutral-900">
       {/* Header */}
-      <header class="border-b border-neutral-800 bg-neutral-900">
+      <header class="border-b border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
           <div class="flex items-center gap-4">
             <OfficeNav />
             <div class="hidden sm:block">
-              <h1 class="text-xl font-bold text-neutral-100">Takos Sheets</h1>
-              <p class="mt-0.5 text-sm text-neutral-500">
+              <h1 class="text-xl font-bold text-gray-900 dark:text-neutral-100">Takos Sheets</h1>
+              <p class="mt-0.5 text-sm text-gray-500 dark:text-neutral-500">
                 {t("spreadsheetEditor")}
               </p>
             </div>
           </div>
           <div class="flex items-center gap-3">
+            <ThemeToggle />
             <LanguageSwitcher />
             <button
               type="button"
@@ -96,7 +98,7 @@ export const SpreadsheetListPage: Component = () => {
           fallback={
             <Show when={!isLoading()}>
               <div class="flex flex-col items-center justify-center py-24 text-center">
-                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-800">
+                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-neutral-800">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="32"
@@ -107,7 +109,7 @@ export const SpreadsheetListPage: Component = () => {
                     stroke-width="1.5"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    class="text-neutral-500"
+                    class="text-gray-400 dark:text-neutral-500"
                   >
                     <rect
                       x="3"
@@ -123,10 +125,10 @@ export const SpreadsheetListPage: Component = () => {
                     <line x1="15" y1="3" x2="15" y2="21" />
                   </svg>
                 </div>
-                <h2 class="mb-2 text-lg font-semibold text-neutral-200">
+                <h2 class="mb-2 text-lg font-semibold text-gray-800 dark:text-neutral-200">
                   {t("noSpreadsheetsTitle")}
                 </h2>
-                <p class="mb-6 text-sm text-neutral-500">
+                <p class="mb-6 text-sm text-gray-500 dark:text-neutral-500">
                   {t("noSpreadsheetsDescription")}
                 </p>
                 <button
@@ -157,18 +159,18 @@ export const SpreadsheetListPage: Component = () => {
       {/* New spreadsheet dialog */}
       <Show when={showNewDialog()}>
         <div
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60"
           onClick={() => setShowNewDialog(false)}
         >
           <div
-            class="w-96 rounded-xl border border-neutral-700 bg-neutral-800 p-6 shadow-2xl"
+            class="w-96 rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 class="mb-4 text-lg font-semibold text-neutral-100">
+            <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-100">
               {t("newSpreadsheet")}
             </h2>
             <input
-              class="mb-4 w-full rounded-lg border border-neutral-600 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-emerald-500"
+              class="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
               placeholder={t("spreadsheetTitlePlaceholder")}
               value={newTitle()}
               onInput={(e) => setNewTitle(e.currentTarget.value)}
@@ -181,7 +183,7 @@ export const SpreadsheetListPage: Component = () => {
             <div class="flex justify-end gap-2">
               <button
                 type="button"
-                class="rounded-lg px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200"
+                class="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-200"
                 onClick={() => setShowNewDialog(false)}
               >
                 {t("cancel")}

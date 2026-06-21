@@ -1,7 +1,19 @@
 @import "tailwindcss";
 
+/* Drive Tailwind's `dark:` variant from `<html data-theme="dark">` (set by
+   lib/theme.ts) instead of the OS `prefers-color-scheme`, so the in-app toggle
+   is authoritative and stays in sync with the rest of the office suite. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 /* ========================================================================
-   Google Docs-like light theme
+   Google Docs-like light theme (default) + dark overrides
    ======================================================================== */
 
 body {
@@ -279,4 +291,125 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #bdc1c6;
+}
+
+/* ========================================================================
+   Dark theme overrides
+   Activated by `<html data-theme="dark">` (see lib/theme.ts). Tailwind utility
+   classes carry their own `dark:` variants in the components; the rules below
+   re-theme the non-Tailwind CSS above (the TipTap "paper" + prose, the toolbar
+   selects, the color picker, search highlights, and the scrollbar).
+   ======================================================================== */
+
+/* TipTap editor — dark paper */
+[data-theme="dark"] .tiptap {
+  color: #e3e3e6;
+}
+
+[data-theme="dark"] .tiptap p.is-editor-empty:first-child::before {
+  color: #6b7280;
+}
+
+[data-theme="dark"] .tiptap h1,
+[data-theme="dark"] .tiptap h2 {
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .tiptap h3 {
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .tiptap ul[data-type="taskList"] li[data-checked="true"]
+  > div
+  > p {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .tiptap blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .tiptap code {
+  background-color: #2d2d33;
+  color: #ff9d9b;
+}
+
+[data-theme="dark"] .tiptap pre {
+  background-color: #1c1c20;
+  border-color: #3f3f46;
+}
+
+[data-theme="dark"] .tiptap pre code {
+  color: #e3e3e6;
+}
+
+[data-theme="dark"] .tiptap a {
+  color: #8ab4f8;
+}
+
+[data-theme="dark"] .tiptap hr {
+  border-top-color: #3f3f46;
+}
+
+[data-theme="dark"] .tiptap table td,
+[data-theme="dark"] .tiptap table th {
+  border-color: #3f3f46;
+}
+
+[data-theme="dark"] .tiptap table th {
+  background-color: #1c1c20;
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .tiptap table td {
+  background-color: transparent;
+}
+
+/* Find & Replace match highlights */
+[data-theme="dark"] .docs-search-match {
+  background-color: #5a4d12;
+  color: #f8f9fa;
+}
+
+[data-theme="dark"] .docs-search-match-active {
+  background-color: #b9770a;
+  color: #fff;
+}
+
+/* Toolbar select dropdowns */
+[data-theme="dark"] .toolbar-select {
+  background-color: #18181b;
+  color: #d4d4d8;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a1a1aa'%3e%3cpath d='M4.5 6l3.5 4 3.5-4z'/%3e%3c/svg%3e");
+}
+
+[data-theme="dark"] .toolbar-select:hover {
+  background-color: #27272a;
+}
+
+[data-theme="dark"] .toolbar-select:focus {
+  border-color: #8ab4f8;
+}
+
+[data-theme="dark"] .toolbar-select option {
+  background-color: #18181b;
+  color: #d4d4d8;
+}
+
+/* Color picker swatch borders */
+[data-theme="dark"] .color-swatch {
+  border-color: #3f3f46;
+}
+
+[data-theme="dark"] .color-swatch:hover {
+  border-color: #a1a1aa;
+}
+
+/* Scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
 }

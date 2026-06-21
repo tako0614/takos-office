@@ -31,13 +31,13 @@ export const SpreadsheetCard: Component<SpreadsheetCardProps> = (props) => {
 
   return (
     <div
-      class="group relative flex flex-col rounded-lg border border-neutral-700 bg-neutral-800 p-5 transition-all hover:border-neutral-500 hover:bg-neutral-750 cursor-pointer"
+      class="group relative flex flex-col rounded-lg border border-gray-200 bg-white p-5 transition-all hover:border-gray-300 hover:shadow-md cursor-pointer dark:border-neutral-700 dark:bg-neutral-800 dark:hover:border-neutral-500 dark:hover:bg-neutral-750 dark:hover:shadow-none"
       onClick={props.onClick}
     >
       {/* Delete button */}
       <button
         type="button"
-        class="absolute top-3 right-3 rounded-md p-1.5 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-red-400 group-hover:opacity-100"
+        class="absolute top-3 right-3 rounded-md p-1.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-red-500 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-red-400"
         onClick={props.onDelete}
         title={t("deleteSpreadsheetTitle")}
       >
@@ -79,11 +79,11 @@ export const SpreadsheetCard: Component<SpreadsheetCardProps> = (props) => {
         </svg>
       </div>
 
-      <h3 class="mb-1 truncate text-base font-semibold text-neutral-100">
+      <h3 class="mb-1 truncate text-base font-semibold text-gray-900 dark:text-neutral-100">
         {props.spreadsheet.title}
       </h3>
 
-      <div class="mb-3 flex gap-3 text-xs text-neutral-400">
+      <div class="mb-3 flex gap-3 text-xs text-gray-500 dark:text-neutral-400">
         <span>
           {t(sheetCount() === 1 ? "sheetCountSingular" : "sheetCount", {
             count: sheetCount(),
@@ -96,7 +96,7 @@ export const SpreadsheetCard: Component<SpreadsheetCardProps> = (props) => {
         </span>
       </div>
 
-      <div class="mt-auto text-xs text-neutral-500">
+      <div class="mt-auto text-xs text-gray-400 dark:text-neutral-500">
         {t("updated", { date: formatDate(props.spreadsheet.updatedAt) })}
       </div>
     </div>

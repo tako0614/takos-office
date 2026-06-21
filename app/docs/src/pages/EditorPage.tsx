@@ -14,6 +14,7 @@ import Sidebar from "../components/Sidebar";
 import WordCount from "../components/WordCount";
 import FindReplace from "../components/FindReplace";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -105,12 +106,12 @@ export default function EditorPage() {
   };
 
   return (
-    <div class="h-screen flex flex-col bg-white">
+    <div class="h-screen flex flex-col bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
       {/* Header bar */}
-      <header class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-white shrink-0">
+      <header class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
         <button
           type="button"
-          class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 transition-colors"
+          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           onClick={() => navigate("/")}
           title={t("backToDocuments")}
         >
@@ -124,13 +125,13 @@ export default function EditorPage() {
             type="text"
             value={title()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
-            class="text-lg font-normal text-gray-800 outline-none border-none bg-transparent placeholder-gray-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 focus:ring-2 focus:ring-blue-500 transition-all"
+            class="text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />
         </div>
 
         {/* Save indicator */}
-        <div class="flex items-center gap-1.5 text-xs text-gray-400 shrink-0 pr-2">
+        <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-neutral-500 shrink-0 pr-2">
           <Show when={saveStatus() === "saving"}>
             <CloudOff size={14} />
             <span>{t("saving")}</span>
@@ -144,6 +145,7 @@ export default function EditorPage() {
             <span class="text-red-600">{t("saveFailed")}</span>
           </Show>
         </div>
+        <ThemeToggle />
         <LanguageSwitcher />
       </header>
 
@@ -166,8 +168,8 @@ export default function EditorPage() {
         <Sidebar editor={editor()} />
 
         {/* Document area — gray background with centered white paper */}
-        <div class="flex-1 overflow-y-auto bg-gray-100">
-          <div class="max-w-[816px] mx-auto my-6 bg-white shadow-sm border border-gray-200 rounded-sm min-h-[1056px]">
+        <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
+          <div class="max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
             <Show when={doc()} fallback={<div />}>
               <Editor
                 content={doc()!.content}

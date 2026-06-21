@@ -165,10 +165,12 @@ export default function Toolbar(props: ToolbarProps) {
 
   const btn = (active: boolean) =>
     `p-1.5 rounded transition-colors ${
-      active ? "bg-blue-100 text-blue-700" : "text-gray-600 hover:bg-gray-100"
+      active
+        ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
+        : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
     }`;
 
-  const sep = () => "w-px h-5 bg-gray-300 mx-0.5 self-center";
+  const sep = () => "w-px h-5 bg-gray-300 dark:bg-neutral-700 mx-0.5 self-center";
 
   const closePopups = () => {
     setShowTextColor(false);
@@ -197,7 +199,7 @@ export default function Toolbar(props: ToolbarProps) {
   };
 
   return (
-    <div class="flex flex-col border-b border-gray-200 bg-gray-50">
+    <div class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800">
       <div class="flex items-center gap-0.5 px-2 py-1 flex-wrap">
         {/* Undo / Redo */}
         <button
@@ -313,7 +315,7 @@ export default function Toolbar(props: ToolbarProps) {
             </div>
           </button>
           <Show when={showTextColor()}>
-            <div class="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+            <div class="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50">
               <ColorPicker
                 onSelect={(c) => {
                   props.editor?.chain().focus().setColor(c).run();
@@ -342,7 +344,7 @@ export default function Toolbar(props: ToolbarProps) {
             <Highlighter size={16} />
           </button>
           <Show when={showHighlight()}>
-            <div class="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+            <div class="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50">
               <ColorPicker
                 onSelect={(c) => {
                   props.editor?.chain().focus().toggleHighlight({ color: c })
@@ -549,7 +551,7 @@ export default function Toolbar(props: ToolbarProps) {
         <div class="relative ml-auto">
           <button
             type="button"
-            class="flex items-center gap-1 px-2 py-1.5 rounded text-gray-700 text-sm hover:bg-gray-100 transition-colors"
+            class="flex items-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
             onClick={() => {
               const next = !showExport();
               closePopups();
@@ -564,34 +566,34 @@ export default function Toolbar(props: ToolbarProps) {
           </button>
           <Show when={showExport()}>
             <div
-              class="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1 min-w-44"
+              class="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50 py-1 min-w-44"
               role="menu"
             >
               <button
                 type="button"
                 role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
                 onClick={() => handleExport("markdown")}
               >
-                <FileText size={16} class="text-gray-500" />
+                <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
                 {t("exportMarkdown")}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
                 onClick={() => handleExport("text")}
               >
-                <FileType size={16} class="text-gray-500" />
+                <FileType size={16} class="text-gray-500 dark:text-neutral-400" />
                 {t("exportPlainText")}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
                 onClick={() => handleExport("html")}
               >
-                <FileCode size={16} class="text-gray-500" />
+                <FileCode size={16} class="text-gray-500 dark:text-neutral-400" />
                 {t("exportHtml")}
               </button>
             </div>
@@ -601,7 +603,7 @@ export default function Toolbar(props: ToolbarProps) {
 
       {/* Link URL input */}
       <Show when={showLinkInput()}>
-        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 bg-white">
+        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
             type="url"
             placeholder={t("linkPlaceholder")}
@@ -611,7 +613,7 @@ export default function Toolbar(props: ToolbarProps) {
               if (e.key === "Enter") handleSetLink();
               if (e.key === "Escape") setShowLinkInput(false);
             }}
-            class="flex-1 bg-gray-50 text-gray-800 text-sm px-3 py-1.5 rounded-md border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
@@ -623,7 +625,7 @@ export default function Toolbar(props: ToolbarProps) {
           <button
             type="button"
             onClick={() => setShowLinkInput(false)}
-            class="px-3 py-1.5 text-gray-500 text-sm rounded-md hover:bg-gray-100 transition-colors"
+            class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
@@ -632,7 +634,7 @@ export default function Toolbar(props: ToolbarProps) {
 
       {/* Image URL input */}
       <Show when={showImageInput()}>
-        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 bg-white">
+        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
             type="url"
             placeholder={t("imagePlaceholder")}
@@ -642,7 +644,7 @@ export default function Toolbar(props: ToolbarProps) {
               if (e.key === "Enter") handleInsertImage();
               if (e.key === "Escape") setShowImageInput(false);
             }}
-            class="flex-1 bg-gray-50 text-gray-800 text-sm px-3 py-1.5 rounded-md border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
@@ -654,7 +656,7 @@ export default function Toolbar(props: ToolbarProps) {
           <button
             type="button"
             onClick={() => setShowImageInput(false)}
-            class="px-3 py-1.5 text-gray-500 text-sm rounded-md hover:bg-gray-100 transition-colors"
+            class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
@@ -677,7 +679,7 @@ function ColorPicker(
     <div style="width:194px">
       <button
         type="button"
-        class="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+        class="w-full text-left px-3 py-1.5 text-xs text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
         onClick={props.onClear}
       >
         {t("reset")}

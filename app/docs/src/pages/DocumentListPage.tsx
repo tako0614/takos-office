@@ -9,6 +9,7 @@ import {
 } from "../lib/storage";
 import DocumentCard from "../components/DocumentCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -61,9 +62,9 @@ export default function DocumentListPage() {
   };
 
   return (
-    <div class="min-h-screen bg-white">
+    <div class="min-h-screen bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
       {/* Header */}
-      <header class="border-b border-gray-200 bg-white sticky top-0 z-10">
+      <header class="border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 sticky top-0 z-10">
         <div class="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
           <OfficeNav />
 
@@ -72,19 +73,20 @@ export default function DocumentListPage() {
             <div class="relative">
               <Search
                 size={18}
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500"
               />
               <input
                 type="text"
                 placeholder={t("searchDocuments")}
                 value={search()}
                 onInput={(e) => setSearch(e.currentTarget.value)}
-                class="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-700 placeholder-gray-400 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
+                class="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-neutral-800 rounded-lg text-sm text-gray-700 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500 outline-none focus:bg-white dark:focus:bg-neutral-800 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
               />
             </div>
           </div>
 
-          <div class="shrink-0">
+          <div class="shrink-0 flex items-center gap-1">
+            <ThemeToggle />
             <LanguageSwitcher />
           </div>
         </div>
@@ -94,18 +96,18 @@ export default function DocumentListPage() {
       <main class="max-w-5xl mx-auto px-6 py-8">
         {/* New document section */}
         <div class="mb-8">
-          <h2 class="text-sm font-medium text-gray-500 mb-3">
+          <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
             {t("startNewDocument")}
           </h2>
           <button
             type="button"
             onClick={handleCreate}
-            class="group w-40 h-52 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-2 hover:border-blue-400 hover:bg-blue-50/50 transition-all cursor-pointer"
+            class="group w-40 h-52 border-2 border-dashed border-gray-300 dark:border-neutral-700 rounded-lg flex flex-col items-center justify-center gap-2 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10 transition-all cursor-pointer"
           >
             <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center group-hover:bg-blue-700 transition-colors">
               <Plus size={24} class="text-white" />
             </div>
-            <span class="text-sm text-gray-600 group-hover:text-blue-700">
+            <span class="text-sm text-gray-600 dark:text-neutral-300 group-hover:text-blue-700 dark:group-hover:text-blue-400">
               {t("blankDocument")}
             </span>
           </button>
@@ -117,20 +119,20 @@ export default function DocumentListPage() {
           fallback={
             <Show when={!isLoading() && documents().length === 0}>
               <div class="flex flex-col items-center justify-center py-20 text-center">
-                <div class="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                  <FileText size={36} class="text-gray-400" />
+                <div class="w-20 h-20 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+                  <FileText size={36} class="text-gray-400 dark:text-neutral-500" />
                 </div>
-                <h2 class="text-base font-medium text-gray-700 mb-1">
+                <h2 class="text-base font-medium text-gray-700 dark:text-neutral-200 mb-1">
                   {t("noDocumentsTitle")}
                 </h2>
-                <p class="text-sm text-gray-500">
+                <p class="text-sm text-gray-500 dark:text-neutral-400">
                   {t("noDocumentsDescription")}
                 </p>
               </div>
             </Show>
           }
         >
-          <h2 class="text-sm font-medium text-gray-500 mb-3">
+          <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
             {t("recentDocuments")}
           </h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

@@ -241,7 +241,7 @@ export default function FindReplace(props: FindReplaceProps) {
   return (
     <Show when={props.open}>
       <div
-        class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 bg-white flex-wrap"
+        class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex-wrap"
         role="search"
         aria-label={t("findAndReplace")}
         onKeyDown={(e) => {
@@ -266,9 +266,9 @@ export default function FindReplace(props: FindReplaceProps) {
               }
             }}
             aria-label={t("find")}
-            class="w-44 bg-gray-50 text-gray-800 text-sm px-3 py-1.5 rounded-md border border-gray-300 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
-          <span class="text-xs text-gray-500 min-w-12 tabular-nums">
+          <span class="text-xs text-gray-500 dark:text-neutral-400 min-w-12 tabular-nums">
             {counterLabel()}
           </span>
         </div>
@@ -277,8 +277,8 @@ export default function FindReplace(props: FindReplaceProps) {
           type="button"
           class={`p-1.5 rounded transition-colors ${
             caseSensitive()
-              ? "bg-blue-100 text-blue-700"
-              : "text-gray-600 hover:bg-gray-100"
+              ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
+              : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
           }`}
           onClick={() => setCaseSensitive((v) => !v)}
           title={t("caseSensitive")}
@@ -289,7 +289,7 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
           onClick={goPrevious}
           disabled={matches().length === 0}
           title={t("previousMatch")}
@@ -298,7 +298,7 @@ export default function FindReplace(props: FindReplaceProps) {
         </button>
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40"
+          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
           onClick={goNext}
           disabled={matches().length === 0}
           title={t("nextMatch")}
@@ -306,7 +306,7 @@ export default function FindReplace(props: FindReplaceProps) {
           <ChevronDown size={16} />
         </button>
 
-        <div class="w-px h-5 bg-gray-300 mx-0.5 self-center" />
+        <div class="w-px h-5 bg-gray-300 dark:bg-neutral-700 mx-0.5 self-center" />
 
         <input
           type="text"
@@ -324,7 +324,7 @@ export default function FindReplace(props: FindReplaceProps) {
         />
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 text-sm rounded-md hover:bg-gray-100 transition-colors disabled:opacity-40"
+          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
           onClick={replaceCurrent}
           disabled={matches().length === 0}
         >
@@ -332,7 +332,7 @@ export default function FindReplace(props: FindReplaceProps) {
         </button>
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 text-sm rounded-md hover:bg-gray-100 transition-colors disabled:opacity-40"
+          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
           onClick={replaceAll}
           disabled={matches().length === 0}
         >
@@ -341,7 +341,7 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="ml-auto p-1.5 rounded text-gray-500 hover:bg-gray-100 transition-colors"
+          class="ml-auto p-1.5 rounded text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           onClick={props.onClose}
           title={t("closeFind")}
           aria-label={t("closeFind")}

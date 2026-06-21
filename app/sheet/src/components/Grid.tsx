@@ -436,7 +436,7 @@ export const Grid: Component<GridProps> = (props) => {
   return (
     <div
       ref={containerRef}
-      class="relative flex-1 overflow-auto bg-neutral-900"
+      class="relative flex-1 overflow-auto bg-white dark:bg-neutral-900"
       onScroll={handleScroll}
       tabIndex={0}
       style={{ outline: "none" }}
@@ -451,7 +451,7 @@ export const Grid: Component<GridProps> = (props) => {
       >
         {/* Corner cell (top-left) */}
         <div
-          class="sticky top-0 left-0 z-30 flex items-center justify-center border-b border-r border-neutral-600 bg-neutral-800"
+          class="sticky top-0 left-0 z-30 flex items-center justify-center border-b border-r border-gray-200 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800"
           style={{
             width: `${HEADER_WIDTH}px`,
             height: `${HEADER_HEIGHT}px`,
@@ -471,10 +471,10 @@ export const Grid: Component<GridProps> = (props) => {
           <For each={visibleColIndices()}>
             {(col) => (
               <div
-                class={`absolute top-0 flex items-center justify-center border-b border-r border-neutral-600 text-xs font-medium select-none ${
+                class={`absolute top-0 flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium select-none dark:border-neutral-600 ${
                   selectedParsed().col === col
-                    ? "bg-blue-900/50 text-blue-300"
-                    : "bg-neutral-800 text-neutral-400"
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                    : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
                 }`}
                 style={{
                   left: `${colPositions()[col]}px`,
@@ -505,10 +505,10 @@ export const Grid: Component<GridProps> = (props) => {
           <For each={visibleRowIndices()}>
             {(row) => (
               <div
-                class={`absolute flex items-center justify-center border-b border-r border-neutral-600 text-xs select-none ${
+                class={`absolute flex items-center justify-center border-b border-r border-gray-200 text-xs select-none dark:border-neutral-600 ${
                   selectedParsed().row === row
-                    ? "bg-blue-900/50 text-blue-300"
-                    : "bg-neutral-800 text-neutral-400"
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                    : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
                 }`}
                 style={{
                   top: `${rowPositions()[row] + HEADER_HEIGHT}px`,
@@ -534,7 +534,7 @@ export const Grid: Component<GridProps> = (props) => {
 
                 return (
                   <div
-                    class={`grid-cell absolute flex items-center overflow-hidden px-1 text-sm ${
+                    class={`grid-cell absolute flex items-center overflow-hidden px-1 text-sm text-gray-900 dark:text-neutral-200 ${
                       isSelected() ? "cell-selected" : ""
                     } ${inRange() && !isSelected() ? "cell-in-range" : ""}`}
                     style={{
@@ -547,7 +547,7 @@ export const Grid: Component<GridProps> = (props) => {
                         : {}),
                       ...(fmt()?.textColor
                         ? { color: fmt()!.textColor }
-                        : { color: "#e5e5e5" }),
+                        : {}),
                       ...(fmt()?.bold ? { "font-weight": "bold" } : {}),
                       ...(fmt()?.italic ? { "font-style": "italic" } : {}),
                       ...(fmt()?.underline

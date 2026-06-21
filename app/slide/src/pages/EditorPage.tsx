@@ -283,11 +283,15 @@ export default function EditorPage() {
   return (
     <Show
       when={presentation()}
-      fallback={<div class="p-8 text-gray-400">{t("loading")}</div>}
+      fallback={
+        <div class="h-screen bg-gray-50 dark:bg-gray-900 p-8 text-gray-500 dark:text-gray-400">
+          {t("loading")}
+        </div>
+      }
     >
-      <div class="h-screen flex flex-col bg-gray-900">
+      <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
         {/* Office nav - return to the shell / switch apps from inside a deck */}
-        <div class="bg-gray-800 border-b border-gray-700 px-4 py-2">
+        <div class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 py-2">
           <OfficeNav />
         </div>
 
@@ -354,14 +358,14 @@ export default function EditorPage() {
                   onClick={() => setEditingTextId(null)}
                 >
                   <div
-                    class="bg-gray-800 rounded-lg p-4 border border-gray-600 shadow-xl"
+                    class="bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-4 border shadow-xl"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <h3 class="text-sm font-medium text-gray-300 mb-2">
+                    <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       {t("editText")}
                     </h3>
                     <textarea
-                      class="w-80 h-32 bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none text-sm"
+                      class="w-80 h-32 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-3 py-2 rounded border outline-none focus:border-blue-500 resize-none text-sm"
                       value={el()!.text ?? ""}
                       onInput={(e) => {
                         handleUpdateElement({
@@ -389,16 +393,16 @@ export default function EditorPage() {
 
         {/* Speaker notes */}
         <Show when={currentSlide()}>
-          <div class="bg-gray-800 border-t border-gray-700 px-4 py-2">
+          <div class="bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 py-2">
             <label
               for="speaker-notes"
-              class="block text-xs font-medium text-gray-400 mb-1"
+              class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1"
             >
               {t("speakerNotes")}
             </label>
             <textarea
               id="speaker-notes"
-              class="w-full h-16 bg-gray-700 text-gray-100 text-xs px-3 py-2 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none"
+              class="w-full h-16 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 text-xs px-3 py-2 rounded border outline-none focus:border-blue-500 resize-none"
               value={currentSlide()!.notes ?? ""}
               placeholder={t("speakerNotesPlaceholder")}
               onInput={(e) => handleUpdateNotes(e.currentTarget.value)}
@@ -407,7 +411,7 @@ export default function EditorPage() {
         </Show>
 
         {/* Bottom bar */}
-        <div class="h-7 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-xs text-gray-500">
+        <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-500">
           <span>
             {t("slideCount", {
               current: selectedSlideIndex() + 1,
@@ -417,7 +421,7 @@ export default function EditorPage() {
           <span class="mx-2">|</span>
           <button
             type="button"
-            class="hover:text-gray-300 transition-colors"
+            class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors"
             onClick={() => navigate("/")}
           >
             {t("backToList")}

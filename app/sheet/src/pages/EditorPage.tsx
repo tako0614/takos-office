@@ -487,11 +487,11 @@ export const EditorPage: Component = () => {
   };
 
   return (
-    <div class="flex h-screen flex-col bg-neutral-900">
+    <div class="flex h-screen flex-col bg-white dark:bg-neutral-900">
       <Show
         when={spreadsheet()}
         fallback={
-          <div class="flex h-screen items-center justify-center text-neutral-500">
+          <div class="flex h-screen items-center justify-center text-gray-500 dark:text-neutral-500">
             {t("loading")}
           </div>
         }
@@ -499,7 +499,7 @@ export const EditorPage: Component = () => {
         {(ss) => (
           <>
             {/* Office nav - return to the shell / switch apps from inside a sheet */}
-            <div class="border-b border-neutral-800 bg-neutral-900 px-4 py-2">
+            <div class="border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
               <OfficeNav />
             </div>
 

@@ -41,8 +41,8 @@ function SlideThumbnail(props: {
     <div
       class="group relative p-1 cursor-pointer rounded-lg transition-all duration-150"
       classList={{
-        "bg-blue-600/30 ring-2 ring-blue-500": props.selected,
-        "hover:bg-gray-700": !props.selected,
+        "bg-blue-100 dark:bg-blue-600/30 ring-2 ring-blue-500": props.selected,
+        "hover:bg-gray-100 dark:hover:bg-gray-700": !props.selected,
       }}
       draggable
       onDragStart={props.onDragStart}
@@ -51,12 +51,12 @@ function SlideThumbnail(props: {
       onClick={props.onClick}
     >
       <div class="flex items-start gap-2">
-        <span class="text-xs text-gray-500 mt-1 w-4 text-right shrink-0">
+        <span class="text-xs text-gray-500 dark:text-gray-500 mt-1 w-4 text-right shrink-0">
           {props.index + 1}
         </span>
         <div
           ref={thumbRef}
-          class="flex-1 rounded overflow-hidden border border-gray-600"
+          class="flex-1 rounded overflow-hidden border border-gray-300 dark:border-gray-600"
           style={{ "aspect-ratio": "16/9" }}
         />
       </div>
@@ -80,9 +80,9 @@ export default function SlidePanel(props: SlidePanelProps) {
   let dragFromIndex: number | null = null;
 
   return (
-    <div class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col h-full">
-      <div class="p-3 border-b border-gray-700 flex items-center justify-between">
-        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+    <div class="w-56 bg-white border-r border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-col h-full">
+      <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
           {t("slides")}
         </span>
         <button
