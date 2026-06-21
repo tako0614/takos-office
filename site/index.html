@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Takos Office — オフィスごと、自分のものに。</title>
+    <meta
+      name="description"
+      content="Takos Office は、自分の Workspace の中で動くセルフホスト型のオフィススイート。文書・プレゼン・表計算が、サブスクなしで、AI エージェントが操作できる形で、あなたのインフラ上に。"
+    />
+    <meta property="og:title" content="Takos Office — オフィスごと、自分のものに。" />
+    <meta property="og:description" content="自分の Workspace で動く、エージェントネイティブなオフィススイート。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://office.takos.jp" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root {
+        --bg:        #0a0a0a;
+        --bg-elev:   #141414;
+        --bg-subtle: #1a1a1a;
+        --fg:        #fafafa;
+        --fg-muted:  #a3a3a3;
+        --fg-subtle: #6b6b6b;
+        --line:      #262626;
+        --line-strong: #3f3f3f;
+        --accent:      #ef4444;
+        --accent-hover:#f87171;
+        --accent-text: #fca5a5;
+        --accent-soft: #2a0a0a;
+        --ink-blue:      #3b82f6;
+        --ink-blue-deep: #2563eb;
+        --ink-red:       #ff3b3b;
+        --ink-red-deep:  #dc2626;
+        --grad-from: #fafafa;
+        --grad-mid:  #ef4444;
+        --grad-to:   #dc2626;
+        --container: 1120px;
+        --nav-h: 64px;
+        --sans: "Bricolage Grotesque", "Noto Sans JP", -apple-system, BlinkMacSystemFont,
+                "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Segoe UI", Roboto, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.7;
+        font-size: 16px;
+        font-feature-settings: 'ss01', 'ss02';
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      a { color: inherit; text-decoration: none; }
+      ::selection { background: var(--accent); color: var(--bg); }
+
+      .container {
+        width: 100%;
+        max-width: var(--container);
+        margin: 0 auto;
+        padding: 0 clamp(1.25rem, 5vw, 2.5rem);
+      }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--fg-subtle);
+      }
+
+      .grad-text {
+        background: linear-gradient(120deg, var(--grad-from), var(--grad-mid) 70%, var(--grad-to));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .arrow {
+        color: var(--fg);
+        border-bottom: 1px solid var(--line-strong);
+        padding-bottom: 2px;
+        transition: border-color 0.14s, color 0.14s;
+      }
+      .arrow:hover { border-color: var(--accent); color: var(--accent-text); }
+      .arrow span { display: inline-block; transition: transform 0.14s; }
+      .arrow:hover span { transform: translateX(3px); }
+
+      .link { color: var(--fg-muted); transition: color 0.14s; }
+      .link:hover { color: var(--fg); }
+
+      .btn-primary {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        padding: 0.7rem 1.3rem; border-radius: 999px;
+        background: var(--accent); color: var(--accent-fg, var(--bg));
+        font-weight: 700; font-size: 0.92rem;
+        transition: background 0.14s, transform 0.14s;
+      }
+      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+      .btn-primary span { transition: transform 0.14s; }
+      .btn-primary:hover span { transform: translateX(3px); }
+
+      .hairline { width: 100%; height: 1px; background: var(--line); }
+
+      /* ---- Ink splashes (decorative, crisp, no blur) ---- */
+      .ink {
+        position: absolute;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0.5;
+      }
+      .ink svg { display: block; width: 100%; height: 100%; }
+
+      /* ---- Nav ---- */
+      .nav {
+        position: fixed; inset: 0 0 auto 0; z-index: 50; height: var(--nav-h);
+        background: rgba(10, 10, 10, 0.6);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid transparent;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      .nav.scrolled { border-bottom-color: var(--line); background: rgba(10, 10, 10, 0.82); }
+      .nav-in {
+        max-width: var(--container); margin: 0 auto; height: 100%;
+        padding: 0 clamp(1.25rem, 5vw, 2.5rem);
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      .wordmark {
+        display: inline-flex; align-items: center; gap: 0.55rem;
+        font-weight: 800; font-size: 1rem; letter-spacing: -0.01em;
+      }
+      .wordmark svg { width: 1.5rem; height: 1.5rem; }
+      .nav-links { display: flex; gap: 1.6rem; font-size: 0.88rem; align-items: center; }
+      .nav-links .show-sm { display: none; }
+
+      /* ---- Hero ---- */
+      .hero { position: relative; padding: 11rem 0 6rem; overflow: hidden; }
+      .hero-in { position: relative; z-index: 1; }
+      .hero .eyebrow { margin-bottom: 1.75rem; display: block; }
+      .hero h1 {
+        font-size: clamp(2.8rem, 7vw, 5rem);
+        font-weight: 800; line-height: 1.08;
+        letter-spacing: -0.035em; max-width: 16ch;
+      }
+      .hero .lede {
+        color: var(--fg-muted); margin-top: 1.75rem;
+        font-size: clamp(1.02rem, 1.6vw, 1.2rem);
+        max-width: 34rem; line-height: 1.85;
+      }
+      .hero-act { margin-top: 2.5rem; display: flex; align-items: center; gap: 1.75rem; font-size: 0.95rem; flex-wrap: wrap; }
+
+      /* ---- Apps grid ---- */
+      .apps { padding: 5rem 0; position: relative; overflow: hidden; }
+      .section-head { margin-bottom: 3rem; }
+      .section-head .eyebrow { display: block; margin-bottom: 1rem; }
+      .section-head h2 {
+        font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
+        letter-spacing: -0.025em; line-height: 1.15; max-width: 20ch;
+      }
+      .section-head p { color: var(--fg-muted); margin-top: 1rem; max-width: 40rem; }
+
+      .app-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+      }
+      .app-card {
+        position: relative; z-index: 1;
+        border: 1px solid var(--line); border-radius: 16px;
+        background: var(--bg-elev); overflow: hidden;
+        display: flex; flex-direction: column;
+        transition: border-color 0.14s, transform 0.14s;
+      }
+      .app-card:hover { border-color: var(--line-strong); transform: translateY(-3px); }
+      .app-mock {
+        height: 168px; border-bottom: 1px solid var(--line);
+        background: var(--bg-subtle); padding: 0.9rem; overflow: hidden;
+      }
+      .app-body { padding: 1.25rem 1.35rem 1.5rem; }
+      .app-body h3 {
+        font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em;
+        display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+      }
+      .app-tag {
+        font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--accent-text);
+        border: 1px solid var(--accent-soft); background: var(--accent-soft);
+        padding: 0.1rem 0.45rem; border-radius: 999px;
+      }
+      .app-body p { color: var(--fg-muted); font-size: 0.9rem; line-height: 1.7; }
+
+      /* -- Docs mockup -- */
+      .mk-doc-tb { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
+      .mk-doc-tb i { width: 1.1rem; height: 1.1rem; border-radius: 4px; background: var(--line-strong); display: block; }
+      .mk-doc-tb i:first-child { background: var(--accent); }
+      .mk-doc-title { height: 0.8rem; width: 60%; border-radius: 3px; background: var(--fg); opacity: 0.85; margin-bottom: 0.6rem; }
+      .mk-line { height: 0.45rem; border-radius: 3px; background: var(--line-strong); margin-bottom: 0.4rem; }
+      .mk-line.w90 { width: 90%; } .mk-line.w75 { width: 75%; } .mk-line.w80 { width: 80%; } .mk-line.w60 { width: 60%; }
+
+      /* -- Slide mockup -- */
+      .mk-slide-canvas {
+        height: 104px; border-radius: 6px; border: 1px solid var(--line-strong);
+        background: linear-gradient(135deg, #15171c, #0e0f12);
+        padding: 0.7rem 0.8rem; display: flex; flex-direction: column; justify-content: center; gap: 0.5rem;
+        margin-bottom: 0.55rem;
+      }
+      .mk-slide-title { height: 0.7rem; width: 55%; border-radius: 3px; background: var(--fg); opacity: 0.9; }
+      .mk-slide-bullet { height: 0.4rem; width: 75%; border-radius: 3px; background: var(--fg-subtle); }
+      .mk-slide-bullet.short { width: 50%; }
+      .mk-slide-accent { width: 1.6rem; height: 0.35rem; border-radius: 3px; background: var(--accent); }
+      .mk-slide-strip { display: flex; gap: 0.35rem; }
+      .mk-slide-thumb { flex: 1; height: 1.3rem; border-radius: 3px; border: 1px solid var(--line-strong); background: var(--bg-elev); }
+      .mk-slide-thumb.active { border-color: var(--accent); }
+
+      /* -- Excel mockup -- */
+      .mk-grid { display: grid; grid-template-columns: 1.4rem repeat(4, 1fr); grid-auto-rows: 1.5rem; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+      .mk-grid div { background: var(--bg-elev); display: flex; align-items: center; padding: 0 0.35rem; font-size: 0.55rem; color: var(--fg-subtle); font-family: var(--mono); }
+      .mk-grid .hd { background: var(--bg-subtle); color: var(--fg-muted); justify-content: center; font-weight: 500; }
+      .mk-grid .rh { background: var(--bg-subtle); color: var(--fg-muted); justify-content: center; }
+      .mk-grid .val { color: var(--fg); }
+      .mk-grid .sel { color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent); }
+
+      /* ---- Principles ---- */
+      .why { padding: 5rem 0; }
+      .princ-row {
+        display: grid; grid-template-columns: 4rem 1fr; gap: 1.5rem;
+        padding: 2.25rem 0; border-top: 1px solid var(--line); align-items: start;
+      }
+      .princ-row:last-child { border-bottom: 1px solid var(--line); }
+      .princ-n { font-family: var(--mono); font-size: 0.85rem; color: var(--accent-text); padding-top: 0.35rem; }
+      .princ-row h3 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 0.5rem; }
+      .princ-row p { color: var(--fg-muted); max-width: 40rem; font-size: 0.97rem; }
+
+      /* ---- Agent-native section ---- */
+      .agent { padding: 5rem 0; position: relative; overflow: hidden; }
+      .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5rem; align-items: center; }
+      .agent-text h2 { font-size: clamp(1.7rem, 3.5vw, 2.5rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 1rem; }
+      .agent-text p { color: var(--fg-muted); max-width: 32rem; margin-bottom: 1rem; }
+      .agent-text .mono-note { font-family: var(--mono); font-size: 0.8rem; color: var(--fg-subtle); margin-top: 1.5rem; }
+      .codeblock {
+        position: relative; z-index: 1;
+        border: 1px solid var(--line); border-radius: 12px;
+        background: var(--bg-elev); overflow: hidden;
+      }
+      .code-bar {
+        display: flex; align-items: center; gap: 0.4rem; padding: 0.6rem 0.9rem;
+        border-bottom: 1px solid var(--line); background: var(--bg-subtle);
+      }
+      .code-bar i { width: 0.55rem; height: 0.55rem; border-radius: 999px; background: var(--line-strong); }
+      .code-bar span { margin-left: 0.5rem; font-family: var(--mono); font-size: 0.68rem; color: var(--fg-subtle); }
+      .code-body { padding: 1rem 1.1rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.85; overflow-x: auto; }
+      .code-body .k { color: var(--ink-blue); }
+      .code-body .s { color: var(--accent-text); }
+      .code-body .c { color: var(--fg-subtle); }
+      .code-body .p { color: var(--fg-muted); }
+
+      /* ---- Roadmap ---- */
+      .roadmap { padding: 5rem 0; }
+      .road-group { margin-top: 2.5rem; }
+      .road-label { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 1rem; }
+      .road-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+      .road-card { border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; background: var(--bg-elev); }
+      .road-card.planned { background: transparent; border-style: dashed; }
+      .road-card h4 { font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+      .road-card h4 code { font-family: var(--mono); font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
+      .road-card p { color: var(--fg-muted); font-size: 0.85rem; }
+      .pill { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.12rem 0.45rem; border-radius: 999px; flex-shrink: 0; }
+      .pill.ok { color: var(--ink-blue); border: 1px solid var(--ink-blue-deep); }
+      .pill.soon { color: var(--fg-subtle); border: 1px solid var(--line-strong); }
+
+      /* ---- CTA ---- */
+      .cta { padding: 7rem 0; position: relative; overflow: hidden; }
+      .cta-in { position: relative; z-index: 1; }
+      .cta h2 { font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; max-width: 18ch; }
+      .cta p { color: var(--fg-muted); margin-top: 1.25rem; max-width: 34rem; }
+      .cta-act { margin-top: 2.25rem; display: flex; gap: 1.75rem; align-items: center; flex-wrap: wrap; }
+
+      /* ---- Footer ---- */
+      footer { border-top: 1px solid var(--line); padding: 2.5rem 0; }
+      .foot { display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: center; justify-content: space-between; }
+      .foot-links { display: flex; flex-wrap: wrap; gap: 1.4rem; font-size: 0.85rem; }
+      .foot-copy { font-family: var(--mono); font-size: 0.72rem; color: var(--fg-subtle); }
+
+      /* ---- Reveal ---- */
+      .reveal { opacity: 0; transform: translateY(14px); }
+      .reveal.in {
+        opacity: 1; transform: none;
+        transition: opacity 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+      }
+
+      /* ---- Responsive ---- */
+      @media (max-width: 880px) {
+        .app-grid { grid-template-columns: 1fr; }
+        .agent-grid { grid-template-columns: 1fr; gap: 2rem; }
+        .nav-links .hide-sm { display: none; }
+      }
+      @media (max-width: 560px) {
+        .hero { padding: 8rem 0 4rem; }
+        .princ-row { grid-template-columns: 2.5rem 1fr; gap: 1rem; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal { opacity: 1; transform: none; transition: none; }
+        html { scroll-behavior: auto; }
+        .arrow span, .btn-primary span { transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- Nav -->
+    <nav class="nav" id="nav">
+      <div class="nav-in">
+        <a href="/" class="wordmark" aria-label="Takos Office">
+          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="tg-ink" x1="24" y1="4" x2="24" y2="44" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#fafafa" /><stop offset="1" stop-color="#ef4444" />
+              </linearGradient>
+            </defs>
+            <path d="M24 4 C18 16, 8 22, 8 31 C8 39, 15 44, 24 44 C33 44, 40 39, 40 31 C40 22, 30 16, 24 4 Z" fill="url(#tg-ink)" />
+            <path d="M30 30 a6 6 0 1 1 -10 -3 a4 4 0 1 1 7 1.5" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          Takos Office
+        </a>
+        <div class="nav-links">
+          <a href="#apps" class="link hide-sm">アプリ</a>
+          <a href="#why" class="link hide-sm">考え方</a>
+          <a href="#roadmap" class="link hide-sm">ロードマップ</a>
+          <a href="https://github.com/tako0614" class="link">GitHub</a>
+          <a href="#start" class="arrow">はじめる <span>→</span></a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <header class="hero">
+      <div class="ink" style="top:-4rem; right:-3rem; width:30rem; height:30rem;" aria-hidden="true">
+        <svg viewBox="0 0 600 600" fill="none">
+          <path d="M300 90 C380 120 440 160 450 250 C460 340 410 410 320 440 C230 470 140 430 120 340 C100 250 150 160 220 120 C250 104 275 96 300 90 Z" fill="#2563eb"/>
+          <circle cx="470" cy="150" r="26" fill="#3b82f6"/>
+          <circle cx="120" cy="430" r="18" fill="#3b82f6"/>
+          <path d="M500 300 l24 10 -14 22 z" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <div class="ink" style="bottom:-6rem; left:-4rem; width:24rem; height:24rem;" aria-hidden="true">
+        <svg viewBox="0 0 600 600" fill="none">
+          <path d="M300 120 C360 130 410 180 410 250 C410 330 360 400 290 410 C210 420 160 360 165 280 C170 200 230 130 300 120 Z" fill="#dc2626"/>
+          <circle cx="150" cy="200" r="20" fill="#ff3b3b"/>
+          <circle cx="430" cy="380" r="14" fill="#ff3b3b"/>
+        </svg>
+      </div>
+      <div class="container hero-in">
+        <span class="eyebrow">Self-hosted · Agent-native office suite</span>
+        <h1>オフィスごと、<br><span class="grad-text">自分のものに。</span></h1>
+        <p class="lede">文書・プレゼン・表計算が、あなたの Workspace の中で動く。サブスクも、誰かのサーバーもいらない。AI エージェントが、あなたの代わりに書く。</p>
+        <div class="hero-act">
+          <a href="#start" class="btn-primary">はじめる <span>→</span></a>
+          <a href="#apps" class="link">アプリを見る</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Apps -->
+    <section class="apps" id="apps">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow">3つのアプリ</span>
+          <h2>使い慣れた道具が、<br>自分の手の中で。</h2>
+          <p>Google Workspace や Microsoft 365 でやっていたことを、自分の Workspace の中で。すべて 1st-party の Capsule app として動く。</p>
+        </div>
+        <div class="app-grid">
+
+          <!-- Docs -->
+          <article class="app-card reveal">
+            <div class="app-mock">
+              <div class="mk-doc-tb"><i></i><i></i><i></i><i></i></div>
+              <div class="mk-doc-title"></div>
+              <div class="mk-line w90"></div>
+              <div class="mk-line w75"></div>
+              <div class="mk-line w80"></div>
+              <div class="mk-line w60"></div>
+            </div>
+            <div class="app-body">
+              <h3>Docs <span class="app-tag">docs</span></h3>
+              <p>Tiptap ベースのリッチテキストエディタ。ノートも長文も、自分の space の中で書く。エージェントからの編集にも対応。</p>
+            </div>
+          </article>
+
+          <!-- Slide -->
+          <article class="app-card reveal">
+            <div class="app-mock">
+              <div class="mk-slide-canvas">
+                <div class="mk-slide-accent"></div>
+                <div class="mk-slide-title"></div>
+                <div class="mk-slide-bullet"></div>
+                <div class="mk-slide-bullet short"></div>
+              </div>
+              <div class="mk-slide-strip">
+                <div class="mk-slide-thumb active"></div>
+                <div class="mk-slide-thumb"></div>
+                <div class="mk-slide-thumb"></div>
+                <div class="mk-slide-thumb"></div>
+              </div>
+            </div>
+            <div class="app-body">
+              <h3>Slide <span class="app-tag">slides</span></h3>
+              <p>プレゼンテーション作成。Keynote / Google Slides の代替を、自分の space の中で。Canvas ベースで自由に組める。</p>
+            </div>
+          </article>
+
+          <!-- Excel -->
+          <article class="app-card reveal">
+            <div class="app-mock">
+              <div class="mk-grid">
+                <div class="hd"></div><div class="hd">A</div><div class="hd">B</div><div class="hd">C</div><div class="hd">D</div>
+                <div class="rh">1</div><div class="val">売上</div><div>Q1</div><div>Q2</div><div>Q3</div>
+                <div class="rh">2</div><div>東京</div><div>120</div><div>148</div><div class="sel">163</div>
+                <div class="rh">3</div><div>大阪</div><div>98</div><div>110</div><div>125</div>
+                <div class="rh">4</div><div class="val">合計</div><div>218</div><div>258</div><div>288</div>
+              </div>
+            </div>
+            <div class="app-body">
+              <h3>Excel <span class="app-tag">sheets</span></h3>
+              <p>スプレッドシート / 表計算。HyperFormula で 400 以上の Excel 互換関数。バーチャルスクロールで大きな表も軽快に。</p>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="hairline"></div></div>
+
+    <!-- Why / Principles -->
+    <section class="why" id="why">
+      <div class="container">
+        <div class="section-head reveal"><span class="eyebrow">考え方</span></div>
+        <div class="princ-row reveal">
+          <span class="princ-n">01</span>
+          <div>
+            <h3>自分の Workspace で動く。</h3>
+            <p>ドキュメントもデータも、あなたのインフラの中。誰かのクラウドに預けるのではなく、自分の space の中で生まれて、自分の space の中に残る。</p>
+          </div>
+        </div>
+        <div class="princ-row reveal">
+          <span class="princ-n">02</span>
+          <div>
+            <h3>エージェントが、書く。</h3>
+            <p>すべてのアプリが MCP を話す。AI エージェントがあなたの文書・スライド・シートを直接読み書きできる。「議事録をまとめて」「この表をグラフ用に整えて」が、そのまま動く。</p>
+          </div>
+        </div>
+        <div class="princ-row reveal">
+          <span class="princ-n">03</span>
+          <div>
+            <h3>サブスクではなく、Capsule。</h3>
+            <p>席数ライセンスも、月額もない。OpenTofu Capsule として自分のインフラに install するだけ。使わなくなったアプリは、いつでも uninstall できる。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="hairline"></div></div>
+
+    <!-- Agent-native -->
+    <section class="agent">
+      <div class="ink" style="top:2rem; right:-5rem; width:22rem; height:22rem; opacity:0.4;" aria-hidden="true">
+        <svg viewBox="0 0 600 600" fill="none">
+          <path d="M300 130 C355 140 400 185 400 250 C400 320 355 390 290 395 C220 400 175 345 180 275 C185 205 240 140 300 130 Z" fill="#2563eb"/>
+          <circle cx="160" cy="350" r="16" fill="#3b82f6"/>
+          <circle cx="420" cy="180" r="12" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <div class="container">
+        <div class="agent-grid">
+          <div class="agent-text reveal">
+            <span class="eyebrow" style="display:block; margin-bottom:1rem;">Agent-native</span>
+            <h2>あなたの代わりに、<br>道具を動かす。</h2>
+            <p>Takos Office の各アプリは MCP サーバーを公開している。Claude のような MCP 対応エージェントが、あなたのドキュメントを直接編集できる。</p>
+            <p>「先週のメモから提案書のスライドを作って」と頼めば、エージェントが slide を開いて組み立てる。コピペも、アプリの切り替えもいらない。</p>
+            <p class="mono-note">docs · slide · excel — すべて /mcp endpoint を持つ</p>
+          </div>
+          <div class="codeblock reveal">
+            <div class="code-bar"><i></i><i></i><i></i><span>agent → takos-slide /mcp</span></div>
+            <div class="code-body"><span class="c"># エージェントが MCP ツールを呼ぶ</span>
+<span class="k">tool</span>: <span class="p">slide.create_deck</span>
+<span class="k">args</span>:
+  <span class="p">title</span>: <span class="s">"Q3 提案書"</span>
+  <span class="p">from</span>:  <span class="s">"docs://notes/last-week"</span>
+  <span class="p">slides</span>: <span class="p">8</span>
+
+<span class="c"># → あなたの Workspace の中で</span>
+<span class="c"># → スライドが組み上がる</span>
+<span class="k">result</span>: <span class="s">"deck_3f9a"</span> <span class="p">created</span> ✓</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="hairline"></div></div>
+
+    <!-- Roadmap -->
+    <section class="roadmap" id="roadmap">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow">ロードマップ</span>
+          <h2>オフィスは、これから広がる。</h2>
+          <p>核となる3つのアプリを起点に、Workspace の中で完結する道具を増やしていく。どれも独立した Capsule で、好きなものだけ入れられる。</p>
+        </div>
+
+        <div class="road-group reveal">
+          <div class="road-label">Available — 今すぐ使える</div>
+          <div class="road-items">
+            <div class="road-card"><h4>Docs <code>takos-docs</code></h4><p>文書 / ノート</p></div>
+            <div class="road-card"><h4>Slide <code>takos-slide</code></h4><p>プレゼンテーション</p></div>
+            <div class="road-card"><h4>Excel <code>takos-excel</code></h4><p>スプレッドシート / 表計算</p></div>
+          </div>
+        </div>
+
+        <div class="road-group reveal">
+          <div class="road-label">Planned — 計画中</div>
+          <div class="road-items">
+            <div class="road-card planned"><h4>Calendar <span class="pill soon">Planned</span></h4><p>スケジュール / イベント管理</p></div>
+            <div class="road-card planned"><h4>Mail <span class="pill soon">Planned</span></h4><p>自分のメールボックスの上で動くクライアント</p></div>
+            <div class="road-card planned"><h4>Form <span class="pill soon">Planned</span></h4><p>フォーム / アンケート、結果はシートへ</p></div>
+            <div class="road-card planned"><h4>Base <span class="pill soon">Exploring</span></h4><p>軽量データベース / 構造化テーブル</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="hairline"></div></div>
+
+    <!-- CTA -->
+    <section class="cta" id="start">
+      <div class="ink" style="bottom:-5rem; right:-3rem; width:26rem; height:26rem; opacity:0.45;" aria-hidden="true">
+        <svg viewBox="0 0 600 600" fill="none">
+          <path d="M300 110 C370 125 420 180 420 255 C420 340 365 405 290 410 C210 415 165 350 170 270 C175 190 235 120 300 110 Z" fill="#dc2626"/>
+          <circle cx="160" cy="180" r="22" fill="#ff3b3b"/>
+          <circle cx="440" cy="350" r="14" fill="#ff3b3b"/>
+          <path d="M120 320 l22 8 -12 20 z" fill="#ff3b3b"/>
+        </svg>
+      </div>
+      <div class="container cta-in">
+        <h2>オフィスを、<br>自分のインフラに。</h2>
+        <p>Takos の新しい Workspace を作れば、Docs・Slide・Excel が最初から入っている。必要なものだけ残して、自分のオフィスにする。</p>
+        <div class="cta-act">
+          <a href="https://takos.jp" class="btn-primary">Takos をはじめる <span>→</span></a>
+          <a href="https://github.com/tako0614" class="link" rel="noopener">GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container foot">
+        <a href="/" class="wordmark" aria-label="Takos Office">
+          <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+            <path d="M24 4 C18 16, 8 22, 8 31 C8 39, 15 44, 24 44 C33 44, 40 39, 40 31 C40 22, 30 16, 24 4 Z" fill="url(#tg-ink)" />
+            <path d="M30 30 a6 6 0 1 1 -10 -3 a4 4 0 1 1 7 1.5" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          Takos Office
+        </a>
+        <div class="foot-links">
+          <a href="#apps" class="link">アプリ</a>
+          <a href="#roadmap" class="link">ロードマップ</a>
+          <a href="https://takos.jp" class="link">Takos</a>
+          <a href="https://github.com/tako0614" class="link">GitHub</a>
+        </div>
+        <span class="foot-copy">© 2026 分散通信基盤株式会社 · AGPL v3</span>
+      </div>
+    </footer>
+
+    <script>
+      const nav = document.getElementById("nav");
+      const onScroll = () => nav.classList.toggle("scrolled", window.scrollY > 8);
+      onScroll();
+      window.addEventListener("scroll", onScroll, { passive: true });
+
+      const io = new IntersectionObserver(
+        (es) => es.forEach((e) => e.isIntersecting && e.target.classList.add("in")),
+        { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+      );
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    </script>
+  </body>
+</html>

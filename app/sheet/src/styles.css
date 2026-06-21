@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #171717;
+  color: #e5e5e5;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #262626;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #525252;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #737373;
+}
+
+::-webkit-scrollbar-corner {
+  background: #262626;
+}
+
+/* Cell selection */
+.cell-selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+  z-index: 10;
+}
+
+.cell-in-range {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Grid lines */
+.grid-cell {
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+}
+
+/* Context menu */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: #262626;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.context-menu-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.context-menu-item:hover {
+  background: #374151;
+}

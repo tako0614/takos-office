@@ -1,0 +1,42 @@
+{
+  "name": "takos-office",
+  "version": "0.1.0",
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build:docs": "cd app/docs && bunx vite build",
+    "build:slide": "cd app/slide && bunx vite build",
+    "build:sheet": "cd app/sheet && bunx vite build",
+    "build:spa": "bun run build:docs && bun run build:slide && bun run build:sheet",
+    "build:worker": "bun run app/build-worker.ts",
+    "build": "bun run build:spa && bun run build:worker",
+    "start": "bun run app/server.ts",
+    "mcp": "bun run app/server.ts",
+    "test": "bun test app/docs/src/__tests__ app/slide/src/__tests__ app/sheet/src/__tests__",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@solidjs/router": "^0.15.1",
+    "canvas": "^3.1.0",
+    "hono": "^4.12.9",
+    "hyperformula": "^2.7.0",
+    "jspdf": "^2.5.0",
+    "lucide-solid": "^0.554.0",
+    "marked": "^15.0.3",
+    "solid-js": "^1.9.3",
+    "yaml": "^2.8.2",
+    "zod": "^3.25.32"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/bun": "^1.3.14",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.12",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.7.0",
+    "vite": "^6.4.0",
+    "vite-plugin-solid": "^2.11.0"
+  }
+}

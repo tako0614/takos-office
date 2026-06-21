@@ -1,0 +1,276 @@
+import { Hono } from "hono";
+import type { Context } from "hono";
+import { SpreadsheetStore } from "./spreadsheet-store.ts";
+import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import type { Spreadsheet } from "./types/index.ts";
+import {
+  appAuthMisconfigured,
+  registerAuthRoutes,
+  requireAppAuth,
+} from "../../shared/app-auth.ts";
+import { createExcelRuntimeCapabilityManifest } from "./runtime-capabilities.ts";
+import {
+  createMcpRequestHandler,
+  MAX_MCP_REQUEST_BYTES,
+  mcpAuthMisconfigured,
+} from "../../shared/mcp-factory.ts";
+import { createMcpServer } from "./mcp.ts";
+
+export const EXCEL_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
+
+export type ExcelRuntimeEnv = Record<string, string | undefined>;
+
+type ProcessLike = {
+  env?: Record<string, string | undefined>;
+};
+
+type BunLike = {
+  serve(options: {
+    port: number;
+    fetch: (request: Request) => Response | Promise<Response>;
+  }): unknown;
+};
+
+function processLike(): ProcessLike | undefined {
+  return (globalThis as { process?: ProcessLike }).process;
+}
+
+function bunLike(): BunLike {
+  const bun = (globalThis as { Bun?: BunLike }).Bun;
+  if (!bun) throw new Error("Bun runtime is required to start takos-excel");
+  return bun;
+}
+
+function isBunRuntime(): boolean {
+  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+}
+
+function runtimeEnv(): ExcelRuntimeEnv {
+  return { ...(processLike()?.env ?? {}) };
+}
+
+function envValue(env: ExcelRuntimeEnv, name: string): string | undefined {
+  const value = env[name];
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+function requiredEnv(env: ExcelRuntimeEnv, name: string): string {
+  const value = envValue(env, name);
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function nativeRenderingEnabled(env: ExcelRuntimeEnv): boolean {
+  const value = envValue(env, "TAKOS_NATIVE_RENDERING");
+  if (value) return ["1", "true", "yes"].includes(value.toLowerCase());
+  return isBunRuntime();
+}
+
+function envFlagEnabled(env: ExcelRuntimeEnv, name: string): boolean {
+  const value = envValue(env, name);
+  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
+}
+
+export function createServerApp(
+  store: SpreadsheetStore | null,
+  options: {
+    env?: ExcelRuntimeEnv;
+    nativeRendering?: boolean;
+    mcpAuthToken?: string;
+    mcpAllowUnauthenticated?: boolean;
+    storeForRequest?: (c: Context) => SpreadsheetStore | Response;
+    requestSpaceId?: (c: Context) => string | null;
+  } = {},
+) {
+  const app = new Hono();
+  const runtimeEnvValue = options.env ?? runtimeEnv();
+  const mcpAuthToken = options.mcpAuthToken;
+  const mcpAllowUnauthenticated = options.mcpAllowUnauthenticated === true;
+  const defaultSpaceIdFromEnv = envValue(runtimeEnvValue, "TAKOS_SPACE_ID") ??
+    null;
+  const resolveSpaceId = (c: Context): string | null => {
+    if (options.requestSpaceId) return options.requestSpaceId(c);
+    return envValue(
+      {
+        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
+          defaultSpaceIdFromEnv ?? undefined,
+      },
+      "value",
+    ) ?? null;
+  };
+  const currentStore = (c: Context): SpreadsheetStore | Response => {
+    if (options.storeForRequest) return options.storeForRequest(c);
+    if (!store) return c.json({ error: "space_id is required" }, 400);
+    return store;
+  };
+
+  const health = (c: Context) => {
+    const authError = appAuthMisconfigured(runtimeEnvValue);
+    if (authError) return authError;
+    const mcpAuthError = mcpAuthMisconfigured(
+      mcpAuthToken,
+      mcpAllowUnauthenticated,
+    );
+    if (mcpAuthError) return mcpAuthError;
+    return c.json({ status: "ok" });
+  };
+  app.get("/health", health);
+  app.get("/healthz", health);
+
+  registerAuthRoutes(app, runtimeEnvValue);
+  app.use("/api/spreadsheets", async (c, next) => {
+    const unauthorized = await requireAppAuth(runtimeEnvValue, c.req.raw, {
+      spaceId: resolveSpaceId(c),
+    });
+    if (unauthorized) return unauthorized;
+    await next();
+  });
+  app.use("/api/spreadsheets/*", async (c, next) => {
+    const unauthorized = await requireAppAuth(runtimeEnvValue, c.req.raw, {
+      spaceId: resolveSpaceId(c),
+    });
+    if (unauthorized) return unauthorized;
+    await next();
+  });
+  app.get("/api/spreadsheets", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    const summaries = await store.listSpreadsheets();
+    const settled = await Promise.allSettled(
+      summaries.map((entry) => store.getSpreadsheet(entry.id)),
+    );
+    const spreadsheets = settled
+      .filter((r): r is PromiseFulfilledResult<Spreadsheet> =>
+        r.status === "fulfilled"
+      )
+      .map((r) => r.value);
+    return c.json(spreadsheets);
+  });
+  app.post("/api/spreadsheets", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    const body = await c.req.json<Partial<Spreadsheet>>();
+    if (body.id && body.title && body.sheets && body.activeSheetId) {
+      return c.json(await store.replaceSpreadsheet(body as Spreadsheet), 201);
+    }
+    const id = await store.createSpreadsheet(
+      body.title || "Untitled Spreadsheet",
+    );
+    return c.json(await store.getSpreadsheet(id), 201);
+  });
+  app.get("/api/spreadsheets/:id", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    try {
+      return c.json(await store.getSpreadsheet(c.req.param("id")));
+    } catch {
+      return c.json({ error: "Spreadsheet not found" }, 404);
+    }
+  });
+  app.put("/api/spreadsheets/:id", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    const body = await c.req.json<Spreadsheet>();
+    const id = c.req.param("id");
+    let current: Spreadsheet | undefined;
+    try {
+      current = await store.getSpreadsheet(id);
+    } catch {
+      current = undefined;
+    }
+    return c.json(
+      await store.replaceSpreadsheet({
+        ...body,
+        id: current?.id ?? body.id ?? id,
+      }),
+    );
+  });
+  app.delete("/api/spreadsheets/:id", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    try {
+      await store.deleteSpreadsheet(c.req.param("id"));
+      return c.json({ deleted: true });
+    } catch {
+      return c.json({ deleted: false });
+    }
+  });
+
+  app.get("/files/:id", (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = `/sheet/${encodeURIComponent(c.req.param("id"))}`;
+    return c.redirect(`${url.pathname}${url.search}`, 302);
+  });
+
+  app.all("/mcp", (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    const handler = createMcpRequestHandler(
+      () =>
+        createMcpServer(store, {
+          runtimeCapabilities: createExcelRuntimeCapabilityManifest({
+            nativeRendering: options.nativeRendering,
+          }),
+        }),
+      {
+        authToken: mcpAuthToken,
+        allowUnauthenticated: mcpAllowUnauthenticated,
+      },
+    );
+    return handler(c.req.raw);
+  });
+
+  return app;
+}
+
+export function createExcelAppFromEnv(env: ExcelRuntimeEnv = runtimeEnv()) {
+  const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
+    envValue(env, "TAKOS_API_URL") ||
+    "http://localhost:8787";
+  const token = envValue(env, "TAKOS_STORAGE_ACCESS_TOKEN") ||
+    requiredEnv(env, "TAKOS_ACCESS_TOKEN");
+  const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const stores = new Map<string, SpreadsheetStore>();
+  const storeForSpace = (spaceId: string): SpreadsheetStore => {
+    let store = stores.get(spaceId);
+    if (!store) {
+      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      store = new SpreadsheetStore(client);
+      stores.set(spaceId, store);
+    }
+    return store;
+  };
+  const requestSpaceId = (c: Context): string | null =>
+    envValue(
+      {
+        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
+          defaultSpaceId,
+      },
+      "value",
+    ) ?? null;
+  const defaultStore = defaultSpaceId ? storeForSpace(defaultSpaceId) : null;
+  return createServerApp(defaultStore, {
+    env,
+    nativeRendering: nativeRenderingEnabled(env),
+    mcpAuthToken: envValue(env, "MCP_AUTH_TOKEN"),
+    mcpAllowUnauthenticated: envFlagEnabled(
+      env,
+      "MCP_ALLOW_UNAUTHENTICATED",
+    ),
+    requestSpaceId,
+    storeForRequest: (c) => {
+      const spaceId = requestSpaceId(c);
+      if (!spaceId) return c.json({ error: "space_id is required" }, 400);
+      return storeForSpace(spaceId);
+    },
+  });
+}
+
+function main() {
+  const env = runtimeEnv();
+  const app = createExcelAppFromEnv(env);
+  const port = Number(envValue(env, "PORT") ?? "8787");
+  bunLike().serve({ port, fetch: (request) => app.fetch(request) });
+}
+
+if (import.meta.main) main();
