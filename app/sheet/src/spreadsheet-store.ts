@@ -26,11 +26,9 @@ import {
   parseCellAddress,
 } from "./lib/cell-utils.ts";
 import {
+  evaluateFormula,
   evaluateSheet,
-  formatHfResult,
-  getEngine,
   setCellValue,
-  syncSheetToEngine,
 } from "./lib/formula.ts";
 import { parseCsv } from "./lib/csv-parser.ts";
 import type { TakosStorageClient } from "../../shared/lib/takos-storage.ts";
@@ -343,7 +341,7 @@ export class SpreadsheetStore {
     value: string,
   ): Promise<void> {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
-    sheet.cells = setCellValue(sheet, cell, value);
+    sheet.cells = setCellValue(sheet, cell, value, ss.sheets);
     this.touch(ss);
     await this.persist(spreadsheetId);
   }
@@ -387,7 +385,7 @@ export class SpreadsheetStore {
         };
       }
     }
-    sheet.cells = evaluateSheet(sheet);
+    sheet.cells = evaluateSheet(sheet, ss.sheets);
     this.touch(ss);
     await this.persist(spreadsheetId);
   }
@@ -405,7 +403,7 @@ export class SpreadsheetStore {
         delete sheet.cells[addr];
       }
     }
-    sheet.cells = evaluateSheet(sheet);
+    sheet.cells = evaluateSheet(sheet, ss.sheets);
     this.touch(ss);
     await this.persist(spreadsheetId);
   }
@@ -459,20 +457,10 @@ export class SpreadsheetStore {
     sheetId: string,
     formula: string,
   ): Promise<string> {
-    const { sheet } = await this.getSheet(spreadsheetId, sheetId);
-    const hf = getEngine();
-    const hfSheetId = syncSheetToEngine(sheet);
-
-    try {
-      // Evaluate the formula in the sheet's context without writing a scratch
-      // cell, so whole-column refs like =SUM(A:A) can't self-include a scratch
-      // row and we never exceed the sheet bounds.
-      const normalized = formula.startsWith("=") ? formula : `=${formula}`;
-      const result = hf.calculateFormula(normalized, hfSheetId);
-      return formatHfResult(result);
-    } catch {
-      return "#ERROR!";
-    }
+    const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    // Evaluate in the sheet's context with the whole workbook loaded, so
+    // cross-sheet refs resolve and no scratch cell is written.
+    return evaluateFormula(formula, sheet, ss.sheets);
   }
 
   async getComputed(
@@ -480,8 +468,8 @@ export class SpreadsheetStore {
     sheetId: string,
     range: string,
   ): Promise<string[][]> {
-    const { sheet } = await this.getSheet(spreadsheetId, sheetId);
-    const cells = evaluateSheet(sheet);
+    const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    const cells = evaluateSheet(sheet, ss.sheets);
     const { startCol, startRow, endCol, endRow } = parseRange(range);
     const result: string[][] = [];
     for (let r = startRow; r <= endRow; r++) {
@@ -549,8 +537,8 @@ export class SpreadsheetStore {
   // -----------------------------------------------------------------------
 
   async exportCsv(spreadsheetId: string, sheetId: string): Promise<string> {
-    const { sheet } = await this.getSheet(spreadsheetId, sheetId);
-    const cells = evaluateSheet(sheet);
+    const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    const cells = evaluateSheet(sheet, ss.sheets);
 
     let maxRow = 0;
     let maxCol = 0;
@@ -620,7 +608,7 @@ export class SpreadsheetStore {
       }
     }
 
-    sheet.cells = evaluateSheet(sheet);
+    sheet.cells = evaluateSheet(sheet, ss.sheets);
     this.touch(ss);
     await this.persist(spreadsheetId);
   }

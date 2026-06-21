@@ -54,6 +54,25 @@ test("formula errors surface the real Excel token, not a generic #ERROR!", () =>
   expect(cells["A1"].computed).toBe("#DIV/0!");
 });
 
+test("cross-sheet references resolve when the workbook is passed", () => {
+  const sheet1: Sheet = {
+    id: "s1",
+    name: "Sheet1",
+    cells: { A1: { value: "=Sheet2!A1+1" } },
+    colWidths: {},
+    rowHeights: {},
+  };
+  const sheet2: Sheet = {
+    id: "s2",
+    name: "Sheet2",
+    cells: { A1: { value: "41" } },
+    colWidths: {},
+    rowHeights: {},
+  };
+  const cells = evaluateSheet(sheet1, [sheet1, sheet2]);
+  expect(cells["A1"].computed).toBe("42");
+});
+
 test("formatHfResult handles primitives, booleans and error objects", () => {
   expect(formatHfResult(null)).toBe("");
   expect(formatHfResult(42)).toBe("42");

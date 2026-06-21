@@ -2,20 +2,6 @@ import { HyperFormula } from "hyperformula";
 import type { CellData, Sheet } from "../types/index.ts";
 import { columnToLetter, parseCellAddress } from "./cell-utils.ts";
 
-let hfInstance: HyperFormula | null = null;
-
-/**
- * Get or create the HyperFormula engine instance
- */
-export function getEngine(): HyperFormula {
-  if (!hfInstance) {
-    hfInstance = HyperFormula.buildEmpty({
-      licenseKey: "gpl-v3",
-    });
-  }
-  return hfInstance;
-}
-
 /**
  * Whether a raw cell string is an unambiguous, canonical number that is safe to
  * coerce to a JS number without losing information. This deliberately rejects
@@ -50,26 +36,11 @@ export function formatHfResult(result: unknown): string {
   return String(result);
 }
 
-/**
- * Sync a Sheet's cells into HyperFormula for evaluation
- */
-export function syncSheetToEngine(sheet: Sheet): number {
-  const hf = getEngine();
+const MAX_ENGINE_ROWS = 1000;
+const MAX_ENGINE_COLS = 100;
 
-  // Remove all existing sheets
-  const sheetNames = hf.getSheetNames();
-  for (const name of sheetNames) {
-    const id = hf.getSheetId(name);
-    if (id !== undefined) {
-      hf.removeSheet(id);
-    }
-  }
-
-  // Build a 2D array from cells
-  const maxRow = 1000;
-  const maxCol = 100;
-
-  // Find the actual bounds of data
+/** Build the dense 2D value array HyperFormula expects from a sheet's cells. */
+function buildSheetData(sheet: Sheet): (string | number | null)[][] {
   let dataMaxRow = 0;
   let dataMaxCol = 0;
   for (const addr of Object.keys(sheet.cells)) {
@@ -82,49 +53,75 @@ export function syncSheetToEngine(sheet: Sheet): number {
     }
   }
 
-  // Create sheet data (at least 1x1)
-  const rows = Math.min(Math.max(dataMaxRow + 1, 1), maxRow);
-  const cols = Math.min(Math.max(dataMaxCol + 1, 1), maxCol);
+  const rows = Math.min(Math.max(dataMaxRow + 1, 1), MAX_ENGINE_ROWS);
+  const cols = Math.min(Math.max(dataMaxCol + 1, 1), MAX_ENGINE_COLS);
   const data: (string | number | null)[][] = [];
-
   for (let r = 0; r < rows; r++) {
     const row: (string | number | null)[] = [];
     for (let c = 0; c < cols; c++) {
-      const addr = `${columnToLetter(c)}${r + 1}`;
-      const cell = sheet.cells[addr];
+      const cell = sheet.cells[`${columnToLetter(c)}${r + 1}`];
       if (cell) {
         const v = cell.value;
-        if (v.startsWith("=")) {
-          row.push(v);
-        } else if (looksNumeric(v)) {
-          row.push(Number(v));
-        } else {
-          row.push(v || null);
-        }
+        if (v.startsWith("=")) row.push(v);
+        else if (looksNumeric(v)) row.push(Number(v));
+        else row.push(v || null);
       } else {
         row.push(null);
       }
     }
     data.push(row);
   }
-
-  const sheetName = hf.addSheet(sheet.name);
-  const sheetId = hf.getSheetId(sheetName);
-  if (sheetId === undefined) {
-    throw new Error(`Failed to create HyperFormula sheet: ${sheet.name}`);
-  }
-  hf.setSheetContent(sheetId, data);
-  return sheetId;
+  return data;
 }
 
 /**
- * Evaluate all formulas in a sheet, returning updated cells
+ * Build a fresh HyperFormula engine containing every sheet of the workbook,
+ * named to match the tabs so cross-sheet references like `=Sheet2!A1` resolve.
+ *
+ * A fresh instance per evaluation (rather than a shared module-global) also
+ * means concurrent evaluations of different workbooks can't race on one engine.
+ * Returns the engine and a map from each `Sheet.id` to its HyperFormula id.
+ */
+function buildEngine(sheets: Sheet[]): {
+  hf: HyperFormula;
+  idBySheetId: Map<string, number>;
+} {
+  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+  const idBySheetId = new Map<string, number>();
+  const usedNames = new Set<string>();
+
+  // Create every sheet first so cross-sheet references (`=Sheet2!A1`) resolve
+  // before any sheet's formulas are loaded, then fill content in a second pass.
+  for (const sheet of sheets) {
+    // HyperFormula sheet names must be unique; fall back to the id on collision.
+    let name = sheet.name;
+    if (usedNames.has(name)) name = `${sheet.name}__${sheet.id}`;
+    usedNames.add(name);
+    const actual = hf.addSheet(name);
+    const hfId = hf.getSheetId(actual);
+    if (hfId !== undefined) idBySheetId.set(sheet.id, hfId);
+  }
+  for (const sheet of sheets) {
+    const hfId = idBySheetId.get(sheet.id);
+    if (hfId !== undefined) hf.setSheetContent(hfId, buildSheetData(sheet));
+  }
+  return { hf, idBySheetId };
+}
+
+/**
+ * Evaluate every formula in `sheet`, returning updated cells. Pass the whole
+ * workbook as `allSheets` so cross-sheet references resolve; defaults to the
+ * single sheet for callers that don't have the workbook.
  */
 export function evaluateSheet(
   sheet: Sheet,
+  allSheets: Sheet[] = [sheet],
 ): Record<string, CellData> {
-  const hf = getEngine();
-  const sheetId = syncSheetToEngine(sheet);
+  const sheets = allSheets.some((s) => s.id === sheet.id)
+    ? allSheets
+    : [...allSheets, sheet];
+  const { hf, idBySheetId } = buildEngine(sheets);
+  const sheetId = idBySheetId.get(sheet.id) ?? 0;
   const updatedCells: Record<string, CellData> = { ...sheet.cells };
 
   for (
@@ -144,11 +141,7 @@ export function evaluateSheet(
 
     try {
       const { col, row } = parseCellAddress(addr);
-      const result = hf.getCellValue({
-        sheet: sheetId,
-        row,
-        col,
-      });
+      const result = hf.getCellValue({ sheet: sheetId, row, col });
       updatedCells[addr] = { ...cell, computed: formatHfResult(result) };
     } catch {
       updatedCells[addr] = { ...cell, computed: "#ERROR!" };
@@ -159,12 +152,36 @@ export function evaluateSheet(
 }
 
 /**
- * Set a cell value and re-evaluate
+ * Evaluate a one-off formula in the context of a sheet, with the whole workbook
+ * loaded so cross-sheet refs resolve. Does not write a scratch cell.
+ */
+export function evaluateFormula(
+  formula: string,
+  contextSheet: Sheet,
+  allSheets: Sheet[] = [contextSheet],
+): string {
+  const sheets = allSheets.some((s) => s.id === contextSheet.id)
+    ? allSheets
+    : [...allSheets, contextSheet];
+  const { hf, idBySheetId } = buildEngine(sheets);
+  const sheetId = idBySheetId.get(contextSheet.id) ?? 0;
+  try {
+    const normalized = formula.startsWith("=") ? formula : `=${formula}`;
+    return formatHfResult(hf.calculateFormula(normalized, sheetId));
+  } catch {
+    return "#ERROR!";
+  }
+}
+
+/**
+ * Set a cell value and re-evaluate. Pass the workbook as `allSheets` so
+ * cross-sheet references resolve during the re-evaluation.
  */
 export function setCellValue(
   sheet: Sheet,
   address: string,
   value: string,
+  allSheets?: Sheet[],
 ): Record<string, CellData> {
   const updatedCells = { ...sheet.cells };
   const existing = updatedCells[address];
@@ -175,7 +192,10 @@ export function setCellValue(
   };
 
   const updatedSheet = { ...sheet, cells: updatedCells };
-  return evaluateSheet(updatedSheet);
+  const siblings = allSheets
+    ? allSheets.map((s) => (s.id === sheet.id ? updatedSheet : s))
+    : [updatedSheet];
+  return evaluateSheet(updatedSheet, siblings);
 }
 
 /**
