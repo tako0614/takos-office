@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
 
 let exportPresentationToPdf:
-  | ((presentation: Presentation) => Uint8Array)
+  | ((presentation: Presentation) => Promise<Uint8Array>)
   | null = null;
 let pdfExporterImportError: unknown;
 
@@ -14,7 +14,9 @@ try {
   pdfExporterImportError = error;
 }
 
-function requirePdfExporter(): (presentation: Presentation) => Uint8Array {
+function requirePdfExporter(): (
+  presentation: Presentation,
+) => Promise<Uint8Array> {
   if (!exportPresentationToPdf) {
     throw new Error("PDF exporter failed to load", {
       cause: pdfExporterImportError,
@@ -148,39 +150,39 @@ const PDF_MAGIC = new TextEncoder().encode("%PDF");
 // exportPresentationToPdf tests
 // ---------------------------------------------------------------------------
 
-test("exportPresentationToPdf returns Uint8Array starting with PDF magic bytes", () => {
+test("exportPresentationToPdf returns Uint8Array starting with PDF magic bytes", async () => {
   const exportPdf = requirePdfExporter();
   const pres = makePresentation([makeSlide([makeTextElement()])]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result instanceof Uint8Array).toBeTruthy();
   expect(result.length > 4).toBeTruthy();
   const header = result.slice(0, 4);
   expect([...header]).toEqual([...PDF_MAGIC]);
 });
 
-test("exportPresentationToPdf handles empty slide (no elements)", () => {
+test("exportPresentationToPdf handles empty slide (no elements)", async () => {
   const exportPdf = requirePdfExporter();
   const pres = makePresentation([makeSlide()]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
   const header = result.slice(0, 4);
   expect([...header]).toEqual([...PDF_MAGIC]);
 });
 
-test("exportPresentationToPdf handles multiple slides", () => {
+test("exportPresentationToPdf handles multiple slides", async () => {
   const exportPdf = requirePdfExporter();
   const pres = makePresentation([
     makeSlide([makeTextElement({ id: "e1", text: "Slide 1" })]),
     makeSlide([makeTextElement({ id: "e2", text: "Slide 2" })]),
     makeSlide([makeTextElement({ id: "e3", text: "Slide 3" })]),
   ]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
   const header = result.slice(0, 4);
   expect([...header]).toEqual([...PDF_MAGIC]);
 });
 
-test("exportPresentationToPdf handles shape element", () => {
+test("exportPresentationToPdf handles shape element", async () => {
   const exportPdf = requirePdfExporter();
   const shapeEl: SlideElement = {
     id: "shape-1",
@@ -196,11 +198,16 @@ test("exportPresentationToPdf handles shape element", () => {
     strokeWidth: 2,
   };
   const pres = makePresentation([makeSlide([shapeEl])]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
 });
 
-test("exportPresentationToPdf handles image placeholder element", () => {
+// A 1x1 transparent PNG as a data URL — embeds via doc.addImage with no
+// network access, exercising the real image path (not the placeholder).
+const TINY_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+test("exportPresentationToPdf embeds a data-URL image", async () => {
   const exportPdf = requirePdfExporter();
   const imgEl: SlideElement = {
     id: "img-1",
@@ -210,22 +217,24 @@ test("exportPresentationToPdf handles image placeholder element", () => {
     width: 200,
     height: 150,
     rotation: 0,
-    imageUrl: "https://example.com/image.png",
+    imageUrl: TINY_PNG_DATA_URL,
   };
   const pres = makePresentation([makeSlide([imgEl])]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
+  const header = result.slice(0, 4);
+  expect([...header]).toEqual([...PDF_MAGIC]);
 });
 
-test("exportPresentationToPdf handles bold italic text", () => {
+test("exportPresentationToPdf handles bold italic text", async () => {
   const exportPdf = requirePdfExporter();
   const el = makeTextElement({ bold: true, italic: true, text: "Bold Italic" });
   const pres = makePresentation([makeSlide([el])]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
 });
 
-test("exportPresentationToPdf handles colored background", () => {
+test("exportPresentationToPdf handles colored background", async () => {
   const exportPdf = requirePdfExporter();
   const slide: Slide = {
     id: "s1",
@@ -233,7 +242,7 @@ test("exportPresentationToPdf handles colored background", () => {
     background: "#1e3a5f",
   };
   const pres = makePresentation([slide]);
-  const result = exportPdf(pres);
+  const result = await exportPdf(pres);
   expect(result.length > 0).toBeTruthy();
   const header = result.slice(0, 4);
   expect([...header]).toEqual([...PDF_MAGIC]);

@@ -668,7 +668,7 @@ export function registerSlideTools(
         const { renderSlideToBuffer } = await import(
           rendererModule
         ) as typeof import("./lib/server-renderer.ts");
-        const buf = renderSlideToBuffer(slide, safeWidth, safeHeight);
+        const buf = await renderSlideToBuffer(slide, safeWidth, safeHeight);
         const base64 = bytesToBase64(buf);
         return {
           content: [

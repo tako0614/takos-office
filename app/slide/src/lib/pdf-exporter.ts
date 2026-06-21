@@ -7,6 +7,7 @@
 
 import { jsPDF } from "jspdf";
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
+import { loadImageForExport } from "./image-loader.ts";
 
 /** The canonical slide coordinate space. */
 const SLIDE_WIDTH = 960;
@@ -16,13 +17,17 @@ const SLIDE_HEIGHT = 540;
 const PAGE_W = 297; // A4 landscape width
 const PAGE_H = PAGE_W * (SLIDE_HEIGHT / SLIDE_WIDTH); // ~167mm
 
+/** Slide-element id -> embeddable image (only successfully loaded ones). */
+type PdfImageMap = Map<string, { dataUrl: string; format: string }>;
+
 /**
- * Export a full presentation to a PDF document.
+ * Export a full presentation to a PDF document, embedding real images where
+ * available (failed loads fall back to a placeholder frame).
  * Returns the raw PDF bytes.
  */
-export function exportPresentationToPdf(
+export async function exportPresentationToPdf(
   presentation: Presentation,
-): Uint8Array {
+): Promise<Uint8Array> {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -31,15 +36,32 @@ export function exportPresentationToPdf(
 
   const scaleX = PAGE_W / SLIDE_WIDTH;
   const scaleY = PAGE_H / SLIDE_HEIGHT;
+  const images = await loadPresentationImages(presentation);
 
   for (let i = 0; i < presentation.slides.length; i++) {
     if (i > 0) doc.addPage([PAGE_W, PAGE_H], "landscape");
-    renderSlideToPdf(doc, presentation.slides[i], scaleX, scaleY);
+    renderSlideToPdf(doc, presentation.slides[i], scaleX, scaleY, images);
   }
 
   // Get the PDF as ArrayBuffer, then wrap as Uint8Array
   const arrayBuf = doc.output("arraybuffer");
   return new Uint8Array(arrayBuf);
+}
+
+async function loadPresentationImages(
+  presentation: Presentation,
+): Promise<PdfImageMap> {
+  const map: PdfImageMap = new Map();
+  const elements = presentation.slides
+    .flatMap((s) => s.elements)
+    .filter((el) => el.type === "image" && el.imageUrl);
+  await Promise.all(
+    elements.map(async (el) => {
+      const loaded = await loadImageForExport(el.imageUrl as string);
+      if (loaded) map.set(el.id, loaded);
+    }),
+  );
+  return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +73,7 @@ function renderSlideToPdf(
   slide: Slide,
   sx: number,
   sy: number,
+  images: PdfImageMap,
 ): void {
   // Background
   const bg = parseColor(slide.background) ?? { r: 255, g: 255, b: 255 };
@@ -59,7 +82,7 @@ function renderSlideToPdf(
 
   // Elements (render in order so later elements are on top)
   for (const element of slide.elements) {
-    renderElementToPdf(doc, element, sx, sy);
+    renderElementToPdf(doc, element, sx, sy, images);
   }
 }
 
@@ -68,6 +91,7 @@ function renderElementToPdf(
   element: SlideElement,
   sx: number,
   sy: number,
+  images: PdfImageMap,
 ): void {
   switch (element.type) {
     case "text":
@@ -77,7 +101,7 @@ function renderElementToPdf(
       renderShapeToPdf(doc, element, sx, sy);
       break;
     case "image":
-      renderImagePlaceholderToPdf(doc, element, sx, sy);
+      renderImageToPdf(doc, element, sx, sy, images.get(element.id));
       break;
   }
 }
@@ -113,9 +137,6 @@ function renderTextToPdf(
   };
   doc.setTextColor(color.r, color.g, color.b);
 
-  const text = el.text ?? "";
-  const lines = text.split("\n");
-
   const x = el.x * sx;
   const y = el.y * sy;
   const width = el.width * sx;
@@ -131,16 +152,23 @@ function renderTextToPdf(
 
   const maxWidth = width - 16 * sx;
 
-  for (let i = 0; i < lines.length; i++) {
-    const lineY = y + 8 * sy + i * lineHeightMm + fontSizePt / 2.835;
-    if (lineY > (el.y + el.height) * sy) break;
+  // Flatten explicit line breaks AND word-wrap into one ordered list of visual
+  // lines, then advance a single cursor by one line-height per line (mirrors
+  // the canvas renderer). The previous code advanced only once per explicit
+  // line, so wrapped lines overlapped the following explicit line.
+  const visualLines: string[] = [];
+  for (const line of (el.text ?? "").split("\n")) {
+    const wrapped = doc.splitTextToSize(line, maxWidth) as string[];
+    if (wrapped.length === 0) visualLines.push("");
+    else visualLines.push(...wrapped);
+  }
 
-    const splitLines = doc.splitTextToSize(lines[i], maxWidth);
-    for (let j = 0; j < splitLines.length; j++) {
-      const drawY = lineY + j * lineHeightMm;
-      if (drawY > (el.y + el.height) * sy) break;
-      doc.text(splitLines[j], textX, drawY, { align });
-    }
+  const bottom = (el.y + el.height) * sy;
+  const baselineOffsetMm = fontSizePt / 2.835; // = fontSize * sy (line top → baseline)
+  for (let i = 0; i < visualLines.length; i++) {
+    const drawY = y + 8 * sy + baselineOffsetMm + i * lineHeightMm;
+    if (drawY > bottom) break;
+    if (visualLines[i] !== "") doc.text(visualLines[i], textX, drawY, { align });
   }
 }
 
@@ -249,16 +277,26 @@ function drawPolygon(doc: jsPDF, points: number[], style: string): void {
 // Image placeholder
 // ---------------------------------------------------------------------------
 
-function renderImagePlaceholderToPdf(
+function renderImageToPdf(
   doc: jsPDF,
   el: SlideElement,
   sx: number,
   sy: number,
+  image?: { dataUrl: string; format: string },
 ): void {
   const x = el.x * sx;
   const y = el.y * sy;
   const w = el.width * sx;
   const h = el.height * sy;
+
+  if (image) {
+    try {
+      doc.addImage(image.dataUrl, image.format, x, y, w, h);
+      return;
+    } catch {
+      // fall through to the placeholder on decode/embed failure
+    }
+  }
 
   doc.setFillColor(55, 65, 81);
   doc.rect(x, y, w, h, "F");

@@ -5,26 +5,53 @@
  * a node-canvas backed implementation so it works without browser APIs.
  */
 
-import { createCanvas } from "canvas";
+import { createCanvas, type Image, loadImage } from "canvas";
 import type { Slide, SlideElement } from "../types/index.ts";
+import { loadImageForExport } from "./image-loader.ts";
 
 /** The canonical slide coordinate space (matches the browser editor). */
 const SLIDE_WIDTH = 960;
 const SLIDE_HEIGHT = 540;
 
+/** A map of slide-element id -> decoded image (only successfully loaded ones). */
+type ImageMap = Map<string, Image>;
+
 /**
- * Render a slide to a PNG buffer.
+ * Pre-fetch and decode every image element on the slide. Failed loads are
+ * simply omitted, so the renderer falls back to a placeholder for them.
  */
-export function renderSlideToBuffer(
+async function loadSlideImages(slide: Slide): Promise<ImageMap> {
+  const map: ImageMap = new Map();
+  await Promise.all(
+    slide.elements
+      .filter((el) => el.type === "image" && el.imageUrl)
+      .map(async (el) => {
+        const loaded = await loadImageForExport(el.imageUrl as string);
+        if (!loaded) return;
+        try {
+          map.set(el.id, await loadImage(loaded.dataUrl));
+        } catch {
+          // leave unset -> placeholder
+        }
+      }),
+  );
+  return map;
+}
+
+/**
+ * Render a slide to a PNG buffer, embedding real images where available.
+ */
+export async function renderSlideToBuffer(
   slide: Slide,
   width = 1280,
   height = 720,
-): Uint8Array {
+): Promise<Uint8Array> {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
   const scaleX = width / SLIDE_WIDTH;
   const scaleY = height / SLIDE_HEIGHT;
+  const images = await loadSlideImages(slide);
 
   // Background
   ctx.fillStyle = slide.background;
@@ -35,7 +62,7 @@ export function renderSlideToBuffer(
   ctx.scale(scaleX, scaleY);
 
   for (const element of slide.elements) {
-    renderElement(ctx, element);
+    renderElement(ctx, element, images);
   }
 
   ctx.restore();
@@ -49,6 +76,7 @@ export function renderSlideToBuffer(
 function renderElement(
   ctx: ReturnType<ReturnType<typeof createCanvas>["getContext"]>,
   element: SlideElement,
+  images: ImageMap,
 ): void {
   ctx.save();
 
@@ -68,9 +96,15 @@ function renderElement(
     case "shape":
       renderShapeElement(ctx, element);
       break;
-    case "image":
-      renderImagePlaceholder(ctx, element);
+    case "image": {
+      const img = images.get(element.id);
+      if (img) {
+        ctx.drawImage(img, element.x, element.y, element.width, element.height);
+      } else {
+        renderImagePlaceholder(ctx, element);
+      }
       break;
+    }
   }
 
   ctx.restore();
