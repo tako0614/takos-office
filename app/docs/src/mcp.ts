@@ -21,16 +21,10 @@ import {
 import {
   bytesToBase64,
   createAppMcpServer,
-  createMcpRequestHandler as createSharedMcpRequestHandler,
-  mcpAuthMisconfigured as sharedMcpAuthMisconfigured,
-  type McpAuthOptions,
   mcpError,
   mcpJson,
   mcpText,
 } from "../../shared/mcp-factory.ts";
-
-export type DocsMcpAuthOptions = McpAuthOptions;
-export const mcpAuthMisconfigured = sharedMcpAuthMisconfigured;
 
 const MAX_ID_LENGTH = 128;
 const MAX_TITLE_LENGTH = 200;
@@ -1461,15 +1455,4 @@ export function registerDocsTools(
       return text(documentContentToPlainText(doc.content));
     },
   );
-}
-
-/**
- * Create a request handler for the MCP server that works with Hono.
- * Handles POST /mcp for Streamable HTTP transport.
- */
-export function createMcpRequestHandler(
-  createServer: () => McpServer,
-  options: DocsMcpAuthOptions = {},
-) {
-  return createSharedMcpRequestHandler(createServer, options);
 }

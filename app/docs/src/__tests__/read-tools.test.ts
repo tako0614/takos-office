@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { computeDocOutline, createDocsMcpServer, createMcpRequestHandler } from "../mcp.ts";
+import { computeDocOutline, createDocsMcpServer } from "../mcp.ts";
+import { createMcpRequestHandler } from "../../../shared/mcp-factory.ts";
 import type { Document } from "../types/index.ts";
 
 // A document model with headings + paragraphs. Rendered text is the

@@ -63,7 +63,7 @@ export function mcpError(message: string): McpTextContent {
   return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 
-export async function constantTimeEqual(
+async function constantTimeEqual(
   left: string,
   right: string,
 ): Promise<boolean> {
@@ -95,7 +95,7 @@ export function mcpAuthMisconfigured(
   });
 }
 
-export async function authorizeMcpRequest(
+async function authorizeMcpRequest(
   request: Request,
   authToken?: string,
   allowUnauthenticated = false,
@@ -116,7 +116,7 @@ export async function authorizeMcpRequest(
   return null;
 }
 
-export async function readBoundedJsonRequest(
+async function readBoundedJsonRequest(
   request: Request,
 ): Promise<{ request: Request; body: unknown } | Response> {
   const tooLarge = () =>

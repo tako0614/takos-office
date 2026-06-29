@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { createDocsMcpServer, createMcpRequestHandler } from "../mcp.ts";
+import { createDocsMcpServer } from "../mcp.ts";
+import { createMcpRequestHandler } from "../../../shared/mcp-factory.ts";
 import {
   createDocsRuntimeCapabilityManifest,
   DOCS_SCREENSHOT_TOOL_NAME,

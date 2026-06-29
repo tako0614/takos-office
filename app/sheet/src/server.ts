@@ -16,7 +16,6 @@ import {
 } from "../../shared/mcp-factory.ts";
 import { createMcpServer } from "./mcp.ts";
 import {
-  bunLike,
   envFlagEnabled,
   envValue,
   nativeRenderingEnabled,
@@ -222,11 +221,3 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   });
 }
 
-function main() {
-  const env = runtimeEnv();
-  const app = createExcelAppFromEnv(env);
-  const port = Number(envValue(env, "PORT") ?? "8787");
-  bunLike("takos-excel").serve({ port, fetch: (request) => app.fetch(request) });
-}
-
-if (import.meta.main) main();

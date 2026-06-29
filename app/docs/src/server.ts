@@ -9,11 +9,11 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { DocumentConflictError, TakosDocumentStore } from "./document-store.ts";
+import { createDocsMcpServer } from "./mcp.ts";
 import {
-  createDocsMcpServer,
   createMcpRequestHandler,
   mcpAuthMisconfigured,
-} from "./mcp.ts";
+} from "../../shared/mcp-factory.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Document } from "./types/index.ts";
 import {
@@ -24,20 +24,13 @@ import {
 import { createDocsRuntimeCapabilityManifest } from "./runtime-capabilities.ts";
 import { serverLog } from "./server-log.ts";
 import {
-  bunLike,
   envFlagEnabled,
   envValue,
   nativeRenderingEnabled,
   requiredEnv,
   type RuntimeEnv,
   runtimeEnv,
-  processLike,
 } from "../../shared/runtime-env.ts";
-
-export type DocsServerOptions = {
-  port?: number;
-  shutdownGraceMs?: number;
-};
 
 export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
@@ -223,50 +216,4 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   });
 
   return { app, store: defaultStore };
-}
-
-export function startDocsServer(options: DocsServerOptions = {}) {
-  const env = runtimeEnv();
-  const port = options.port ?? parseInt(envValue(env, "PORT") ?? "8787", 10);
-  const shutdownGraceMs = options.shutdownGraceMs ??
-    parseInt(envValue(env, "SHUTDOWN_GRACE_MS") ?? "15000", 10);
-  const { app, store } = createDocsApp(env);
-
-  const server = bunLike("takos-docs").serve({
-    port,
-    fetch: (request) => app.fetch(request),
-  });
-  serverLog.info("takos-docs.server.listening", { port });
-
-  async function shutdown(signal: string): Promise<void> {
-    serverLog.info("takos-docs.server.shutting_down", { signal });
-    server.stop(false);
-    serverLog.info("takos-docs.server.shutdown_complete");
-    processLike()?.exit?.(0);
-  }
-
-  const forceExit = () => {
-    setTimeout(() => {
-      serverLog.warn("takos-docs.server.shutdown_force_exit", {
-        graceMs: shutdownGraceMs,
-      });
-      processLike()?.exit?.(1);
-    }, shutdownGraceMs);
-  };
-
-  processLike()?.on?.("SIGTERM", () => {
-    forceExit();
-    void shutdown("SIGTERM");
-  });
-  processLike()?.on?.("SIGINT", () => {
-    forceExit();
-    void shutdown("SIGINT");
-  });
-
-  return { app, store, server };
-}
-
-// Run if executed directly
-if (import.meta.main) {
-  startDocsServer();
 }

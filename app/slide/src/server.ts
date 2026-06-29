@@ -26,7 +26,6 @@ import {
   mcpAuthMisconfigured,
 } from "../../shared/mcp-factory.ts";
 import {
-  bunLike,
   envFlagEnabled,
   envValue,
   nativeRenderingEnabled,
@@ -173,12 +172,4 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.get("/healthz", health);
 
   return app;
-}
-
-if (import.meta.main) {
-  const env = runtimeEnv();
-  const port = Number(envValue(env, "PORT") ?? "3003");
-  const app = createSlideAppFromEnv(env);
-  console.log(`takos-slide MCP server listening on :${port}`);
-  bunLike("takos-slide").serve({ port, fetch: (request) => app.fetch(request) });
 }
