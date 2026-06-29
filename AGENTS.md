@@ -37,8 +37,9 @@
   サブパスに設定し、`app/server.ts` で `app.route("/<editor>", …)` を mount、`app/mcp.ts` に
   `register<Editor>Tools` を追加、`app/build-worker.ts` の `editors` 配列と `outputs.tf` の
   publish (UI surface / file handler) を更新する。
-- 共有コードは `app/shared/` の単一コピーを編集する（重複コピーを作らない）。i18n の scaffold は
-  ecosystem root の `scripts/check-takos-apps-dedupe.mjs` が 3 エディタ間で同期検査する。
+- 共有コードは `app/shared/` の単一コピーを編集する（重複コピーを作らない）。i18n の scaffold も
+  `app/shared/i18n.ts` の `createI18n(catalogs)` に単一化済みで、各エディタは自分の `en` / `ja`
+  catalog だけを持つ（旧 `scripts/check-takos-apps-dedupe.mjs` の scaffold 同期検査は不要）。
 
 ## Build / Test
 
