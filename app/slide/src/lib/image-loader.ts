@@ -12,6 +12,7 @@
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 5_000;
+const MAX_REDIRECTS = 5;
 
 export interface LoadedImage {
   /** A `data:<mime>;base64,<...>` URL usable by node-canvas and jsPDF. */
@@ -39,8 +40,8 @@ export function parseDataImageUrl(url: string): LoadedImage | null {
 /**
  * Best-effort SSRF guard: reject hosts that are loopback, link-local, private,
  * CGNAT, multicast or obviously-internal names. Note this is host-literal only
- * — a public hostname resolving to a private IP is not caught here, so the
- * final response URL is re-checked after fetch.
+ * — a public hostname resolving to a private IP is not caught here, so every
+ * redirect hop's target host is re-validated before that hop is followed.
  */
 export function isFetchableImageHost(url: string): boolean {
   let host: string;
@@ -97,13 +98,34 @@ export async function loadImageForExport(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(url, {
+    // Follow redirects manually so each hop's target host is validated BEFORE
+    // the request is issued. With `redirect: "follow"` a public URL could
+    // 302 to an internal host (169.254.169.254 / RFC1918) and the runtime
+    // would fire that internal GET before we ever saw the final URL.
+    let current = url;
+    let res = await fetchImpl(current, {
       signal: controller.signal,
-      redirect: "follow",
+      redirect: "manual",
     });
+    for (let hops = 0; res.status >= 300 && res.status < 400; hops++) {
+      if (hops >= MAX_REDIRECTS) return null;
+      const location = res.headers.get("location");
+      if (!location) return null;
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        return null;
+      }
+      if (next.protocol !== "http:" && next.protocol !== "https:") return null;
+      if (!isFetchableImageHost(next.toString())) return null;
+      current = next.toString();
+      res = await fetchImpl(current, {
+        signal: controller.signal,
+        redirect: "manual",
+      });
+    }
     if (!res.ok) return null;
-    // Re-check the final URL in case a redirect landed on a private host.
-    if (res.url && !isFetchableImageHost(res.url)) return null;
 
     const mime = (res.headers.get("content-type") ?? "")
       .split(";")[0]

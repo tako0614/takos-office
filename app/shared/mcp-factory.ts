@@ -119,22 +119,51 @@ export async function authorizeMcpRequest(
 export async function readBoundedJsonRequest(
   request: Request,
 ): Promise<{ request: Request; body: unknown } | Response> {
+  const tooLarge = () =>
+    new Response(JSON.stringify({ error: "Request body too large" }), {
+      status: 413,
+      headers: { "Content-Type": "application/json" },
+    });
+
   const contentLength = request.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_MCP_REQUEST_BYTES) {
-    return new Response(JSON.stringify({ error: "Request body too large" }), {
-      status: 413,
-      headers: { "Content-Type": "application/json" },
-    });
+    return tooLarge();
   }
 
-  const raw = await request.text();
-  const byteLength = new TextEncoder().encode(raw).byteLength;
-  if (byteLength > MAX_MCP_REQUEST_BYTES) {
-    return new Response(JSON.stringify({ error: "Request body too large" }), {
-      status: 413,
-      headers: { "Content-Type": "application/json" },
-    });
+  // Stream the body so a missing or lying Content-Length can't make us buffer
+  // an unbounded payload — abort the read as soon as the running byte total
+  // exceeds the cap rather than after the whole body is in memory.
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > MAX_MCP_REQUEST_BYTES) {
+          await reader.cancel();
+          return tooLarge();
+        }
+        chunks.push(value);
+      }
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
+
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const raw = new TextDecoder().decode(merged);
 
   let body: unknown;
   try {
@@ -147,7 +176,7 @@ export async function readBoundedJsonRequest(
   }
 
   const headers = new Headers(request.headers);
-  headers.set("content-length", String(byteLength));
+  headers.set("content-length", String(total));
   return {
     request: new Request(request.url, {
       method: request.method,

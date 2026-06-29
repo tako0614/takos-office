@@ -97,3 +97,86 @@ test("loadImageForExport embeds a fetched image as a data URL", async () => {
   expect(loaded?.format).toBe("PNG");
   expect(loaded?.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
 });
+
+test("loadImageForExport never issues the internal request on a redirect to a private host", async () => {
+  const requested: string[] = [];
+  const redirectingFetch = (input: string) => {
+    requested.push(input);
+    if (input === "https://example.com/a.png") {
+      return Promise.resolve(
+        new Response(null, {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data" },
+        }),
+      );
+    }
+    throw new Error("internal host must never be fetched");
+  };
+  const loaded = await loadImageForExport(
+    "https://example.com/a.png",
+    redirectingFetch,
+  );
+  expect(loaded).toBeNull();
+  expect(requested).toEqual(["https://example.com/a.png"]);
+});
+
+test("loadImageForExport follows a redirect to another public host", async () => {
+  const pngBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const requested: string[] = [];
+  const redirectingFetch = (input: string) => {
+    requested.push(input);
+    if (input === "https://example.com/a.png") {
+      return Promise.resolve(
+        new Response(null, {
+          status: 301,
+          headers: { location: "https://cdn.example.org/a.png" },
+        }),
+      );
+    }
+    return Promise.resolve(
+      new Response(pngBytes, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+  };
+  const loaded = await loadImageForExport(
+    "https://example.com/a.png",
+    redirectingFetch,
+  );
+  expect(loaded?.format).toBe("PNG");
+  expect(requested).toEqual([
+    "https://example.com/a.png",
+    "https://cdn.example.org/a.png",
+  ]);
+});
+
+test("loadImageForExport rejects a redirect loop exceeding the hop cap", async () => {
+  let count = 0;
+  const loopingFetch = () => {
+    count++;
+    return Promise.resolve(
+      new Response(null, {
+        status: 302,
+        headers: { location: `https://example.com/hop-${count}.png` },
+      }),
+    );
+  };
+  const loaded = await loadImageForExport(
+    "https://example.com/start.png",
+    loopingFetch,
+  );
+  expect(loaded).toBeNull();
+  // Initial request + at most MAX_REDIRECTS (5) follow-ups.
+  expect(count).toBeLessThanOrEqual(6);
+});
+
+test("loadImageForExport rejects a redirect with no Location header", async () => {
+  const noLocationFetch = () =>
+    Promise.resolve(new Response(null, { status: 302 }));
+  const loaded = await loadImageForExport(
+    "https://example.com/a.png",
+    noLocationFetch,
+  );
+  expect(loaded).toBeNull();
+});
