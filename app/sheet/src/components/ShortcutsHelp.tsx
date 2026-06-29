@@ -110,5 +110,3 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
     </div>
   );
 };
-
-export default ShortcutsHelp;

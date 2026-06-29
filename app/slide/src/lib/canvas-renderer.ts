@@ -26,40 +26,9 @@ type CachedImage =
 const imageCache = new Map<string, CachedImage>();
 
 /**
- * Listeners notified whenever a previously-unloaded image finishes decoding,
- * so synchronous consumers (editor canvas, thumbnails, present view) can
- * schedule a re-render that will now draw the image from cache under the
- * correct transform.
- */
-const loadListeners = new Set<() => void>();
-
-/**
- * Subscribe to image-load notifications. Returns an unsubscribe function.
- *
- * A consumer that renders synchronously (e.g. via `renderSlide` /
- * `renderThumbnail`) can register here and re-run its draw when an image that
- * was not yet decoded becomes available.
- */
-export function onImageLoad(listener: () => void): () => void {
-  loadListeners.add(listener);
-  return () => loadListeners.delete(listener);
-}
-
-function notifyImageLoaded(): void {
-  for (const listener of loadListeners) {
-    try {
-      listener();
-    } catch {
-      // A misbehaving listener must not prevent the others from running.
-    }
-  }
-}
-
-/**
- * Begin decoding an image for `url`, populating the cache and notifying
- * listeners on completion. Returns a promise that resolves once the decode
- * settles (success or failure). Repeated calls for the same URL share the
- * same in-flight load.
+ * Begin decoding an image for `url`, populating the cache. Returns a promise
+ * that resolves once the decode settles (success or failure). Repeated calls
+ * for the same URL share the same in-flight load.
  */
 function loadImage(url: string): Promise<void> {
   const existing = imageCache.get(url);
@@ -74,7 +43,6 @@ function loadImage(url: string): Promise<void> {
   const promise = new Promise<void>((resolve) => {
     img.onload = () => {
       imageCache.set(url, { status: "ready", image: img });
-      notifyImageLoaded();
       resolve();
     };
     img.onerror = () => {
@@ -86,24 +54,6 @@ function loadImage(url: string): Promise<void> {
   imageCache.set(url, { status: "loading", promise });
   img.src = url;
   return promise;
-}
-
-/**
- * Pre-load every image referenced by a slide before a synchronous draw pass.
- *
- * Awaiting this guarantees that a subsequent `renderSlide` / `renderThumbnail`
- * call draws each image from cache, inside the element's active transform
- * scope. Consumers that cannot await (e.g. the synchronous thumbnail path) can
- * instead subscribe via `onImageLoad` and re-render once loads settle.
- */
-export async function preloadSlideImages(slide: Slide): Promise<void> {
-  const urls = new Set<string>();
-  for (const element of slide.elements) {
-    if (element.type === "image" && element.imageUrl) {
-      urls.add(element.imageUrl);
-    }
-  }
-  await Promise.all([...urls].map((url) => loadImage(url)));
 }
 
 /**
@@ -348,10 +298,10 @@ function renderImageElement(
       return;
     }
 
-    // Not decoded yet: kick off a background load. When it settles, listeners
-    // are notified so the consumer can re-render and draw from cache under the
-    // correct transform. We never draw from inside the onload callback, since
-    // that fires after this transform scope has been restored.
+    // Not decoded yet: kick off a background load that populates the cache, so
+    // a later draw pass can render it under the correct transform. We never
+    // draw from inside the onload callback, since that fires after this
+    // transform scope has been restored.
     if (cached?.status !== "error") {
       loadImage(element.imageUrl);
     }

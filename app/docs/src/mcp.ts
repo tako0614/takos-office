@@ -22,7 +22,6 @@ import {
   bytesToBase64,
   createAppMcpServer,
   createMcpRequestHandler as createSharedMcpRequestHandler,
-  MAX_MCP_REQUEST_BYTES,
   mcpAuthMisconfigured as sharedMcpAuthMisconfigured,
   type McpAuthOptions,
   mcpError,
@@ -30,7 +29,6 @@ import {
   mcpText,
 } from "../../shared/mcp-factory.ts";
 
-export const DOCS_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
 export type DocsMcpAuthOptions = McpAuthOptions;
 export const mcpAuthMisconfigured = sharedMcpAuthMisconfigured;
 
