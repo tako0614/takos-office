@@ -15,7 +15,7 @@ import WordCount from "../components/WordCount";
 import FindReplace from "../components/FindReplace";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import LanguageSwitcher from "../components/LanguageSwitcher";
-import ThemeToggle from "../components/ThemeToggle";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -179,7 +179,7 @@ export default function EditorPage() {
         >
           <Keyboard size={18} />
         </button>
-        <ThemeToggle />
+        <ThemeToggle t={t} />
         <LanguageSwitcher />
       </header>
 

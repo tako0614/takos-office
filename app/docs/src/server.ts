@@ -23,68 +23,23 @@ import {
 } from "../../shared/app-auth.ts";
 import { createDocsRuntimeCapabilityManifest } from "./runtime-capabilities.ts";
 import { serverLog } from "./server-log.ts";
+import {
+  bunLike,
+  envFlagEnabled,
+  envValue,
+  nativeRenderingEnabled,
+  requiredEnv,
+  type RuntimeEnv,
+  runtimeEnv,
+  processLike,
+} from "../../shared/runtime-env.ts";
 
 export type DocsServerOptions = {
   port?: number;
   shutdownGraceMs?: number;
 };
 
-export type DocsRuntimeEnv = Record<string, string | undefined>;
-
-type ProcessLike = {
-  env?: Record<string, string | undefined>;
-  exit?: (code?: number) => never;
-  on?: (event: "SIGTERM" | "SIGINT", listener: () => void) => void;
-};
-
-type BunLike = {
-  serve(options: {
-    port: number;
-    fetch: (request: Request) => Response | Promise<Response>;
-  }): { stop: (closeActiveConnections?: boolean) => void };
-};
-
-function processLike(): ProcessLike | undefined {
-  return (globalThis as { process?: ProcessLike }).process;
-}
-
-function bunLike(): BunLike {
-  const bun = (globalThis as { Bun?: BunLike }).Bun;
-  if (!bun) throw new Error("Bun runtime is required to start takos-docs");
-  return bun;
-}
-
-function isBunRuntime(): boolean {
-  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
-}
-
-function runtimeEnv(): DocsRuntimeEnv {
-  return { ...(processLike()?.env ?? {}) };
-}
-
-function envValue(env: DocsRuntimeEnv, name: string): string | undefined {
-  const value = env[name];
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}
-
-function requiredEnv(env: DocsRuntimeEnv, name: string): string {
-  const value = envValue(env, name);
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-function nativeRenderingEnabled(env: DocsRuntimeEnv): boolean {
-  const value = envValue(env, "TAKOS_NATIVE_RENDERING");
-  if (value) return ["1", "true", "yes"].includes(value.toLowerCase());
-  return isBunRuntime();
-}
-
-function envFlagEnabled(env: DocsRuntimeEnv, name: string): boolean {
-  const value = envValue(env, name);
-  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
-}
-
-export function createDocsApp(env: DocsRuntimeEnv = runtimeEnv()) {
+export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
     envValue(env, "TAKOS_API_URL") ||
     "http://localhost:8787";
@@ -277,7 +232,7 @@ export function startDocsServer(options: DocsServerOptions = {}) {
     parseInt(envValue(env, "SHUTDOWN_GRACE_MS") ?? "15000", 10);
   const { app, store } = createDocsApp(env);
 
-  const server = bunLike().serve({
+  const server = bunLike("takos-docs").serve({
     port,
     fetch: (request) => app.fetch(request),
   });

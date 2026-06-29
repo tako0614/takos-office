@@ -9,7 +9,7 @@ import {
 } from "../lib/storage";
 import PresentationCard from "../components/PresentationCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
-import ThemeToggle from "../components/ThemeToggle";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -81,7 +81,7 @@ export default function PresentationListPage() {
           <OfficeNav />
           <div class="flex items-center gap-3">
             <LanguageSwitcher />
-            <ThemeToggle />
+            <ThemeToggle t={t} />
             <button
               type="button"
               class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"

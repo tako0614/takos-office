@@ -2,8 +2,8 @@ import { Component, createSignal, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { CellFormat } from "../types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import ThemeToggle from "./ThemeToggle";
-import { theme } from "../lib/theme";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
+import { theme } from "../../../shared/lib/theme";
 import { useI18n } from "../i18n";
 
 interface ToolbarProps {
@@ -570,7 +570,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       </select>
 
       <div class="flex-1" />
-      <ThemeToggle />
+      <ThemeToggle t={t} />
       <LanguageSwitcher />
     </div>
   );

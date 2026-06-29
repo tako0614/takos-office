@@ -7,7 +7,7 @@ import {
 } from "../lib/storage";
 import { SpreadsheetCard } from "../components/SpreadsheetCard";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import ThemeToggle from "../components/ThemeToggle";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import type { Spreadsheet } from "../types";
@@ -77,7 +77,7 @@ export const SpreadsheetListPage: Component = () => {
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <ThemeToggle />
+            <ThemeToggle t={t} />
             <LanguageSwitcher />
             <button
               type="button"

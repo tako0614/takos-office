@@ -25,62 +25,19 @@ import {
   MAX_MCP_REQUEST_BYTES,
   mcpAuthMisconfigured,
 } from "../../shared/mcp-factory.ts";
+import {
+  bunLike,
+  envFlagEnabled,
+  envValue,
+  nativeRenderingEnabled,
+  requiredEnv,
+  type RuntimeEnv,
+  runtimeEnv,
+} from "../../shared/runtime-env.ts";
 
-export type SlideRuntimeEnv = Record<string, string | undefined>;
 export const SLIDE_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
 
-type ProcessLike = {
-  env?: Record<string, string | undefined>;
-};
-
-type BunLike = {
-  serve(options: {
-    port: number;
-    fetch: (request: Request) => Response | Promise<Response>;
-  }): unknown;
-};
-
-function processLike(): ProcessLike | undefined {
-  return (globalThis as { process?: ProcessLike }).process;
-}
-
-function bunLike(): BunLike {
-  const bun = (globalThis as { Bun?: BunLike }).Bun;
-  if (!bun) throw new Error("Bun runtime is required to start takos-slide");
-  return bun;
-}
-
-function isBunRuntime(): boolean {
-  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
-}
-
-function runtimeEnv(): SlideRuntimeEnv {
-  return { ...(processLike()?.env ?? {}) };
-}
-
-function envValue(env: SlideRuntimeEnv, name: string): string | undefined {
-  const value = env[name];
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}
-
-function requiredEnv(env: SlideRuntimeEnv, name: string): string {
-  const value = envValue(env, name);
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-function nativeRenderingEnabled(env: SlideRuntimeEnv): boolean {
-  const value = envValue(env, "TAKOS_NATIVE_RENDERING");
-  if (value) return ["1", "true", "yes"].includes(value.toLowerCase());
-  return isBunRuntime();
-}
-
-function envFlagEnabled(env: SlideRuntimeEnv, name: string): boolean {
-  const value = envValue(env, name);
-  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
-}
-
-export function createSlideAppFromEnv(env: SlideRuntimeEnv = runtimeEnv()) {
+export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
     envValue(env, "TAKOS_API_URL") ||
     "http://localhost:8787";
@@ -223,5 +180,5 @@ if (import.meta.main) {
   const port = Number(envValue(env, "PORT") ?? "3003");
   const app = createSlideAppFromEnv(env);
   console.log(`takos-slide MCP server listening on :${port}`);
-  bunLike().serve({ port, fetch: (request) => app.fetch(request) });
+  bunLike("takos-slide").serve({ port, fetch: (request) => app.fetch(request) });
 }

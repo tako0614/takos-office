@@ -15,66 +15,22 @@ import {
   mcpAuthMisconfigured,
 } from "../../shared/mcp-factory.ts";
 import { createMcpServer } from "./mcp.ts";
+import {
+  bunLike,
+  envFlagEnabled,
+  envValue,
+  nativeRenderingEnabled,
+  requiredEnv,
+  type RuntimeEnv,
+  runtimeEnv,
+} from "../../shared/runtime-env.ts";
 
 export const EXCEL_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
-
-export type ExcelRuntimeEnv = Record<string, string | undefined>;
-
-type ProcessLike = {
-  env?: Record<string, string | undefined>;
-};
-
-type BunLike = {
-  serve(options: {
-    port: number;
-    fetch: (request: Request) => Response | Promise<Response>;
-  }): unknown;
-};
-
-function processLike(): ProcessLike | undefined {
-  return (globalThis as { process?: ProcessLike }).process;
-}
-
-function bunLike(): BunLike {
-  const bun = (globalThis as { Bun?: BunLike }).Bun;
-  if (!bun) throw new Error("Bun runtime is required to start takos-excel");
-  return bun;
-}
-
-function isBunRuntime(): boolean {
-  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
-}
-
-function runtimeEnv(): ExcelRuntimeEnv {
-  return { ...(processLike()?.env ?? {}) };
-}
-
-function envValue(env: ExcelRuntimeEnv, name: string): string | undefined {
-  const value = env[name];
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}
-
-function requiredEnv(env: ExcelRuntimeEnv, name: string): string {
-  const value = envValue(env, name);
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-function nativeRenderingEnabled(env: ExcelRuntimeEnv): boolean {
-  const value = envValue(env, "TAKOS_NATIVE_RENDERING");
-  if (value) return ["1", "true", "yes"].includes(value.toLowerCase());
-  return isBunRuntime();
-}
-
-function envFlagEnabled(env: ExcelRuntimeEnv, name: string): boolean {
-  const value = envValue(env, name);
-  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
-}
 
 export function createServerApp(
   store: SpreadsheetStore | null,
   options: {
-    env?: ExcelRuntimeEnv;
+    env?: RuntimeEnv;
     nativeRendering?: boolean;
     mcpAuthToken?: string;
     mcpAllowUnauthenticated?: boolean;
@@ -223,7 +179,7 @@ export function createServerApp(
   return app;
 }
 
-export function createExcelAppFromEnv(env: ExcelRuntimeEnv = runtimeEnv()) {
+export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
     envValue(env, "TAKOS_API_URL") ||
     "http://localhost:8787";
@@ -270,7 +226,7 @@ function main() {
   const env = runtimeEnv();
   const app = createExcelAppFromEnv(env);
   const port = Number(envValue(env, "PORT") ?? "8787");
-  bunLike().serve({ port, fetch: (request) => app.fetch(request) });
+  bunLike("takos-excel").serve({ port, fetch: (request) => app.fetch(request) });
 }
 
 if (import.meta.main) main();

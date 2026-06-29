@@ -40,66 +40,23 @@ import {
   searchOfficeItems,
 } from "./office-items.ts";
 import { renderShellPage } from "./shell-page.ts";
+import {
+  bunLike,
+  envFlagEnabled,
+  envValue,
+  nativeRenderingEnabled,
+  requiredEnv,
+  type RuntimeEnv,
+  runtimeEnv,
+  processLike,
+} from "./shared/runtime-env.ts";
 
-export type OfficeRuntimeEnv = Record<string, string | undefined>;
+export type OfficeRuntimeEnv = RuntimeEnv;
 
 export type OfficeServerOptions = {
   port?: number;
   shutdownGraceMs?: number;
 };
-
-type ProcessLike = {
-  env?: Record<string, string | undefined>;
-  exit?: (code?: number) => never;
-  on?: (event: "SIGTERM" | "SIGINT", listener: () => void) => void;
-};
-
-type BunLike = {
-  serve(options: {
-    port: number;
-    fetch: (request: Request) => Response | Promise<Response>;
-  }): { stop: (closeActiveConnections?: boolean) => void };
-};
-
-function processLike(): ProcessLike | undefined {
-  return (globalThis as { process?: ProcessLike }).process;
-}
-
-function bunLike(): BunLike {
-  const bun = (globalThis as { Bun?: BunLike }).Bun;
-  if (!bun) throw new Error("Bun runtime is required to start takos-office");
-  return bun;
-}
-
-function isBunRuntime(): boolean {
-  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
-}
-
-function runtimeEnv(): OfficeRuntimeEnv {
-  return { ...(processLike()?.env ?? {}) };
-}
-
-function envValue(env: OfficeRuntimeEnv, name: string): string | undefined {
-  const value = env[name];
-  return typeof value === "string" && value.trim() !== "" ? value : undefined;
-}
-
-function requiredEnv(env: OfficeRuntimeEnv, name: string): string {
-  const value = envValue(env, name);
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-function envFlagEnabled(env: OfficeRuntimeEnv, name: string): boolean {
-  const value = envValue(env, name);
-  return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
-}
-
-function nativeRenderingEnabled(env: OfficeRuntimeEnv): boolean {
-  const value = envValue(env, "TAKOS_NATIVE_RENDERING");
-  if (value) return ["1", "true", "yes"].includes(value.toLowerCase());
-  return isBunRuntime();
-}
 
 export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   const app = new Hono();
@@ -223,7 +180,7 @@ export function startOfficeServer(options: OfficeServerOptions = {}) {
   const env = runtimeEnv();
   const port = options.port ?? parseInt(envValue(env, "PORT") ?? "8787", 10);
   const { app } = createOfficeApp(env);
-  const server = bunLike().serve({
+  const server = bunLike("takos-office").serve({
     port,
     fetch: (request) => app.fetch(request),
   });

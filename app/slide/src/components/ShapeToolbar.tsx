@@ -1,5 +1,5 @@
 import LanguageSwitcher from "./LanguageSwitcher";
-import ThemeToggle from "./ThemeToggle";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { useI18n } from "../i18n";
 
 interface ShapeToolbarProps {
@@ -104,7 +104,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
 
       {/* Present */}
       <LanguageSwitcher />
-      <ThemeToggle />
+      <ThemeToggle t={t} />
       <button
         type="button"
         class="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"

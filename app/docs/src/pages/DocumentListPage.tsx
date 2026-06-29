@@ -9,7 +9,7 @@ import {
 } from "../lib/storage";
 import DocumentCard from "../components/DocumentCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
-import ThemeToggle from "../components/ThemeToggle";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -102,7 +102,7 @@ export default function DocumentListPage() {
           </div>
 
           <div class="shrink-0 flex items-center gap-1">
-            <ThemeToggle />
+            <ThemeToggle t={t} />
             <LanguageSwitcher />
           </div>
         </div>

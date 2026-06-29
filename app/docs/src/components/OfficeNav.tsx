@@ -1,6 +1,7 @@
 import { For } from "solid-js";
 import { FileText, Presentation, Sheet } from "lucide-solid";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id.ts";
 
 /**
  * Cross-editor "Office" navigation for the docs editor.
@@ -8,7 +9,8 @@ import { useI18n } from "../i18n";
  * Docs is one SPA in the takos-office suite (mounted at `/docs`); Slides and
  * Sheets are *separate* SPAs at `/slide` and `/sheet`. So these are plain
  * anchor links that do a full navigation across apps — NOT SolidJS router
- * links — and every href preserves the current Workspace via `withSpace`.
+ * links — and every href preserves the current Workspace via
+ * `withCurrentSpaceId`.
  */
 
 type AppKey = "docs" | "slide" | "sheet";
@@ -29,23 +31,6 @@ const APPS: AppLink[] = [
   { key: "sheet", href: "/sheet", labelKey: "sheet", icon: Sheet },
 ];
 
-/**
- * Append the current Workspace id (`space_id`/`spaceId` query param) to a path
- * so cross-app navigation stays inside the same Workspace.
- */
-function withSpace(path: string): string {
-  let spaceId = "";
-  try {
-    const params = new URLSearchParams(globalThis.location?.search ?? "");
-    spaceId = params.get("space_id") ?? params.get("spaceId") ?? "";
-  } catch {
-    spaceId = "";
-  }
-  if (!spaceId) return path;
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}space_id=${encodeURIComponent(spaceId)}`;
-}
-
 export default function OfficeNav() {
   const { t } = useI18n();
 
@@ -53,7 +38,7 @@ export default function OfficeNav() {
     <div class="flex items-center gap-1 shrink-0">
       {/* Brand → Office shell (home, NOT the docs list) */}
       <a
-        href={withSpace("/")}
+        href={withCurrentSpaceId("/")}
         class="flex items-center gap-2.5 mr-1 rounded-lg px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
         title={t("openOffice")}
         aria-label={t("openOffice")}
@@ -75,7 +60,7 @@ export default function OfficeNav() {
             const Icon = app.icon;
             return (
               <a
-                href={withSpace(app.href)}
+                href={withCurrentSpaceId(app.href)}
                 aria-current={active ? "page" : undefined}
                 title={t(app.labelKey)}
                 class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"

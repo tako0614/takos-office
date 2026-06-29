@@ -1,22 +1,9 @@
-// CANONICAL SCAFFOLD (owner): takos-apps/takos-docs/src/i18n.ts
-// The i18n scaffold (imports, types, signal, interpolate/setLanguage/t/
-// dateLocale/useI18n, and the trailing bootstrap call) is byte-identical
-// across takos-docs / takos-slide / takos-excel. Only the per-app message
-// catalog — the `const en = { … }` block through the end of the `ja` table —
-// is allowed to differ between apps. The copies are deliberately vendored
-// rather than factored into a shared package because each takos-app ships as
-// a standalone git repo / OpenTofu module installable from a Git URL.
-//
-// Edit scaffold changes in THIS canonical copy, then propagate with
-// `bun run check:takos-apps-dedupe --fix` (ecosystem root): it replaces each
-// copy's scaffold from canonical while preserving that app's catalog. Verify
-// mode (`bun run check:takos-apps-dedupe`) is wired into `bun run check:all`.
-import { createSignal } from "solid-js";
+// Slide message catalog. The i18n scaffold (signal, detection, interpolation,
+// t / setLanguage / dateLocale / useI18n) lives once in app/shared/i18n.ts;
+// only the per-editor `en` / `ja` catalogs below differ.
+import { createI18n, type Language } from "../../shared/i18n.ts";
 
-export type Language = "ja" | "en";
-export type TranslationParams = Record<string, string | number>;
-
-const STORAGE_KEY = "takos-lang";
+export type { Language };
 
 const en = {
   add: "Add",
@@ -198,65 +185,7 @@ const ja: Record<TranslationKey, string> = {
   zOrder: "レイヤー",
 };
 
-const translations: Record<Language, Record<TranslationKey, string>> = {
+export const { language, setLanguage, t, dateLocale, useI18n } = createI18n({
   en,
   ja,
-};
-
-function detectInitialLanguage(): Language {
-  try {
-    const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
-    if (stored === "ja" || stored === "en") return stored;
-  } catch {
-    // Ignore storage access failures and fall back to browser language.
-  }
-
-  const browserLang = globalThis.navigator?.language?.toLowerCase() ?? "";
-  return browserLang.startsWith("ja") ? "ja" : "en";
-}
-
-const [language, setLanguageSignal] = createSignal<Language>(
-  detectInitialLanguage(),
-);
-
-function interpolate(template: string, params?: TranslationParams): string {
-  if (!params) return template;
-  return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
-    const value = params[key];
-    return value === undefined ? `{${key}}` : String(value);
-  });
-}
-
-export function setLanguage(lang: Language): void {
-  setLanguageSignal(lang);
-  try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, lang);
-  } catch {
-    // Ignore storage access failures.
-  }
-  if (globalThis.document?.documentElement) {
-    globalThis.document.documentElement.lang = lang;
-  }
-}
-
-export function t(
-  key: TranslationKey,
-  params?: TranslationParams,
-): string {
-  const lang = language();
-  return interpolate(translations[lang][key] ?? translations.en[key], params);
-}
-
-export function dateLocale(): string {
-  return language() === "ja" ? "ja-JP" : "en-US";
-}
-
-export function useI18n() {
-  return {
-    language,
-    setLanguage,
-    t,
-  };
-}
-
-setLanguage(language());
+});
