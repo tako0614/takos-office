@@ -485,8 +485,21 @@ export class SpreadsheetStore {
     }
 
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
-    sheet.cells = shiftSheetStructure(sheet, op, at, count, ss.sheets);
-    sheet.cells = evaluateSheet(sheet, ss.sheets);
+    // shiftSheetStructure returns adjusted cells for EVERY sheet: the target's
+    // data/formats shift, and any other sheet's cross-sheet formulas that
+    // referenced the shifted area are re-pointed. Apply all of them before
+    // re-evaluating, or other sheets' references would persist pointing at the
+    // wrong row/column.
+    const shifted = shiftSheetStructure(sheet, op, at, count, ss.sheets);
+    for (const s of ss.sheets) {
+      const cells = shifted.get(s.id);
+      if (cells) s.cells = cells;
+    }
+    // Re-evaluate every sheet against the now-updated workbook so cross-sheet
+    // references resolve to their new positions.
+    for (const s of ss.sheets) {
+      s.cells = evaluateSheet(s, ss.sheets);
+    }
     this.touch(ss);
     await this.persist(spreadsheetId);
     return sheet;

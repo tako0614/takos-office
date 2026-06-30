@@ -166,6 +166,51 @@ test("SpreadsheetStore reflects external writes on re-read (no stale cache)", as
   expect(persisted.title).toEqual("Renamed");
 });
 
+test("SpreadsheetStore insertRows re-points cross-sheet refs in other sheets", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-excel", "folder");
+  const file = storage.makeFile("wb.takossheet", "file", folder.id);
+  const wb = makeSpreadsheet({
+    id: "wb",
+    sheets: [
+      {
+        id: "sheet-1",
+        name: "Sheet1",
+        cells: { A1: { value: "10" }, A2: { value: "20" } },
+        colWidths: {},
+        rowHeights: {},
+      },
+      {
+        id: "sheet-2",
+        name: "Sheet2",
+        cells: { B1: { value: "=Sheet1!A2" } },
+        colWidths: {},
+        rowHeights: {},
+      },
+    ],
+    activeSheetId: "sheet-1",
+  });
+  storage.content.set(file.id, JSON.stringify(wb));
+
+  const store = new SpreadsheetStore(storage.client);
+  // Before the shift, Sheet2!B1 resolves to Sheet1!A2 = 20.
+  expect((await store.getComputed("wb", "sheet-2", "B1:B1"))[0][0]).toEqual(
+    "20",
+  );
+
+  // Insert a row above Sheet1!A2: its value moves to A3.
+  await store.insertRows("wb", "sheet-1", 0, 1);
+
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Spreadsheet;
+  const sheet2 = persisted.sheets.find((s) => s.id === "sheet-2")!;
+  // The OTHER sheet's stored formula text followed the moved cell...
+  expect(sheet2.cells["B1"]?.value).toEqual("=Sheet1!A3");
+  // ...and still computes the moved value, not the stale row's content.
+  expect((await store.getComputed("wb", "sheet-2", "B1:B1"))[0][0]).toEqual(
+    "20",
+  );
+});
+
 test("SpreadsheetStore setCell preserves externally-written cells (fresh read)", async () => {
   const storage = createMemoryStorage();
   const folder = storage.makeFile("takos-excel", "folder");

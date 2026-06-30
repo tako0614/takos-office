@@ -318,9 +318,28 @@ export const EditorPage: Component = () => {
     try {
       const { col, row } = parseCellAddress(selectedCell());
       const at = op === "insertRows" || op === "deleteRows" ? row : col;
+      // shiftSheetStructure returns adjusted cells for EVERY sheet (the target
+      // shifts; other sheets' cross-sheet refs are re-pointed). Apply all of
+      // them, then re-evaluate each against the updated workbook so references
+      // resolve to their new positions.
       const shifted = shiftSheetStructure(sheet, op, at, 1, ss.sheets);
-      const evaluated = evaluateSheet({ ...sheet, cells: shifted }, ss.sheets);
-      commitCells(evaluated);
+      const applied = ss.sheets.map((s) => {
+        const cells = shifted.get(s.id);
+        return cells ? { ...s, cells } : s;
+      });
+      const evaluatedSheets = applied.map((s) => ({
+        ...s,
+        cells: evaluateSheet(s, applied),
+      }));
+      save({ ...ss, sheets: evaluatedSheets });
+      // Record undo history for the active sheet (undo is per active sheet).
+      const active = evaluatedSheets.find((s) => s.id === ss.activeSheetId);
+      if (active) {
+        getHistory(ss.activeSheetId).push(
+          JSON.parse(JSON.stringify(active.cells)),
+        );
+        refreshUndoRedo();
+      }
     } catch {
       // Out-of-bounds selection: no-op.
     }

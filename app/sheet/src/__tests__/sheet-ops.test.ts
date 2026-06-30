@@ -228,7 +228,7 @@ test("inserting a row above a referenced cell adjusts the formula ref", () => {
   // A1 = 10, B1 = "=A1". Insert a row at index 0 (above row 1): A1 -> A2, and
   // the "=A1" ref should follow to "=A2" so it still points at the value.
   const sheet = sheetWith({ A1: cell("10"), B1: cell("=A1") });
-  const result = shiftSheetStructure(sheet, "insertRows", 0, 1);
+  const result = shiftSheetStructure(sheet, "insertRows", 0, 1).get("s1")!;
 
   // The literal moved down one row.
   expect(result.A2?.value).toBe("10");
@@ -241,8 +241,35 @@ test("inserting a row preserves the format on the shifted formula cell", () => {
     A1: cell("10"),
     B1: cell("=A1", { bold: true }),
   });
-  const result = shiftSheetStructure(sheet, "insertRows", 0, 1);
+  const result = shiftSheetStructure(sheet, "insertRows", 0, 1).get("s1")!;
   expect(result.B2?.format).toEqual({ bold: true });
+});
+
+test("inserting a row re-points cross-sheet references in OTHER sheets", () => {
+  // Sheet1!A2 = 20; Sheet2!B1 = "=Sheet1!A2". Insert a row above Sheet1!A2 so
+  // its value moves to A3; Sheet2's reference must follow to "=Sheet1!A3".
+  const sheet1: Sheet = {
+    id: "s1",
+    name: "Sheet1",
+    cells: { A1: cell("10"), A2: cell("20") },
+    colWidths: {},
+    rowHeights: {},
+  };
+  const sheet2: Sheet = {
+    id: "s2",
+    name: "Sheet2",
+    cells: { B1: cell("=Sheet1!A2") },
+    colWidths: {},
+    rowHeights: {},
+  };
+  const result = shiftSheetStructure(sheet1, "insertRows", 0, 1, [
+    sheet1,
+    sheet2,
+  ]);
+  // Target sheet shifted: the 20 landed on A3.
+  expect(result.get("s1")!.A3?.value).toBe("20");
+  // The OTHER sheet's cross-sheet ref followed the moved cell.
+  expect(result.get("s2")!.B1?.value).toBe("=Sheet1!A3");
 });
 
 test("filterHiddenRows keeps the header and matching rows, hides the rest", () => {

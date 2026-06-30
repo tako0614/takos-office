@@ -222,12 +222,18 @@ export type StructuralOp =
 /**
  * Insert or delete rows/columns on `sheet`, adjusting formula references via
  * HyperFormula. The whole workbook (`allSheets`) is loaded so cross-sheet
- * references survive, but only the target sheet is shifted. Returns the target
- * sheet's rebuilt `cells` map (uncomputed values; the caller re-evaluates).
+ * references survive. Only the target sheet is structurally shifted, but
+ * HyperFormula also re-points formulas in EVERY OTHER sheet that reference the
+ * shifted area (e.g. `Sheet2!B1 = "=Sheet1!A2"` becomes `"=Sheet1!A3"` after a
+ * row is inserted above Sheet1!A2). So this returns adjusted `cells` maps for
+ * the WHOLE workbook (keyed by `Sheet.id`), not just the target — persisting
+ * only the target would silently corrupt other sheets' cross-sheet references.
  *
- * Per-cell formats are carried to their shifted addresses by replaying the same
- * structural shift over the pre-shift format map (`shiftCells`), so a format
- * that sat on a moved cell follows it.
+ * The target sheet's cells are rebuilt from the engine (its data, formats and
+ * formulas all move). Other sheets are NOT structurally shifted, so only their
+ * formula TEXT can change: each formula cell is re-read in place and every other
+ * cell (literals, formats, empty-but-formatted cells) is preserved verbatim.
+ * Returned values are uncomputed; the caller re-evaluates each sheet.
  */
 export function shiftSheetStructure(
   sheet: Sheet,
@@ -235,7 +241,7 @@ export function shiftSheetStructure(
   at: number,
   count: number,
   allSheets: Sheet[] = [sheet],
-): Record<string, CellData> {
+): Map<string, Record<string, CellData>> {
   const sheets = allSheets.some((s) => s.id === sheet.id)
     ? allSheets
     : [...allSheets, sheet];
@@ -262,21 +268,55 @@ export function shiftSheetStructure(
       break;
   }
 
-  // Carry per-cell formats to their post-shift addresses.
+  const result = new Map<string, Record<string, CellData>>();
+
+  // Target sheet: data + formats shift and its own formulas adjust — rebuild
+  // the whole sheet from the engine, carrying per-cell formats to their
+  // post-shift addresses.
   const formatMap: Record<string, CellFormat> = {};
   for (const [addr, cell] of Object.entries(sheet.cells)) {
     if (cell.format) formatMap[addr] = cell.format;
   }
   const shiftedFormats = shiftCells(formatMap, axis, at, delta);
-
   const { width, height } = hf.getSheetDimensions(sheetId);
-  return rebuildCellsFromEngine(
-    {
-      width,
-      height,
-      formulaAt: (col, row) => hf.getCellFormula({ sheet: sheetId, col, row }),
-      valueAt: (col, row) => hf.getCellValue({ sheet: sheetId, col, row }),
-    },
-    shiftedFormats,
+  result.set(
+    sheet.id,
+    rebuildCellsFromEngine(
+      {
+        width,
+        height,
+        formulaAt: (col, row) => hf.getCellFormula({ sheet: sheetId, col, row }),
+        valueAt: (col, row) => hf.getCellValue({ sheet: sheetId, col, row }),
+      },
+      shiftedFormats,
+    ),
   );
+
+  // Other sheets: not structurally shifted, but their cross-sheet formulas may
+  // have been re-pointed by HyperFormula. Re-read each formula cell in place;
+  // leave every non-formula cell (and its format) untouched.
+  for (const other of sheets) {
+    if (other.id === sheet.id) continue;
+    const otherHfId = idBySheetId.get(other.id);
+    if (otherHfId === undefined) continue;
+    const updated: Record<string, CellData> = {};
+    for (const [addr, cell] of Object.entries(other.cells)) {
+      if (!cell.value.startsWith("=")) {
+        updated[addr] = cell;
+        continue;
+      }
+      try {
+        const { col, row } = parseCellAddress(addr);
+        const adjusted = hf.getCellFormula({ sheet: otherHfId, col, row });
+        updated[addr] = adjusted !== undefined
+          ? { ...cell, value: adjusted }
+          : { ...cell };
+      } catch {
+        updated[addr] = cell;
+      }
+    }
+    result.set(other.id, updated);
+  }
+
+  return result;
 }
