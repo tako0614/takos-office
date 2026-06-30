@@ -110,9 +110,22 @@ export class TakosDocumentStore implements DocumentStore {
     );
     if (folder) {
       this.folderId = folder.id;
-    } else {
+      return;
+    }
+    try {
       const created = await this.client.createFolder(FOLDER_NAME);
       this.folderId = created.id;
+    } catch (error) {
+      // Concurrent first-touch: another store instance created the folder
+      // between our list() and createFolder() (the backend enforces a unique
+      // path and rejects the loser). Adopt the winner instead of surfacing a
+      // spurious 500.
+      const retry = await this.client.list();
+      const existing = retry.find((f) =>
+        f.type === "folder" && f.name === FOLDER_NAME
+      );
+      if (!existing) throw error;
+      this.folderId = existing.id;
     }
   }
 

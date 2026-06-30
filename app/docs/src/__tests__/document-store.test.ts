@@ -261,3 +261,21 @@ test("upsert without options overwrites unconditionally (back-compat)", async ()
   const saved = await store.upsert(makeDocument({ id: "doc-1", content: "forced" }));
   expect(saved.content).toEqual("forced");
 });
+
+test("ensureFolder adopts a concurrently-created folder instead of failing", async () => {
+  const storage = createMemoryStorage();
+  let winnerFolderId = "";
+  const racingClient: TakosStorageClient = {
+    ...storage.client,
+    createFolder(name: string, parentId?: string) {
+      // Simulate losing the unique-path race: the concurrent winner's folder
+      // now exists, and our insert is rejected as a CONFLICT.
+      winnerFolderId = storage.makeFile(name, "folder", parentId).id;
+      return Promise.reject(new Error("Takos API error: 409 Conflict"));
+    },
+  };
+  const store = new TakosDocumentStore(racingClient);
+
+  // list() -> loadAll() -> ensureFolder(): must adopt the winner, not throw.
+  expect(await store.list()).toEqual([]);
+});
