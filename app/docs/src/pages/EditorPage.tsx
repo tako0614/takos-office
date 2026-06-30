@@ -8,6 +8,7 @@ import {
   loadDocumentFromApi,
   updateDocumentInStorage,
 } from "../lib/storage";
+import { nextBoundDoc } from "../lib/editor-sync";
 import Editor from "../components/Editor";
 import Toolbar from "../components/Toolbar";
 import Sidebar from "../components/Sidebar";
@@ -75,7 +76,7 @@ export default function EditorPage() {
     setTitle("");
     void loadDocumentFromApi(id)
       .then((remote) => {
-        setDoc(remote);
+        setDoc((d) => nextBoundDoc(d, { kind: "load", doc: remote }));
         setTitle(remote.title);
       })
       .catch(() => navigate("/", { replace: true }));
@@ -95,7 +96,15 @@ export default function EditorPage() {
       const id = doc()?.id ?? params.id;
       void updateDocumentInStorage(id, updates)
         .then((updated) => {
-          if (updated) setDoc(updated);
+          // A successful autosave echoes back the content we just sent. Do NOT
+          // feed it back into the bound document: the editor already holds it
+          // (plus any keystrokes typed during the round-trip), and re-applying
+          // the echo would reset the editor mid-typing and drop those edits.
+          // nextBoundDoc treats a saveEcho as a no-op. (The optimistic-
+          // concurrency base lives in localStorage, not this signal.)
+          if (updated) {
+            setDoc((d) => nextBoundDoc(d, { kind: "saveEcho", doc: updated }));
+          }
           setSaveStatus("saved");
           if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
           saveStatusResetTimeout = setTimeout(
@@ -108,7 +117,9 @@ export default function EditorPage() {
             // Another writer (e.g. an agent over MCP) changed the doc between
             // load and this autosave. Adopt their version instead of silently
             // overwriting it; the editor reloads from the refreshed content.
-            setDoc(error.current);
+            setDoc((d) =>
+              nextBoundDoc(d, { kind: "conflict", doc: error.current })
+            );
             setTitle(error.current.title);
             setSaveStatus("saved");
             return;
