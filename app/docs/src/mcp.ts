@@ -385,7 +385,7 @@ export function documentContentToPlainText(content: string): string {
 // edit can never corrupt the JSON the browser reloads.
 // ---------------------------------------------------------------------------
 
-type DocNode = TiptapNode & { type: "doc"; content: TiptapNode[] };
+export type DocNode = TiptapNode & { type: "doc"; content: TiptapNode[] };
 
 /** Convert a plain-text string into TipTap paragraph nodes (newline-split). */
 function plainTextToParagraphs(text: string): TiptapNode[] {
@@ -580,59 +580,60 @@ function appendTextBlock(doc: DocNode, insert: string): void {
  * Find-and-replace within the concatenated rendered text. Replacement is split
  * across the text nodes it spans; the first spanned node receives the new text
  * and the remainder of the matched range is cleared from subsequent nodes.
+ *
+ * Single pass: the text nodes are collected and joined ONCE, all non-overlapping
+ * matches are found in the original string (left-to-right, `String.replaceAll`
+ * semantics — the replacement is never re-scanned), then every node's text is
+ * rebuilt once against the precomputed match ranges. This is O(docSize +
+ * matches) instead of the previous O(matches * docSize) re-collect+re-join per
+ * match, which let a single-char `find` with empty `replace` on a 250 KB doc
+ * stall the worker (~O(n^2)).
  */
-function replaceTextInModel(
+export function replaceTextInModel(
   doc: DocNode,
   find: string,
   replace: string,
   all: boolean,
 ): number {
   if (find.length === 0) return 0;
-  let count = 0;
-  let searchFrom = 0;
+  const nodes: TiptapNode[] = [];
+  collectTextNodes(doc, nodes);
+  const full = nodes.map((n) => String(n.text ?? "")).join("");
 
-  // Re-collect each pass because node text shifts after a replacement.
+  // Non-overlapping match ranges in the ORIGINAL string, advancing past each
+  // match by find.length so the replacement is never re-matched.
+  const ranges: Array<{ from: number; to: number }> = [];
+  let searchFrom = 0;
   for (;;) {
-    const nodes: TiptapNode[] = [];
-    collectTextNodes(doc, nodes);
-    const full = nodes.map((n) => String(n.text ?? "")).join("");
     const idx = full.indexOf(find, searchFrom);
     if (idx === -1) break;
-
-    applyRangeReplacement(nodes, idx, idx + find.length, replace);
-    count += 1;
-    searchFrom = idx + replace.length;
+    ranges.push({ from: idx, to: idx + find.length });
+    searchFrom = idx + find.length;
     if (!all) break;
   }
-  return count;
-}
+  if (ranges.length === 0) return 0;
 
-/** Replace [from, to) of rendered text across the given text nodes. */
-function applyRangeReplacement(
-  nodes: TiptapNode[],
-  from: number,
-  to: number,
-  replacement: string,
-): void {
-  let consumed = 0;
-  let placed = false;
+  // Rebuild each node's text once: drop matched characters and insert the
+  // replacement at the node where each match STARTS (so a match spanning nodes
+  // is placed in the first node and cleared from the rest).
+  let nodeStart = 0;
   for (const node of nodes) {
-    const t = String(node.text ?? "");
-    const nodeStart = consumed;
-    const nodeEnd = consumed + t.length;
-    consumed = nodeEnd;
-
-    if (nodeEnd <= from || nodeStart >= to) continue;
-
-    const localStart = Math.max(0, from - nodeStart);
-    const localEnd = Math.min(t.length, to - nodeStart);
-    if (!placed) {
-      node.text = t.slice(0, localStart) + replacement + t.slice(localEnd);
-      placed = true;
-    } else {
-      node.text = t.slice(0, localStart) + t.slice(localEnd);
+    const text = String(node.text ?? "");
+    const nodeEnd = nodeStart + text.length;
+    let out = "";
+    let cur = nodeStart;
+    for (const { from, to } of ranges) {
+      if (to <= nodeStart || from >= nodeEnd) continue; // range outside node
+      const copyEnd = Math.min(from, nodeEnd);
+      if (copyEnd > cur) out += text.slice(cur - nodeStart, copyEnd - nodeStart);
+      if (from >= nodeStart && from < nodeEnd) out += replace; // match starts here
+      cur = Math.max(cur, Math.min(to, nodeEnd));
     }
+    if (cur < nodeEnd) out += text.slice(cur - nodeStart, nodeEnd - nodeStart);
+    node.text = out;
+    nodeStart = nodeEnd;
   }
+  return ranges.length;
 }
 
 /**
