@@ -124,7 +124,14 @@ export function sortRangeRows(
       if (cell) slice.set(c - startCol, cell);
     }
     const keyCell = cells[formatCellAddress(keyCol, r)];
-    slices.push({ key: keyCell?.value ?? "", cells: slice });
+    // Sort on the COMPUTED value, not the raw source: a formula column's raw
+    // value is its source text (e.g. "=B2*C2"), which would sort
+    // lexicographically ("=100" < "=2") instead of by the evaluated number.
+    // Falls back to the raw value for literals (computed === value there).
+    slices.push({
+      key: keyCell?.computed ?? keyCell?.value ?? "",
+      cells: slice,
+    });
   }
 
   // Stable sort: keep original order among equal keys.
@@ -197,6 +204,12 @@ export function rebuildCellsFromEngine(
       const format = shiftedFormats[addr];
       result[addr] = format ? { value, format } : { value };
     }
+  }
+  // Materialize format-only cells (empty value + format) that the engine left
+  // empty: they were pushed to HyperFormula as null so produce no engine cell,
+  // but their shifted format must still follow the structural move.
+  for (const [addr, format] of Object.entries(shiftedFormats)) {
+    if (!result[addr]) result[addr] = { value: "", format };
   }
   return result;
 }

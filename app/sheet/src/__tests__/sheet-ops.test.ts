@@ -216,6 +216,25 @@ test("sortRangeRows leaves cells outside the range untouched", () => {
   expect(result.Z9).toEqual(cell("outside"));
 });
 
+test("sortRangeRows sorts a formula column by computed value, not source text", () => {
+  // Raw formula text would sort lexicographically ("=100" < "=2" < "=9"); the
+  // computed values (2, 100, 9) must drive the order instead.
+  const cells: Record<string, CellData> = {
+    A1: { value: "=2", computed: "2" },
+    A2: { value: "=100", computed: "100" },
+    A3: { value: "=9", computed: "9" },
+  };
+  const result = sortRangeRows(
+    cells,
+    { startCol: 0, startRow: 0, endCol: 0, endRow: 2 },
+    0,
+    "asc",
+  );
+  expect(result.A1?.value).toBe("=2"); // 2
+  expect(result.A2?.value).toBe("=9"); // 9
+  expect(result.A3?.value).toBe("=100"); // 100
+});
+
 // ---------------------------------------------------------------------------
 // shiftSheetStructure — HyperFormula-backed formula-reference adjustment
 // ---------------------------------------------------------------------------
@@ -270,6 +289,18 @@ test("inserting a row re-points cross-sheet references in OTHER sheets", () => {
   expect(result.get("s1")!.A3?.value).toBe("20");
   // The OTHER sheet's cross-sheet ref followed the moved cell.
   expect(result.get("s2")!.B1?.value).toBe("=Sheet1!A3");
+});
+
+test("inserting a row carries a format-only (empty-value) cell to its new row", () => {
+  // A2 holds only a format (empty value); after inserting a row above it the
+  // format must follow to A3 rather than being silently dropped.
+  const sheet = sheetWith({
+    A2: cell("", { bgColor: "#ff0000", bold: true }),
+    B2: cell("hi"),
+  });
+  const result = shiftSheetStructure(sheet, "insertRows", 0, 1).get("s1")!;
+  expect(result.A3).toEqual(cell("", { bgColor: "#ff0000", bold: true }));
+  expect(result.B3?.value).toBe("hi");
 });
 
 test("filterHiddenRows keeps the header and matching rows, hides the rest", () => {
