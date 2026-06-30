@@ -337,3 +337,41 @@ test("PresentationStore reflects external writes on re-read (no stale cache)", a
   const persisted = JSON.parse(storage.content.get(file.id)!) as Presentation;
   expect(persisted.title).toEqual("Renamed");
 });
+
+test("duplicateSlide copies speaker notes and transition", async () => {
+  const storage = createMemoryStorage();
+  const store = createPresentationStore(storage.client);
+  const presentation = await store.create("Deck");
+  await store.setSlideNotes(presentation.id, 0, "remember this");
+  await store.setSlideTransition(presentation.id, 0, {
+    type: "fade",
+    duration: 400,
+  });
+
+  const dup = await store.duplicateSlide(presentation.id, 0);
+  expect(dup.notes).toEqual("remember this");
+  expect(dup.transition).toEqual({ type: "fade", duration: 400 });
+
+  // Persisted copy keeps them too (and is an independent transition object).
+  const after = await store.get(presentation.id);
+  const persistedDup = after?.slides[1];
+  expect(persistedDup?.notes).toEqual("remember this");
+  expect(persistedDup?.transition).toEqual({ type: "fade", duration: 400 });
+});
+
+test("removeSlide refuses to delete the last slide", async () => {
+  const storage = createMemoryStorage();
+  const store = createPresentationStore(storage.client);
+  const presentation = await store.create("Deck"); // starts with one slide
+
+  await rejects(
+    () => store.removeSlide(presentation.id, 0),
+    /Cannot remove the last slide/,
+  );
+
+  // Adding a second slide makes removal allowed again.
+  await store.addSlide(presentation.id);
+  await store.removeSlide(presentation.id, 0);
+  const after = await store.get(presentation.id);
+  expect(after?.slides.length).toEqual(1);
+});

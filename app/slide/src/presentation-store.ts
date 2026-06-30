@@ -689,6 +689,11 @@ export function createPresentationStore(
     async removeSlide(presentationId, slideIndex) {
       const { p } = await mustGet(presentationId);
       mustGetSlide(p, slideIndex);
+      // Preserve the >=1-slide invariant relied on by create/present/export
+      // and slides[0] access (matches SpreadsheetStore.removeTab).
+      if (p.slides.length <= 1) {
+        throw new Error("Cannot remove the last slide");
+      }
       p.slides.splice(slideIndex, 1);
       touch(p);
       await persist(presentationId, p);
@@ -732,6 +737,12 @@ export function createPresentationStore(
         id: generateId(),
         background: src.background,
         elements: src.elements.map((e) => ({ ...e, id: generateId() })),
+        // Carry the slide-level notes/transition so duplicating preserves them
+        // (they are first-class slide fields, like createFromTemplate keeps).
+        ...(src.notes !== undefined ? { notes: src.notes } : {}),
+        ...(src.transition !== undefined
+          ? { transition: { ...src.transition } }
+          : {}),
       };
       p.slides.splice(slideIndex + 1, 0, dup);
       touch(p);
