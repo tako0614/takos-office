@@ -133,15 +133,47 @@ async function sign(value: string, secret: string): Promise<string> {
   return base64Url(new Uint8Array(signature));
 }
 
-async function seal(value: unknown, secret: string): Promise<string> {
-  const payload = base64UrlJson(value);
-  return `${payload}.${await sign(payload, secret)}`;
+/**
+ * Constant-time string comparison. Digests both inputs with SHA-256 and
+ * compares the fixed-length digests, so neither the length nor the position of
+ * the first differing byte leaks through early-exit timing (which a plain `===`
+ * on the MAC would expose).
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(a)),
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(b)),
+  ]);
+  const ba = new Uint8Array(da);
+  const bb = new Uint8Array(db);
+  let diff = ba.length ^ bb.length;
+  for (let i = 0; i < ba.length && i < bb.length; i++) diff |= ba[i] ^ bb[i];
+  return diff === 0;
 }
 
-async function unseal<T>(token: string, secret: string): Promise<T | null> {
+// `purpose` is mixed into the signed material so the two cookie kinds are not
+// cryptographically interchangeable: an OAuth `state` cookie (purpose "state")
+// can never be replayed as a session cookie (purpose "session") even though
+// both are sealed with the same APP_SESSION_SECRET.
+async function seal(
+  value: unknown,
+  secret: string,
+  purpose: string,
+): Promise<string> {
+  const payload = base64UrlJson(value);
+  return `${payload}.${await sign(`${purpose}.${payload}`, secret)}`;
+}
+
+async function unseal<T>(
+  token: string,
+  secret: string,
+  purpose: string,
+): Promise<T | null> {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return null;
-  if (await sign(payload, secret) !== signature) return null;
+  const expected = await sign(`${purpose}.${payload}`, secret);
+  // Constant-time compare on the auth boundary (no early-exit timing oracle).
+  if (!(await timingSafeEqual(expected, signature))) return null;
   return parseBase64UrlJson<T>(payload);
 }
 
@@ -318,8 +350,11 @@ export async function requireAppAuth(
   if (misconfigured) return misconfigured;
   const raw = parseCookie(request.headers.get("Cookie"), SESSION_COOKIE);
   if (!raw) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const session = await unseal<AppSession>(raw, config.sessionSecret!);
-  if (!session || session.exp <= Math.floor(Date.now() / 1000)) {
+  const session = await unseal<AppSession>(raw, config.sessionSecret!, "session");
+  if (
+    !session || typeof session.sub !== "string" || session.sub === "" ||
+    session.exp <= Math.floor(Date.now() / 1000)
+  ) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   const requestedSpaceId = options.spaceId;
@@ -366,7 +401,7 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
         "Set-Cookie": cookieHeader(
           c.req.raw,
           STATE_COOKIE,
-          await seal(state, config.sessionSecret!),
+          await seal(state, config.sessionSecret!, "state"),
           STATE_MAX_AGE_SECONDS,
         ),
       },
@@ -381,7 +416,7 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
     const returnedState = c.req.query("state");
     const stateCookie = parseCookie(c.req.header("Cookie"), STATE_COOKIE);
     const state = stateCookie
-      ? await unseal<OAuthState>(stateCookie, config.sessionSecret!)
+      ? await unseal<OAuthState>(stateCookie, config.sessionSecret!, "state")
       : null;
     if (
       !code || !returnedState || !state || state.state !== returnedState ||
@@ -404,6 +439,7 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
         exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
       } satisfies AppSession,
       config.sessionSecret!,
+      "session",
     );
     // SECURITY (open redirect): re-validate at emit time so a tampered or
     // legacy `state` cookie can't drive an external `Location:` redirect.

@@ -19,6 +19,8 @@ async function makeSessionCookie(
   payload: { sub: string; name?: string; spaceIds: string[]; exp: number },
 ): Promise<string> {
   const data = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  // Mirror app-auth seal(): the MAC is bound to the "session" purpose.
+  const signed = `session.${data}`;
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -29,7 +31,7 @@ async function makeSessionCookie(
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    new TextEncoder().encode(data),
+    new TextEncoder().encode(signed),
   );
   return `${data}.${base64Url(new Uint8Array(signature))}`;
 }

@@ -24,6 +24,8 @@ async function makeSessionCookie(
   payload: { sub: string; name?: string; spaceIds: string[]; exp: number },
 ): Promise<string> {
   const data = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  // Mirror app-auth seal(): the MAC is bound to the "session" purpose.
+  const signed = `session.${data}`;
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -34,7 +36,7 @@ async function makeSessionCookie(
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    new TextEncoder().encode(data),
+    new TextEncoder().encode(signed),
   );
   return `${data}.${base64Url(new Uint8Array(signature))}`;
 }
@@ -281,6 +283,91 @@ test("document API allows spaces in the subject's membership", async () => {
   );
   expect(allowed.status).toEqual(200);
   expect(await allowed.json()).toEqual({ authenticated: true });
+});
+
+test("an OAuth state cookie cannot be replayed as a session cookie", async () => {
+  // Token-purpose binding: /api/auth/login mints a state cookie sealed with the
+  // same secret. Replaying it as the session cookie must NOT authenticate (the
+  // MAC is bound to a different purpose), closing the auth-status oracle.
+  const sessionSecret = "session-secret";
+  const authEnv = {
+    ...env,
+    APP_AUTH_REQUIRED: "1",
+    OAUTH_ISSUER_URL: "https://takos.example",
+    OAUTH_CLIENT_ID: "client",
+    OAUTH_CLIENT_SECRET: "secret",
+    APP_SESSION_SECRET: sessionSecret,
+  };
+  const { app } = createDocsApp(authEnv);
+
+  const login = await app.request(
+    new Request("http://localhost/api/auth/login", { method: "GET" }),
+  );
+  const stateCookie = (login.headers.get("Set-Cookie") ?? "").split(";")[0]
+    .replace("takos_app_oauth_state=", "");
+  expect(stateCookie !== "").toBeTruthy();
+
+  const replay = await app.request(
+    new Request("http://localhost/api/auth/me", {
+      method: "GET",
+      headers: { Cookie: `takos_app_session=${stateCookie}` },
+    }),
+  );
+  expect(replay.status).toEqual(401);
+});
+
+test("a session with an empty subject is rejected", async () => {
+  const sessionSecret = "session-secret";
+  const authEnv = {
+    ...env,
+    APP_AUTH_REQUIRED: "1",
+    OAUTH_ISSUER_URL: "https://takos.example",
+    OAUTH_CLIENT_ID: "client",
+    OAUTH_CLIENT_SECRET: "secret",
+    APP_SESSION_SECRET: sessionSecret,
+  };
+  const { app } = createDocsApp(authEnv);
+  const cookie = await makeSessionCookie(sessionSecret, {
+    sub: "",
+    spaceIds: [],
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+
+  const res = await app.request(
+    new Request("http://localhost/api/auth/me", {
+      method: "GET",
+      headers: { Cookie: `takos_app_session=${cookie}` },
+    }),
+  );
+  expect(res.status).toEqual(401);
+});
+
+test("a tampered session cookie signature is rejected", async () => {
+  const sessionSecret = "session-secret";
+  const authEnv = {
+    ...env,
+    APP_AUTH_REQUIRED: "1",
+    OAUTH_ISSUER_URL: "https://takos.example",
+    OAUTH_CLIENT_ID: "client",
+    OAUTH_CLIENT_SECRET: "secret",
+    APP_SESSION_SECRET: sessionSecret,
+  };
+  const { app } = createDocsApp(authEnv);
+  const cookie = await makeSessionCookie(sessionSecret, {
+    sub: "alice",
+    spaceIds: ["space-1"],
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const [payload] = cookie.split(".");
+  const tampered = `${payload}.deadbeef`;
+
+  const res = await app.request(
+    new Request("http://localhost/api/auth/me", {
+      method: "GET",
+      headers: { Cookie: `takos_app_session=${tampered}` },
+    }),
+  );
+  expect(res.status).toEqual(401);
 });
 
 test("OAuth callback folds takosumi.space_id into the session when no space_memberships claim is present", async () => {
