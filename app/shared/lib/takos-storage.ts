@@ -161,7 +161,7 @@ export function createTakosStorageClient(
 
   async function get(fileId: string): Promise<StorageFile | null> {
     try {
-      const res = await fetchApi(`/${fileId}`);
+      const res = await fetchApi(`/${encodeURIComponent(fileId)}`);
       return fileFromResponse(await res.json());
     } catch {
       return null;
@@ -169,7 +169,7 @@ export function createTakosStorageClient(
   }
 
   async function getContent(fileId: string): Promise<string> {
-    const res = await fetchApi(`/${fileId}/content`);
+    const res = await fetchApi(`/${encodeURIComponent(fileId)}/content`);
     const contentType = res.headers.get("Content-Type") ?? "";
     if (contentType.includes("application/json")) {
       const data = await res.json();
@@ -184,7 +184,7 @@ export function createTakosStorageClient(
     content: string,
     mimeType?: string,
   ): Promise<void> {
-    await fetchApi(`/${fileId}/content`, {
+    await fetchApi(`/${encodeURIComponent(fileId)}/content`, {
       method: "PUT",
       body: JSON.stringify({ content, mime_type: mimeType }),
     });
@@ -224,14 +224,14 @@ export function createTakosStorageClient(
   }
 
   async function rename(fileId: string, name: string): Promise<void> {
-    await fetchApi(`/${fileId}`, {
+    await fetchApi(`/${encodeURIComponent(fileId)}`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
     });
   }
 
   async function del(fileId: string): Promise<void> {
-    await fetchApi(`/${fileId}`, { method: "DELETE" });
+    await fetchApi(`/${encodeURIComponent(fileId)}`, { method: "DELETE" });
   }
 
   return {

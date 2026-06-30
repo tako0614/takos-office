@@ -75,7 +75,7 @@ export function registerSlideTools(
   const MIN_SCREENSHOT_HEIGHT = 180;
   const MAX_SCREENSHOT_HEIGHT = 1_600;
 
-  const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
+  const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH).regex(/^[A-Za-z0-9._-]+$/, "id may only contain letters, digits, '.', '_' and '-'");
   const titleSchema = z.string().max(MAX_TITLE_LENGTH);
   const notesSchema = z.string().max(MAX_NOTES_LENGTH);
   const slideIndexSchema = z.number().int().min(0).max(MAX_SLIDES);

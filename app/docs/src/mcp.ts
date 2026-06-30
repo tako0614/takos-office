@@ -42,7 +42,7 @@ const MAX_SCREENSHOT_HEIGHT = 3_200;
 const DEFAULT_SCREENSHOT_WIDTH = 800;
 const DEFAULT_SCREENSHOT_HEIGHT = 1_000;
 
-const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
+const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH).regex(/^[A-Za-z0-9._-]+$/, "id may only contain letters, digits, '.', '_' and '-'");
 const titleSchema = z.string().max(MAX_TITLE_LENGTH);
 const contentSchema = z.string().max(MAX_CONTENT_LENGTH);
 const textPatchSchema = z.string().max(MAX_TEXT_PATCH_LENGTH);
