@@ -279,3 +279,54 @@ test("ensureFolder adopts a concurrently-created folder instead of failing", asy
   // list() -> loadAll() -> ensureFolder(): must adopt the winner, not throw.
   expect(await store.list()).toEqual([]);
 });
+
+test("update with a stale expectedUpdatedAt throws a conflict (no silent loss)", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-docs", "folder");
+  const file = storage.makeFile("d1.takosdoc", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeDocument({ id: "d1", content: "C0", updatedAt: "v0" })),
+  );
+  const store = new TakosDocumentStore(storage.client);
+
+  // Read A captures base updatedAt = "v0".
+  const readA = await store.get("d1");
+  expect(readA?.updatedAt).toEqual("v0");
+
+  // A concurrent writer (e.g. browser autosave) updates the stored doc.
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeDocument({ id: "d1", content: "C1", updatedAt: "v1" })),
+  );
+
+  // The agent's read-modify-write, derived from read A, must refuse instead of
+  // clobbering C1 with stale-derived content.
+  let conflict: unknown;
+  try {
+    await store.update("d1", { content: "C0+insert" }, {
+      expectedUpdatedAt: readA!.updatedAt,
+    });
+  } catch (e) {
+    conflict = e;
+  }
+  expect(conflict).toBeInstanceOf(DocumentConflictError);
+  expect((conflict as DocumentConflictError).current.content).toEqual("C1");
+
+  // The concurrent writer's content is preserved on disk.
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Document;
+  expect(persisted.content).toEqual("C1");
+});
+
+test("update without expectedUpdatedAt still overwrites (unchanged behavior)", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-docs", "folder");
+  const file = storage.makeFile("d2.takosdoc", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeDocument({ id: "d2", content: "old" })),
+  );
+  const store = new TakosDocumentStore(storage.client);
+  const updated = await store.update("d2", { content: "new" });
+  expect(updated?.content).toEqual("new");
+});

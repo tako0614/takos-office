@@ -47,6 +47,7 @@ export interface DocumentStore {
   update(
     id: string,
     data: Partial<Pick<Document, "title" | "content">>,
+    opts?: WriteOptions,
   ): Promise<Document | null>;
   delete(id: string): Promise<boolean>;
   search(query: string): Promise<Document[]>;
@@ -236,6 +237,7 @@ export class TakosDocumentStore implements DocumentStore {
   async update(
     id: string,
     data: Partial<Pick<Document, "title" | "content">>,
+    opts?: WriteOptions,
   ): Promise<Document | null> {
     await this.ensureFolder();
 
@@ -245,6 +247,18 @@ export class TakosDocumentStore implements DocumentStore {
     if (!current) return null;
     const fileId = this.fileIdFor(current.id);
     if (!fileId) return null;
+
+    // Optimistic concurrency: when the caller derived `data` (e.g. an edited
+    // content model) from an earlier read, it passes that read's updatedAt.
+    // If the stored doc changed since (e.g. a concurrent browser autosave),
+    // refuse rather than silently overwriting the other writer's edit with the
+    // stale-derived content.
+    if (
+      opts?.expectedUpdatedAt !== undefined &&
+      current.updatedAt !== opts.expectedUpdatedAt
+    ) {
+      throw new DocumentConflictError(current);
+    }
 
     const updated: Document = {
       ...current,

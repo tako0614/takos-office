@@ -1105,7 +1105,7 @@ export function registerDocsTools(
       const { insertedAt } = insertTextAtOffset(model, position, insertText);
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         insertedAt,
@@ -1148,7 +1148,7 @@ export function registerDocsTools(
 
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         replacements: count,
@@ -1173,7 +1173,7 @@ export function registerDocsTools(
       appendTextBlock(model, appendText);
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({ id: updated!.id, contentLength: updated!.content.length });
     },
   );
@@ -1226,7 +1226,7 @@ export function registerDocsTools(
       );
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         formattedRange: [start, end],
@@ -1267,7 +1267,7 @@ export function registerDocsTools(
       const insertedAt = insertBlockAtOffset(model, pos, table);
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         insertedAt,
@@ -1318,7 +1318,7 @@ export function registerDocsTools(
       const insertedAt = insertBlockAtOffset(model, pos, imageNode);
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         insertedAt,
@@ -1360,7 +1360,7 @@ export function registerDocsTools(
       const insertedAt = insertLinkAtOffset(model, pos, linkText, safeUrl);
       const updated = await store.update(id, {
         content: serializeDocModel(model),
-      });
+      }, { expectedUpdatedAt: doc.updatedAt });
       return json({
         id: updated!.id,
         insertedAt,
