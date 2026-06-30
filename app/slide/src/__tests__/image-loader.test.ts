@@ -42,6 +42,31 @@ test("isFetchableImageHost allows public hosts", () => {
   expect(isFetchableImageHost("http://8.8.8.8/a.png")).toBe(true);
 });
 
+test("isFetchableImageHost blocks IPv4-mapped/embedded IPv6 SSRF targets", () => {
+  for (
+    const blocked of [
+      "http://[::ffff:127.0.0.1]/a.png", // mapped loopback
+      "http://[::ffff:7f00:1]/a.png", // mapped loopback (hex form)
+      "http://[::ffff:169.254.169.254]/latest/meta-data", // mapped metadata
+      "http://[::ffff:10.0.0.5]/a.png", // mapped RFC1918
+      "http://[::ffff:192.168.1.10]/a.png",
+      "http://[::]/a.png", // unspecified
+      "http://[fe80::1]/a.png", // link-local
+      "http://[fc00::1]/a.png", // unique-local
+      "http://[fd12:3456::1]/a.png", // unique-local
+      "http://[ff02::1]/a.png", // multicast
+      "http://[::127.0.0.1]/a.png", // deprecated v4-compatible loopback
+    ]
+  ) {
+    expect(isFetchableImageHost(blocked)).toBe(false);
+  }
+});
+
+test("isFetchableImageHost still allows public IPv6 (incl. mapped public v4)", () => {
+  expect(isFetchableImageHost("http://[2606:4700::1]/a.png")).toBe(true);
+  expect(isFetchableImageHost("http://[::ffff:8.8.8.8]/a.png")).toBe(true);
+});
+
 test("loadImageForExport returns the inline image without fetching", async () => {
   const url =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";

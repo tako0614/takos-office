@@ -37,6 +37,80 @@ export function parseDataImageUrl(url: string): LoadedImage | null {
   return { dataUrl: url.trim(), format: formatHint(`image/${match[1]}`) };
 }
 
+/** True for an IPv4 address in a loopback/private/CGNAT/multicast/reserved range. */
+function isPrivateIpv4(a: number, b: number): boolean {
+  if (a === 0 || a === 127 || a === 10) return true;
+  if (a === 169 && b === 254) return true; // link-local
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a >= 224) return true; // multicast / reserved
+  return false;
+}
+
+/**
+ * Parse an IPv6 literal (already bracket-stripped) into its 8 16-bit hextets,
+ * expanding `::` and any embedded dotted IPv4 tail (`::ffff:127.0.0.1`).
+ * Returns null for anything that is not a well-formed IPv6 literal.
+ */
+function parseIpv6(input: string): number[] | null {
+  let s = input;
+  // Fold an embedded dotted IPv4 tail (`...:a.b.c.d`) into two hextets so the
+  // generic parser below sees a pure-hex address.
+  const lastColon = s.lastIndexOf(":");
+  if (lastColon !== -1 && s.slice(lastColon + 1).includes(".")) {
+    const m = s.slice(lastColon + 1).match(
+      /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+    );
+    if (!m) return null;
+    const p = m.slice(1, 5).map(Number);
+    if (p.some((n) => n > 255)) return null;
+    s = s.slice(0, lastColon + 1) +
+      (((p[0] << 8) | p[1]).toString(16)) + ":" +
+      (((p[2] << 8) | p[3]).toString(16));
+  }
+
+  const parts = s.split("::");
+  if (parts.length > 2) return null; // at most one "::"
+  const head = parts[0] === "" ? [] : parts[0].split(":");
+  const tail = parts.length === 2 ? (parts[1] === "" ? [] : parts[1].split(":"))
+    : [];
+  const groupStrs = parts.length === 2
+    ? [...head, ...Array(8 - head.length - tail.length).fill("0"), ...tail]
+    : head;
+  if (groupStrs.length !== 8) return null;
+  const groups: number[] = [];
+  for (const g of groupStrs) {
+    if (!/^[0-9a-f]{1,4}$/i.test(g)) return null;
+    groups.push(parseInt(g, 16));
+  }
+  return groups;
+}
+
+/**
+ * True for an IPv6 literal that is loopback, unspecified, link-local, ULA,
+ * multicast, or an IPv4-mapped/compatible form whose embedded IPv4 is private.
+ * Fails closed (blocks) on any literal we cannot parse.
+ */
+function isPrivateIpv6(host: string): boolean {
+  const g = parseIpv6(host);
+  if (!g) return true; // unparseable IPv6 literal -> block
+  if (g.every((h) => h === 0)) return true; // :: unspecified
+  if (g.slice(0, 7).every((h) => h === 0) && g[7] === 1) return true; // ::1
+  if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((g[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  // IPv4-mapped ::ffff:a.b.c.d and IPv4-compatible ::a.b.c.d: re-run the v4
+  // policy on the embedded address so the mapped form can't tunnel a private
+  // IPv4 (the documented `http://[::ffff:127.0.0.1]/` bypass).
+  const mapped = g.slice(0, 5).every((h) => h === 0) && g[5] === 0xffff;
+  const compat = g.slice(0, 6).every((h) => h === 0) && !(g[6] === 0 && g[7] <= 1);
+  if (mapped || compat) {
+    return isPrivateIpv4((g[6] >> 8) & 0xff, g[6] & 0xff);
+  }
+  return false;
+}
+
 /**
  * Best-effort SSRF guard: reject hosts that are loopback, link-local, private,
  * CGNAT, multicast or obviously-internal names. Note this is host-literal only
@@ -56,24 +130,14 @@ export function isFetchableImageHost(url: string): boolean {
   if (host === "localhost" || host.endsWith(".localhost")) return false;
   if (host.endsWith(".local") || host.endsWith(".internal")) return false;
 
-  // IPv6 literals (URL hostnames keep the brackets off).
-  if (host === "::1") return false;
-  if (
-    host.startsWith("fe80") || host.startsWith("fc") || host.startsWith("fd")
-  ) {
-    return false;
-  }
+  // IPv6 literals are the only hostnames containing a colon (URL.hostname has
+  // already stripped any port), so this reliably routes them through the full
+  // IPv6 range check instead of the dotted-IPv4 path below.
+  if (host.includes(":")) return !isPrivateIpv6(host);
 
   const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (v4) {
-    const a = Number(v4[1]);
-    const b = Number(v4[2]);
-    if (a === 0 || a === 127 || a === 10) return false;
-    if (a === 169 && b === 254) return false; // link-local
-    if (a === 172 && b >= 16 && b <= 31) return false;
-    if (a === 192 && b === 168) return false;
-    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
-    if (a >= 224) return false; // multicast / reserved
+    if (isPrivateIpv4(Number(v4[1]), Number(v4[2]))) return false;
   }
   return true;
 }
