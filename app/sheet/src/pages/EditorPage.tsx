@@ -7,6 +7,7 @@ import {
   getSpreadsheet,
   loadSpreadsheetFromApi,
   renameSheet,
+  SpreadsheetConflictError,
   updateSpreadsheet,
 } from "../lib/storage";
 import {
@@ -138,6 +139,13 @@ export const EditorPage: Component = () => {
   const save = (ss: Spreadsheet) => {
     setSpreadsheet({ ...ss });
     void updateSpreadsheet(ss).catch((error) => {
+      if (error instanceof SpreadsheetConflictError) {
+        // Another writer (e.g. an agent over MCP) changed the spreadsheet
+        // between our load and this autosave. Adopt their version instead of
+        // silently overwriting it; the editor reloads from the refreshed copy.
+        setSpreadsheetForEditing(error.current);
+        return;
+      }
       console.error("[takos-excel] Failed to save spreadsheet", error);
     });
   };

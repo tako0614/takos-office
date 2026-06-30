@@ -13,6 +13,7 @@ import {
   createShapeElement,
   createTextElement,
   loadPresentationFromApi,
+  PresentationConflictError,
   savePresentation,
 } from "../lib/storage";
 import SlideCanvas from "../components/SlideCanvas";
@@ -73,6 +74,13 @@ export default function EditorPage() {
     setPresentation(pres);
     const result = savePresentation(pres);
     void result.remote.catch((error) => {
+      if (error instanceof PresentationConflictError) {
+        // Another writer (e.g. an agent over MCP) changed the presentation
+        // between our load and this autosave. Adopt their version instead of
+        // silently overwriting it; the editor reloads from the refreshed copy.
+        setPresentation(error.current);
+        return;
+      }
       console.error("[takos-slide] Failed to save presentation", error);
     });
   };

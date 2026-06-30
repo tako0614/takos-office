@@ -17,16 +17,52 @@ export function clearPresentationsCache(): void {
   api.clearCache();
 }
 
-function syncPresentationToApi(
+/** Thrown by a save that lost an optimistic-concurrency check (HTTP 409). */
+export class PresentationConflictError extends Error {
+  constructor(public readonly current: Presentation) {
+    super("Presentation was modified elsewhere");
+    this.name = "PresentationConflictError";
+  }
+}
+
+async function syncPresentationToApi(
   presentation: Presentation,
+  baseUpdatedAt?: string,
 ): Promise<Presentation> {
-  return requestJson<Presentation>(
-    `${API_PRESENTATIONS_PATH}/${encodeURIComponent(presentation.id)}`,
+  const response = await fetch(
+    withCurrentSpaceId(
+      `${API_PRESENTATIONS_PATH}/${encodeURIComponent(presentation.id)}`,
+    ),
     {
       method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        // Send the loaded version so the server can reject a stale overwrite.
+        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+      },
       body: JSON.stringify(presentation),
+      credentials: "same-origin",
     },
   );
+  if (response.status === 401) {
+    clearPresentationsCache();
+    redirectToLogin();
+  }
+  if (response.status === 409) {
+    const body = await response.json() as { current: Presentation };
+    // Adopt the server's current version locally so the next save is based on
+    // it, then surface the conflict to the caller to reload.
+    const all = loadPresentations();
+    const index = all.findIndex((entry) => entry.id === body.current.id);
+    if (index >= 0) all[index] = body.current;
+    else all.push(body.current);
+    savePresentations(all);
+    throw new PresentationConflictError(body.current);
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return await response.json() as Presentation;
 }
 
 async function deletePresentationFromApi(id: string): Promise<void> {
@@ -112,6 +148,8 @@ export function savePresentation(
 ): LocalSaveResult<Presentation[]> {
   const presentations = loadPresentations();
   const index = presentations.findIndex((p) => p.id === presentation.id);
+  // The version we loaded — used as the optimistic-concurrency precondition.
+  const baseUpdatedAt = index >= 0 ? presentations[index].updatedAt : undefined;
   const updated = {
     ...presentation,
     updatedAt: new Date().toISOString(),
@@ -122,7 +160,10 @@ export function savePresentation(
     presentations.push(updated);
   }
   savePresentations(presentations);
-  return { value: presentations, remote: syncPresentationToApi(updated) };
+  return {
+    value: presentations,
+    remote: syncPresentationToApi(updated, baseUpdatedAt),
+  };
 }
 
 export function deletePresentation(

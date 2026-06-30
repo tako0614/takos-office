@@ -16,14 +16,52 @@ export function clearSpreadsheetsCache(): void {
   api.clearCache();
 }
 
-function syncSpreadsheetToApi(spreadsheet: Spreadsheet): Promise<Spreadsheet> {
-  return requestJson<Spreadsheet>(
-    `${API_SPREADSHEETS_PATH}/${encodeURIComponent(spreadsheet.id)}`,
+/** Thrown by a save that lost an optimistic-concurrency check (HTTP 409). */
+export class SpreadsheetConflictError extends Error {
+  constructor(public readonly current: Spreadsheet) {
+    super("Spreadsheet was modified elsewhere");
+    this.name = "SpreadsheetConflictError";
+  }
+}
+
+async function syncSpreadsheetToApi(
+  spreadsheet: Spreadsheet,
+  baseUpdatedAt?: string,
+): Promise<Spreadsheet> {
+  const response = await fetch(
+    withCurrentSpaceId(
+      `${API_SPREADSHEETS_PATH}/${encodeURIComponent(spreadsheet.id)}`,
+    ),
     {
       method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        // Send the loaded version so the server can reject a stale overwrite.
+        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+      },
       body: JSON.stringify(spreadsheet),
+      credentials: "same-origin",
     },
   );
+  if (response.status === 401) {
+    clearSpreadsheetsCache();
+    redirectToLogin();
+  }
+  if (response.status === 409) {
+    const body = await response.json() as { current: Spreadsheet };
+    // Adopt the server's current version locally so the next save is based on
+    // it, then surface the conflict to the caller to reload.
+    const all = loadSpreadsheets();
+    const index = all.findIndex((entry) => entry.id === body.current.id);
+    if (index >= 0) all[index] = body.current;
+    else all.push(body.current);
+    saveSpreadsheets(all);
+    throw new SpreadsheetConflictError(body.current);
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return await response.json() as Spreadsheet;
 }
 
 async function deleteSpreadsheetFromApi(id: string): Promise<void> {
@@ -130,9 +168,11 @@ export function updateSpreadsheet(
   const all = loadSpreadsheets();
   const index = all.findIndex((s) => s.id === spreadsheet.id);
   if (index !== -1) {
+    // The version we loaded — used as the optimistic-concurrency precondition.
+    const baseUpdatedAt = all[index].updatedAt;
     all[index] = { ...spreadsheet, updatedAt: new Date().toISOString() };
     saveSpreadsheets(all);
-    return syncSpreadsheetToApi(all[index]);
+    return syncSpreadsheetToApi(all[index], baseUpdatedAt);
   }
   return Promise.resolve(undefined);
 }

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { rejects } from "node:assert/strict";
-import { SpreadsheetStore } from "../spreadsheet-store.ts";
+import {
+  SpreadsheetConflictError,
+  SpreadsheetStore,
+} from "../spreadsheet-store.ts";
 import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "../types/index.ts";
 
@@ -233,4 +236,57 @@ test("SpreadsheetStore setCell preserves externally-written cells (fresh read)",
   const persisted = JSON.parse(storage.content.get(file.id)!) as Spreadsheet;
   expect(persisted.sheets[0].cells["A1"]?.value).toEqual("external");
   expect(persisted.sheets[0].cells["B1"]?.value).toEqual("mine");
+});
+
+test("replaceSpreadsheet with a stale expectedUpdatedAt throws a conflict", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-excel", "folder");
+  const file = storage.makeFile("ss1.takossheet", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeSpreadsheet({ id: "ss1", updatedAt: "v0" })),
+  );
+  const store = new SpreadsheetStore(storage.client);
+  await store.listSpreadsheets(); // warm the fileId memo
+
+  // A concurrent writer (e.g. an agent over MCP) advances the stored version.
+  storage.content.set(
+    file.id,
+    JSON.stringify(
+      makeSpreadsheet({ id: "ss1", title: "Agent edit", updatedAt: "v1" }),
+    ),
+  );
+
+  let conflict: unknown;
+  try {
+    await store.replaceSpreadsheet(
+      makeSpreadsheet({ id: "ss1", title: "Browser snapshot", updatedAt: "v0" }),
+      { expectedUpdatedAt: "v0" },
+    );
+  } catch (e) {
+    conflict = e;
+  }
+  expect(conflict).toBeInstanceOf(SpreadsheetConflictError);
+  expect((conflict as SpreadsheetConflictError).current.title).toEqual(
+    "Agent edit",
+  );
+  // The concurrent writer's content is preserved on disk.
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Spreadsheet;
+  expect(persisted.title).toEqual("Agent edit");
+});
+
+test("replaceSpreadsheet without a precondition still overwrites", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-excel", "folder");
+  const file = storage.makeFile("ss1.takossheet", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makeSpreadsheet({ id: "ss1", title: "Old" })),
+  );
+  const store = new SpreadsheetStore(storage.client);
+  await store.listSpreadsheets();
+  const result = await store.replaceSpreadsheet(
+    makeSpreadsheet({ id: "ss1", title: "New" }),
+  );
+  expect(result.title).toEqual("New");
 });

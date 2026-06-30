@@ -28,6 +28,26 @@ const FOLDER_NAME = "takos-slide";
 const FILE_EXTENSION = ".takosslide";
 const MIME_TYPE = "application/vnd.takos.slide+json";
 
+/** Optimistic-concurrency options for a whole-presentation write. */
+export interface PresentationWriteOptions {
+  /**
+   * If set, the write only proceeds when the stored presentation's `updatedAt`
+   * still equals this value; otherwise a {@link PresentationConflictError} is
+   * thrown so the browser autosave can reload instead of clobbering a
+   * concurrent edit (e.g. an agent's MCP write landing between the browser's
+   * load and its autosave).
+   */
+  expectedUpdatedAt?: string;
+}
+
+/** Thrown when a whole-presentation write loses an optimistic-concurrency check. */
+export class PresentationConflictError extends Error {
+  constructor(public readonly current: Presentation) {
+    super("Presentation was modified by another writer");
+    this.name = "PresentationConflictError";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -288,7 +308,10 @@ export interface PresentationStore {
   >;
   create(title: string): Promise<Presentation>;
   get(id: string): Promise<Presentation | undefined>;
-  replace(presentation: Presentation): Promise<Presentation>;
+  replace(
+    presentation: Presentation,
+    opts?: PresentationWriteOptions,
+  ): Promise<Presentation>;
   delete(id: string): Promise<boolean>;
   setTitle(id: string, title: string): Promise<Presentation>;
 
@@ -633,7 +656,7 @@ export function createPresentationStore(
       return (await loadFile(id))?.p;
     },
 
-    async replace(presentation: Presentation) {
+    async replace(presentation: Presentation, opts?: PresentationWriteOptions) {
       await ensureFolder();
       let fileId = fileIdFor(presentation.id);
       if (!fileId) {
@@ -645,6 +668,15 @@ export function createPresentationStore(
         updatedAt: presentation.updatedAt || now(),
       };
       if (fileId) {
+        // Optimistic concurrency: refuse to overwrite a presentation that
+        // changed since the caller loaded it (e.g. a concurrent MCP write), so
+        // the whole in-memory snapshot can't silently clobber it.
+        if (opts?.expectedUpdatedAt !== undefined) {
+          const latest = await loadFile(fileId);
+          if (latest && latest.p.updatedAt !== opts.expectedUpdatedAt) {
+            throw new PresentationConflictError(latest.p);
+          }
+        }
         await client.putContent(fileId, JSON.stringify(next), MIME_TYPE);
         fileIds.set(next.id, fileId);
         return next;

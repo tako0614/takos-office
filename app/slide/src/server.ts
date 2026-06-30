@@ -10,7 +10,10 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { createPresentationStore } from "./presentation-store.ts";
+import {
+  createPresentationStore,
+  PresentationConflictError,
+} from "./presentation-store.ts";
 import { createSlideMcpServer } from "./mcp.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Presentation } from "./types/index.ts";
@@ -124,9 +127,22 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
     const body = await c.req.json<Presentation>();
     const id = c.req.param("id");
     const current = await store.get(id);
-    return c.json(
-      await store.replace({ ...body, id: current?.id ?? body.id ?? id }),
-    );
+    // Optimistic concurrency: If-Match carries the version the browser loaded;
+    // a stale match means a concurrent (e.g. MCP) write landed, so reject with
+    // 409 + the current presentation instead of clobbering it.
+    const expectedUpdatedAt = c.req.header("If-Match") || undefined;
+    try {
+      return c.json(
+        await store.replace({ ...body, id: current?.id ?? body.id ?? id }, {
+          expectedUpdatedAt,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof PresentationConflictError) {
+        return c.json({ current: error.current }, 409);
+      }
+      throw error;
+    }
   });
   app.delete("/api/presentations/:id", async (c) => {
     const store = storeForRequest(c);

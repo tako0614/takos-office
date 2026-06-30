@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { SpreadsheetStore } from "./spreadsheet-store.ts";
+import { SpreadsheetConflictError, SpreadsheetStore } from "./spreadsheet-store.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "./types/index.ts";
 import {
@@ -133,12 +133,23 @@ export function createServerApp(
     } catch {
       current = undefined;
     }
-    return c.json(
-      await store.replaceSpreadsheet({
-        ...body,
-        id: current?.id ?? body.id ?? id,
-      }),
-    );
+    // Optimistic concurrency: If-Match carries the version the browser loaded;
+    // a stale match means a concurrent (e.g. MCP) write landed, so reject with
+    // 409 + the current spreadsheet instead of clobbering it.
+    const expectedUpdatedAt = c.req.header("If-Match") || undefined;
+    try {
+      return c.json(
+        await store.replaceSpreadsheet({
+          ...body,
+          id: current?.id ?? body.id ?? id,
+        }, { expectedUpdatedAt }),
+      );
+    } catch (error) {
+      if (error instanceof SpreadsheetConflictError) {
+        return c.json({ current: error.current }, 409);
+      }
+      throw error;
+    }
   });
   app.delete("/api/spreadsheets/:id", async (c) => {
     const store = currentStore(c);

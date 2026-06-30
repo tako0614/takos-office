@@ -42,6 +42,26 @@ const FOLDER_NAME = "takos-excel";
 const FILE_EXTENSION = ".takossheet";
 const MIME_TYPE = "application/vnd.takos.excel+json";
 
+/** Optimistic-concurrency options for a whole-spreadsheet write. */
+export interface SpreadsheetWriteOptions {
+  /**
+   * If set, the write only proceeds when the stored spreadsheet's `updatedAt`
+   * still equals this value; otherwise a {@link SpreadsheetConflictError} is
+   * thrown so the browser autosave can reload instead of clobbering a
+   * concurrent edit (e.g. an agent's MCP write landing between the browser's
+   * load and its autosave).
+   */
+  expectedUpdatedAt?: string;
+}
+
+/** Thrown when a whole-spreadsheet write loses an optimistic-concurrency check. */
+export class SpreadsheetConflictError extends Error {
+  constructor(public readonly current: Spreadsheet) {
+    super("Spreadsheet was modified by another writer");
+    this.name = "SpreadsheetConflictError";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SpreadsheetStore
 // ---------------------------------------------------------------------------
@@ -238,7 +258,10 @@ export class SpreadsheetStore {
     this.working.delete(id);
   }
 
-  async replaceSpreadsheet(spreadsheet: Spreadsheet): Promise<Spreadsheet> {
+  async replaceSpreadsheet(
+    spreadsheet: Spreadsheet,
+    opts?: SpreadsheetWriteOptions,
+  ): Promise<Spreadsheet> {
     await this.ensureFolder();
     let fileId = this.fileIdFor(spreadsheet.id);
     if (!fileId) {
@@ -250,6 +273,15 @@ export class SpreadsheetStore {
       updatedAt: spreadsheet.updatedAt || new Date().toISOString(),
     };
     if (fileId) {
+      // Optimistic concurrency: refuse to overwrite a spreadsheet that changed
+      // since the caller loaded it (e.g. a concurrent MCP write), so the whole
+      // in-memory snapshot can't silently clobber it.
+      if (opts?.expectedUpdatedAt !== undefined) {
+        const latest = await this.loadFile(fileId);
+        if (latest && latest.ss.updatedAt !== opts.expectedUpdatedAt) {
+          throw new SpreadsheetConflictError(latest.ss);
+        }
+      }
       await this.client.putContent(
         fileId,
         JSON.stringify(updated),

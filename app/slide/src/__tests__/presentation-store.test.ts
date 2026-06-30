@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { rejects, throws } from "node:assert/strict";
 import {
   createPresentationStore,
+  PresentationConflictError,
   sanitizeElementUpdateProperties,
 } from "../presentation-store.ts";
 import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
@@ -374,4 +375,56 @@ test("removeSlide refuses to delete the last slide", async () => {
   await store.removeSlide(presentation.id, 0);
   const after = await store.get(presentation.id);
   expect(after?.slides.length).toEqual(1);
+});
+
+test("replace with a stale expectedUpdatedAt throws a conflict", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-slide", "folder");
+  const file = storage.makeFile("p1.takosslide", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makePresentation({ id: "p1", updatedAt: "v0" })),
+  );
+  const store = createPresentationStore(storage.client);
+  await store.list(); // warm the fileId memo
+
+  // A concurrent writer (e.g. an agent over MCP) advances the stored version.
+  storage.content.set(
+    file.id,
+    JSON.stringify(
+      makePresentation({ id: "p1", title: "Agent edit", updatedAt: "v1" }),
+    ),
+  );
+
+  let conflict: unknown;
+  try {
+    await store.replace(
+      makePresentation({ id: "p1", title: "Browser snapshot", updatedAt: "v0" }),
+      { expectedUpdatedAt: "v0" },
+    );
+  } catch (e) {
+    conflict = e;
+  }
+  expect(conflict).toBeInstanceOf(PresentationConflictError);
+  expect((conflict as PresentationConflictError).current.title).toEqual(
+    "Agent edit",
+  );
+  const persisted = JSON.parse(storage.content.get(file.id)!) as Presentation;
+  expect(persisted.title).toEqual("Agent edit");
+});
+
+test("replace without a precondition still overwrites", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-slide", "folder");
+  const file = storage.makeFile("p1.takosslide", "file", folder.id);
+  storage.content.set(
+    file.id,
+    JSON.stringify(makePresentation({ id: "p1", title: "Old" })),
+  );
+  const store = createPresentationStore(storage.client);
+  await store.list();
+  const result = await store.replace(
+    makePresentation({ id: "p1", title: "New" }),
+  );
+  expect(result.title).toEqual("New");
 });
