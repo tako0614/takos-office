@@ -290,3 +290,56 @@ test("replaceSpreadsheet without a precondition still overwrites", async () => {
   );
   expect(result.title).toEqual("New");
 });
+
+function countingClient(base: TakosStorageClient) {
+  const counts = { get: 0, getContent: 0, listFolder: 0 };
+  const client: TakosStorageClient = {
+    ...base,
+    list(prefix?: string) {
+      if (prefix) counts.listFolder++;
+      return base.list(prefix);
+    },
+    get(fileId: string) {
+      counts.get++;
+      return base.get(fileId);
+    },
+    getContent(fileId: string) {
+      counts.getContent++;
+      return base.getContent(fileId);
+    },
+  };
+  return { client, counts };
+}
+
+test("listSpreadsheetsFull does not issue a redundant per-file get()", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-excel", "folder");
+  for (const id of ["a", "b", "c"]) {
+    const f = storage.makeFile(`${id}.takossheet`, "file", folder.id);
+    storage.content.set(f.id, JSON.stringify(makeSpreadsheet({ id })));
+  }
+  const { client, counts } = countingClient(storage.client);
+  const store = new SpreadsheetStore(client);
+
+  const all = await store.listSpreadsheetsFull();
+  expect(all.map((s) => s.id).sort()).toEqual(["a", "b", "c"]);
+  // One body fetch per file, and NO redundant metadata get() (loadAll already
+  // holds the StorageFile from the folder listing).
+  expect(counts.getContent).toEqual(3);
+  expect(counts.get).toEqual(0);
+});
+
+test("getSpreadsheet on a nonexistent id downloads no bodies", async () => {
+  const storage = createMemoryStorage();
+  const folder = storage.makeFile("takos-excel", "folder");
+  for (const id of ["a", "b", "c"]) {
+    const f = storage.makeFile(`${id}.takossheet`, "file", folder.id);
+    storage.content.set(f.id, JSON.stringify(makeSpreadsheet({ id })));
+  }
+  const { client, counts } = countingClient(storage.client);
+  const store = new SpreadsheetStore(client);
+
+  await rejects(() => store.getSpreadsheet("does-not-exist"), /not found/);
+  // Resolved via folder metadata only — no full-folder body download.
+  expect(counts.getContent).toEqual(0);
+});

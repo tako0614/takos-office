@@ -90,16 +90,9 @@ export function createServerApp(
   app.get("/api/spreadsheets", async (c) => {
     const store = currentStore(c);
     if (store instanceof Response) return store;
-    const summaries = await store.listSpreadsheets();
-    const settled = await Promise.allSettled(
-      summaries.map((entry) => store.getSpreadsheet(entry.id)),
-    );
-    const spreadsheets = settled
-      .filter((r): r is PromiseFulfilledResult<Spreadsheet> =>
-        r.status === "fulfilled"
-      )
-      .map((r) => r.value);
-    return c.json(spreadsheets);
+    // Single loadAll pass returns the full spreadsheets; previously this
+    // listed (loading every body) then re-get() each id (loading them again).
+    return c.json(await store.listSpreadsheetsFull());
   });
   app.post("/api/spreadsheets", async (c) => {
     const store = currentStore(c);

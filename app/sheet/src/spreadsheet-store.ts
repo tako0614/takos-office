@@ -36,7 +36,10 @@ import {
 } from "./lib/formula.ts";
 import { sortRangeRows } from "./lib/sheet-ops.ts";
 import { parseCsv } from "./lib/csv-parser.ts";
-import type { TakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../shared/lib/takos-storage.ts";
 
 const FOLDER_NAME = "takos-excel";
 const FILE_EXTENSION = ".takossheet";
@@ -97,10 +100,12 @@ export class SpreadsheetStore {
     return file.name.endsWith(FILE_EXTENSION);
   }
 
-  private async loadFile(fileId: string): Promise<
+  private async loadFile(fileId: string, known?: StorageFile): Promise<
     { ss: Spreadsheet; fileId: string } | undefined
   > {
-    const file = await this.client.get(fileId);
+    // When the caller already holds the StorageFile metadata (e.g. from a
+    // folder listing) skip the redundant per-file get() round-trip.
+    const file = known ?? await this.client.get(fileId);
     if (!file || file.type !== "file" || !this.isSupportedFile(file)) {
       return undefined;
     }
@@ -108,6 +113,26 @@ export class SpreadsheetStore {
     const ss = JSON.parse(raw) as Spreadsheet;
     this.fileIds.set(ss.id, file.id);
     return { ss, fileId: file.id };
+  }
+
+  /**
+   * Resolve a spreadsheet id to its storage fileId from the folder metadata
+   * listing (file name is `{id}{EXT}`) without downloading any bodies. Avoids
+   * loadAll()'s full-folder body download on a cold memo or a nonexistent id.
+   */
+  private async resolveFileId(id: string): Promise<string | undefined> {
+    const cached = this.fileIdFor(id);
+    if (cached) return cached;
+    await this.ensureFolder();
+    const files = await this.client.list(FOLDER_NAME);
+    const match = files.find(
+      (f) => f.type === "file" && f.name === `${id}${FILE_EXTENSION}`,
+    );
+    if (match) {
+      this.fileIds.set(id, match.id);
+      return match.id;
+    }
+    return undefined;
   }
 
   // -----------------------------------------------------------------------
@@ -154,7 +179,7 @@ export class SpreadsheetStore {
     for (const file of allFiles) {
       if (file.type !== "file" || !this.isSupportedFile(file)) continue;
       try {
-        const entry = await this.loadFile(file.id);
+        const entry = await this.loadFile(file.id, file);
         if (entry) entries.push(entry);
       } catch {
         console.warn(
@@ -163,6 +188,11 @@ export class SpreadsheetStore {
       }
     }
     return entries;
+  }
+
+  /** Full spreadsheets from a single loadAll pass (for the list endpoint). */
+  async listSpreadsheetsFull(): Promise<Spreadsheet[]> {
+    return (await this.loadAll()).map((e) => e.ss);
   }
 
   private async persist(id: string): Promise<void> {
@@ -229,11 +259,8 @@ export class SpreadsheetStore {
     await this.ensureFolder();
     // Always read fresh from storage (source of truth) and record the working
     // copy so a subsequent mutation + persist() operates on this same object.
-    let fileId = this.fileIdFor(id);
-    if (!fileId) {
-      await this.loadAll(); // refresh fileId memo
-      fileId = this.fileIdFor(id);
-    }
+    // Resolve id -> fileId from folder metadata (no full-folder body download).
+    const fileId = await this.resolveFileId(id);
     const entry = (fileId ? await this.loadFile(fileId) : undefined) ??
       await this.loadFile(id);
     if (!entry) {
@@ -247,11 +274,7 @@ export class SpreadsheetStore {
 
   async deleteSpreadsheet(id: string): Promise<void> {
     await this.ensureFolder();
-    let fileId = this.fileIdFor(id);
-    if (!fileId) {
-      await this.loadAll(); // refresh fileId memo
-      fileId = this.fileIdFor(id);
-    }
+    const fileId = await this.resolveFileId(id);
     if (!fileId) throw new Error(`Spreadsheet not found: ${id}`);
     await this.client.delete(fileId);
     this.fileIds.delete(id);
@@ -263,11 +286,7 @@ export class SpreadsheetStore {
     opts?: SpreadsheetWriteOptions,
   ): Promise<Spreadsheet> {
     await this.ensureFolder();
-    let fileId = this.fileIdFor(spreadsheet.id);
-    if (!fileId) {
-      await this.loadAll(); // refresh fileId memo
-      fileId = this.fileIdFor(spreadsheet.id);
-    }
+    const fileId = await this.resolveFileId(spreadsheet.id);
     const updated = {
       ...spreadsheet,
       updatedAt: spreadsheet.updatedAt || new Date().toISOString(),

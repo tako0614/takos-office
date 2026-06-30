@@ -14,7 +14,10 @@
  */
 
 import type { Document } from "./types/index.ts";
-import type { TakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../shared/lib/takos-storage.ts";
 
 const FOLDER_NAME = "takos-docs";
 const FILE_EXTENSION = ".takosdoc";
@@ -81,10 +84,12 @@ export class TakosDocumentStore implements DocumentStore {
     return undefined;
   }
 
-  private async loadFile(fileId: string): Promise<
+  private async loadFile(fileId: string, known?: StorageFile): Promise<
     { doc: Document; fileId: string } | null
   > {
-    const file = await this.client.get(fileId);
+    // When the caller already holds the StorageFile metadata (e.g. from a
+    // folder listing) skip the redundant per-file get() round-trip.
+    const file = known ?? await this.client.get(fileId);
     if (!file || file.type !== "file" || !this.isSupportedFile(file)) {
       return null;
     }
@@ -92,6 +97,26 @@ export class TakosDocumentStore implements DocumentStore {
     const doc = JSON.parse(raw) as Document;
     this.fileIds.set(doc.id, file.id);
     return { doc, fileId: file.id };
+  }
+
+  /**
+   * Resolve a doc id to its storage fileId from the folder metadata listing
+   * (file name is `{id}{EXT}`) without downloading any bodies. Avoids
+   * loadAll()'s full-folder body download on a cold memo or a nonexistent id.
+   */
+  private async resolveFileId(id: string): Promise<string | undefined> {
+    const cached = this.fileIdFor(id);
+    if (cached) return cached;
+    await this.ensureFolder();
+    const files = await this.client.list(FOLDER_NAME);
+    const match = files.find(
+      (f) => f.type === "file" && f.name === `${id}${FILE_EXTENSION}`,
+    );
+    if (match) {
+      this.fileIds.set(id, match.id);
+      return match.id;
+    }
+    return undefined;
   }
 
   // -------------------------------------------------------------------------
@@ -142,7 +167,7 @@ export class TakosDocumentStore implements DocumentStore {
     for (const file of allFiles) {
       if (file.type !== "file" || !this.isSupportedFile(file)) continue;
       try {
-        const loaded = await this.loadFile(file.id);
+        const loaded = await this.loadFile(file.id, file);
         if (loaded) docs.push(loaded.doc);
       } catch {
         // Skip files that cannot be parsed
@@ -161,12 +186,9 @@ export class TakosDocumentStore implements DocumentStore {
 
   async get(id: string): Promise<Document | null> {
     await this.ensureFolder();
-    // Prefer the memoized fileId, but always re-read content from storage.
-    let knownFileId = this.fileIdFor(id);
-    if (!knownFileId) {
-      await this.loadAll(); // refresh fileId memo from storage
-      knownFileId = this.fileIdFor(id);
-    }
+    // Resolve id -> fileId from folder metadata (no full-folder body download),
+    // then re-read just that document's content from storage.
+    const knownFileId = await this.resolveFileId(id);
     if (knownFileId) {
       const loaded = await this.loadFile(knownFileId);
       if (loaded) return loaded.doc;
@@ -205,11 +227,7 @@ export class TakosDocumentStore implements DocumentStore {
 
     // Resolve the current fileId from storage (source of truth) rather than
     // a process-lifetime cache, so writes are not lost across isolates.
-    let fileId = this.fileIdFor(doc.id);
-    if (!fileId) {
-      await this.list(); // refresh fileId memo from storage
-      fileId = this.fileIdFor(doc.id);
-    }
+    const fileId = await this.resolveFileId(doc.id);
 
     if (fileId) {
       // Best-effort optimistic concurrency: re-read just before writing and
@@ -273,13 +291,9 @@ export class TakosDocumentStore implements DocumentStore {
   async delete(id: string): Promise<boolean> {
     await this.ensureFolder();
 
-    // Resolve from storage so a fresh isolate can delete docs it never read.
-    let fileId = this.fileIdFor(id);
-    if (!fileId) {
-      const current = await this.get(id);
-      if (!current) return false;
-      fileId = this.fileIdFor(current.id);
-    }
+    // Resolve from folder metadata so a fresh isolate can delete docs it never
+    // read, without downloading every body.
+    const fileId = await this.resolveFileId(id);
     if (!fileId) return false;
 
     await this.client.delete(fileId);

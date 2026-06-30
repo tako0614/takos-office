@@ -20,7 +20,10 @@ import type {
   SlideElement,
   SlideTransition,
 } from "./types/index.ts";
-import type { TakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../shared/lib/takos-storage.ts";
 import { exportPresentationToPdf } from "./lib/pdf-exporter.ts";
 import { BUILT_IN_TEMPLATES, getTemplate } from "./lib/templates.ts";
 
@@ -306,6 +309,8 @@ export interface PresentationStore {
       slideCount: number;
     })[]
   >;
+  /** Full presentations from a single loadAll pass (for the list endpoint). */
+  listFull(): Promise<Presentation[]>;
   create(title: string): Promise<Presentation>;
   get(id: string): Promise<Presentation | undefined>;
   replace(
@@ -490,8 +495,11 @@ export function createPresentationStore(
 
   async function loadFile(
     fileId: string,
+    known?: StorageFile,
   ): Promise<{ p: Presentation; fileId: string } | undefined> {
-    const file = await client.get(fileId);
+    // When the caller already holds the StorageFile metadata (e.g. from a
+    // folder listing) skip the redundant per-file get() round-trip.
+    const file = known ?? await client.get(fileId);
     if (!file || file.type !== "file" || !isSupportedFile(file)) {
       return undefined;
     }
@@ -499,6 +507,26 @@ export function createPresentationStore(
     const p = JSON.parse(raw) as Presentation;
     fileIds.set(p.id, file.id);
     return { p, fileId: file.id };
+  }
+
+  /**
+   * Resolve a presentation id to its storage fileId from the folder metadata
+   * listing (file name is `{id}{EXT}`) without downloading any bodies. Avoids
+   * loadAll()'s full-folder body download on a cold memo or a nonexistent id.
+   */
+  async function resolveFileId(id: string): Promise<string | undefined> {
+    const cached = fileIdFor(id);
+    if (cached) return cached;
+    await ensureFolder();
+    const files = await client.list(FOLDER_NAME);
+    const match = files.find(
+      (f) => f.type === "file" && f.name === `${id}${FILE_EXTENSION}`,
+    );
+    if (match) {
+      fileIds.set(id, match.id);
+      return match.id;
+    }
+    return undefined;
   }
 
   /**
@@ -541,7 +569,7 @@ export function createPresentationStore(
     for (const file of allFiles) {
       if (file.type !== "file" || !isSupportedFile(file)) continue;
       try {
-        const entry = await loadFile(file.id);
+        const entry = await loadFile(file.id, file);
         if (entry) entries.push(entry);
       } catch {
         console.warn(
@@ -566,11 +594,7 @@ export function createPresentationStore(
     id: string,
   ): Promise<{ p: Presentation; fileId: string }> {
     await ensureFolder();
-    let fileId = fileIdFor(id);
-    if (!fileId) {
-      await loadAll(); // refresh fileId memo
-      fileId = fileIdFor(id);
-    }
+    const fileId = await resolveFileId(id);
     if (fileId) {
       const entry = await loadFile(fileId);
       if (entry) return entry;
@@ -622,6 +646,10 @@ export function createPresentationStore(
       }));
     },
 
+    async listFull() {
+      return (await loadAll()).map((e) => e.p);
+    },
+
     async create(title: string) {
       await ensureFolder();
       const ts = now();
@@ -643,11 +671,7 @@ export function createPresentationStore(
 
     async get(id: string) {
       await ensureFolder();
-      let fileId = fileIdFor(id);
-      if (!fileId) {
-        await loadAll(); // refresh fileId memo from storage
-        fileId = fileIdFor(id);
-      }
+      const fileId = await resolveFileId(id);
       if (fileId) {
         const entry = await loadFile(fileId);
         if (entry) return entry.p;
@@ -658,11 +682,7 @@ export function createPresentationStore(
 
     async replace(presentation: Presentation, opts?: PresentationWriteOptions) {
       await ensureFolder();
-      let fileId = fileIdFor(presentation.id);
-      if (!fileId) {
-        await loadAll(); // refresh fileId memo from storage
-        fileId = fileIdFor(presentation.id);
-      }
+      const fileId = await resolveFileId(presentation.id);
       const next = {
         ...presentation,
         updatedAt: presentation.updatedAt || now(),
@@ -693,11 +713,7 @@ export function createPresentationStore(
 
     async delete(id: string) {
       await ensureFolder();
-      let fileId = fileIdFor(id);
-      if (!fileId) {
-        await loadAll(); // refresh fileId memo from storage
-        fileId = fileIdFor(id);
-      }
+      const fileId = await resolveFileId(id);
       if (!fileId) return false;
       await client.delete(fileId);
       fileIds.delete(id);

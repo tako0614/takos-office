@@ -91,15 +91,9 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.get("/api/presentations", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const summaries = await store.list();
-    const presentations = await Promise.all(
-      summaries.map((entry) => store.get(entry.id)),
-    );
-    return c.json(
-      presentations.filter((entry): entry is Presentation =>
-        entry !== undefined
-      ),
-    );
+    // Single loadAll pass returns the full presentations; previously this
+    // listed (loading every body) then re-get() each id (loading them again).
+    return c.json(await store.listFull());
   });
   app.post("/api/presentations", async (c) => {
     const store = storeForRequest(c);

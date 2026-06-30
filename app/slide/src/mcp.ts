@@ -99,7 +99,8 @@ export function registerSlideTools(
         /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[a-z0-9+/=\s]+$/i
           .test(value)
       ) {
-        return value.length <= 100_000;
+        // Length is already bounded by .max(MAX_URL_LENGTH) above.
+        return true;
       }
       try {
         const parsed = new URL(value);
