@@ -8,6 +8,19 @@ output "app_deployment" {
         kind      = "worker"
         icon      = "/docs/icons/docs.svg"
         readiness = "/healthz"
+        consume = [
+          {
+            publication = "takos.storage.workspace"
+            request = {
+              scopes = ["files:read", "files:write"]
+            }
+            inject = {
+              env = {
+                url = "TAKOS_STORAGE_API_URL"
+              }
+            }
+          }
+        ]
       }
     }
 

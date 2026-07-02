@@ -22,13 +22,13 @@
 
 ## 不変条件
 
-- **1 app / 1 worker / 1 Installation**。`jp.takos.office` として新規 Workspace に seed され、
+- **1 app / 1 worker / 1 Capsule install unit**。`jp.takos.office` として新規 Workspace に seed され、
   whole app 単位で uninstall 可能。docs/slide/sheet は個別 uninstall できない（app の surface）。
 - 各エディタは自分の vite `base` (`/docs/` 等) と Router base を持ち、storage は Takos Storage API
-  (`/takos-docs/` `/takos-slide/` `/takos-excel/` フォルダ) のまま。MIME / 拡張子
-  (`.takosdoc` / `.takosslide` / `.takossheet`) は維持する。
+  (`takos.storage.workspace` / `storage.filesystem`、`/takos-docs/` `/takos-slide/` `/takos-excel/` フォルダ) のまま。
+  MIME / 拡張子 (`.takosdoc` / `.takosslide` / `.takossheet`) は維持する。
 - MCP ツール名は名前空間付き (`docs_*` / `slide_*` / `sheet_*`)。衝突させない。
-- public vocabulary は ecosystem 正本に従う（Workspace / Project / Capsule / Installation / Run …）。
+- public vocabulary は ecosystem 正本に従う（Workspace / Project / Capsule / Run / StateVersion / Output …）。
   office 専用の platform 語彙を増やさない。
 
 ## エディタを足す / 変える
@@ -36,7 +36,7 @@
 - エディタ source は `app/<editor>/src/` に置く。新エディタを足すなら vite `base` + Router base を
   サブパスに設定し、`app/server.ts` で `app.route("/<editor>", …)` を mount、`app/mcp.ts` に
   `register<Editor>Tools` を追加、`app/build-worker.ts` の `editors` 配列と `outputs.tf` の
-  publish (UI surface / file handler) を更新する。
+  publish (UI surface / file handler) と `takos.storage.workspace` consume を更新する。
 - 共有コードは `app/shared/` の単一コピーを編集する（重複コピーを作らない）。i18n の scaffold も
   `app/shared/i18n.ts` の `createI18n(catalogs)` に単一化済みで、各エディタは自分の `en` / `ja`
   catalog だけを持つ（旧 `scripts/check-takos-apps-dedupe.mjs` の scaffold 同期検査は不要）。

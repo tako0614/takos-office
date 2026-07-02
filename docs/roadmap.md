@@ -14,9 +14,12 @@ All three core editors now ship as surfaces of the single `takos-office` worker:
 | slide    | Presentations         | `/slide`   | Available |
 | sheet    | Spreadsheets / 表計算 | `/sheet`   | Available |
 
-They are seeded into new Workspaces as a single `takos-office` Installation (removable as a whole) and
+They are seeded into new Workspaces as a single `takos-office` Capsule app (removable as a whole) and
 share one unified `/mcp` endpoint. The former standalone `takos-docs` / `takos-slide` / `takos-excel`
 repos are retired.
+
+The app publishes UI surfaces, file handlers, and `protocol.mcp.server`; it consumes Takos Workspace Storage through
+`takos.storage.workspace` (`storage.filesystem`) instead of owning a separate storage service.
 
 ## Planned apps
 
@@ -50,7 +53,7 @@ Takos Office is the self-hosted, agent-operable alternative to Google Workspace 
 The three apps are now folded into one worker (`app/server.ts` mounts `/docs`, `/slide`, `/sheet`;
 `app/mcp.ts` aggregates all tools onto one `/mcp`; `app/build-worker.ts` bundles the three SPA builds
 into a single `dist/worker.js`). Trade-off accepted: the editors are no longer independently
-installable — they are surfaces of one `takos-office` app/Installation. Substitutability is preserved
+installable — they are surfaces of one `takos-office` app. Substitutability is preserved
 (being "office" grants no privilege over Takos core), and storage / MIME / file-handler contracts are
 unchanged.
 

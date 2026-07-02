@@ -486,10 +486,10 @@
             <h2>あなたの代わりに、<br>道具を動かす。</h2>
             <p>Takos Office の各アプリは MCP サーバーを公開している。Claude のような MCP 対応エージェントが、あなたのドキュメントを直接編集できる。</p>
             <p>「先週のメモから提案書のスライドを作って」と頼めば、エージェントが slide を開いて組み立てる。コピペも、アプリの切り替えもいらない。</p>
-            <p class="mono-note">docs · slide · excel — すべて /mcp endpoint を持つ</p>
+            <p class="mono-note">docs · slide · sheet — ひとつの /mcp endpoint</p>
           </div>
           <div class="codeblock reveal">
-            <div class="code-bar"><i></i><i></i><i></i><span>agent → takos-slide /mcp</span></div>
+            <div class="code-bar"><i></i><i></i><i></i><span>agent → takos-office /mcp</span></div>
             <div class="code-body"><span class="c"># エージェントが MCP ツールを呼ぶ</span>
 <span class="k">tool</span>: <span class="p">slide.create_deck</span>
 <span class="k">args</span>:
@@ -519,9 +519,9 @@
         <div class="road-group reveal">
           <div class="road-label">Available — 今すぐ使える</div>
           <div class="road-items">
-            <div class="road-card"><h4>Docs <code>takos-docs</code></h4><p>文書 / ノート</p></div>
-            <div class="road-card"><h4>Slide <code>takos-slide</code></h4><p>プレゼンテーション</p></div>
-            <div class="road-card"><h4>Excel <code>takos-excel</code></h4><p>スプレッドシート / 表計算</p></div>
+            <div class="road-card"><h4>Docs <code>/docs</code></h4><p>文書 / ノート</p></div>
+            <div class="road-card"><h4>Slide <code>/slide</code></h4><p>プレゼンテーション</p></div>
+            <div class="road-card"><h4>Sheet <code>/sheet</code></h4><p>スプレッドシート / 表計算</p></div>
           </div>
         </div>
 

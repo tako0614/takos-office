@@ -1,14 +1,5 @@
-// CANONICAL COPY (owner): takos-apps/takos-docs/src/app-auth.ts
-// This file is byte-identical across takos-docs / takos-slide / takos-excel.
-// The copies are deliberately vendored rather than factored into a shared
-// package because each takos-app ships as a standalone git repo / OpenTofu
-// module installable from a Git URL; a cross-submodule alias library would
-// break that standalone build.
-//
-// Edit ONLY this canonical copy, then propagate to the other apps with
-// `bun run check:takos-apps-dedupe --fix` (ecosystem root). Verify mode
-// (`bun run check:takos-apps-dedupe`) is wired into `bun run check:all` and
-// fails if any copy drifts.
+// Shared app auth for takos-office. Docs / slide / sheet now live in one
+// worker, so this is the single source for all Office surfaces.
 
 import type { Hono } from "hono";
 
