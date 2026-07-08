@@ -1,6 +1,6 @@
-// Slide message catalog. The i18n scaffold (signal, detection, interpolation,
-// t / setLanguage / dateLocale / useI18n) lives once in app/shared/i18n.ts;
-// only the per-editor `en` / `ja` catalogs below differ.
+// Takos Office editor message catalog. The i18n scaffold (signal, detection,
+// interpolation, t / setLanguage / dateLocale / useI18n) lives once in
+// app/shared/i18n.ts; only the per-editor `en` / `ja` catalogs below differ.
 import { createI18n, type Language } from "../../shared/i18n.ts";
 
 export type { Language };
