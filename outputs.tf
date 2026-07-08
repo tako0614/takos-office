@@ -223,7 +223,7 @@ output "app_deployment" {
       },
     ]
 
-    env = {}
+    env = local.extra_worker_env
   }
 }
 

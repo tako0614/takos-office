@@ -120,6 +120,29 @@ variable "takosumi_accounts_client_id" {
   default     = ""
 }
 
+variable "env" {
+  description = "Additional non-secret Worker environment variables projected as plain_text bindings. Secrets must use dedicated sensitive variables or Provider Connections."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for name, value in var.env :
+      can(regex("^[A-Z_][A-Z0-9_]{0,127}$", name)) &&
+      !can(regex("(SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_?KEY|API_?KEY)", upper(name))) &&
+      !contains([
+        "APP_URL",
+        "TAKOS_STORAGE_API_URL",
+        "TAKOS_STORAGE_ACCESS_TOKEN",
+        "MCP_AUTH_TOKEN",
+        "TAKOSUMI_ACCOUNTS_ISSUER_URL",
+        "TAKOSUMI_ACCOUNTS_CLIENT_ID",
+      ], name)
+    ])
+    error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the Takos Office module."
+  }
+}
+
 variable "enable_cloudflare_worker_script" {
   description = "Deploy the Takos Office Worker script, bindings, route, and optional workers.dev enablement through OpenTofu."
   type        = bool
@@ -228,6 +251,7 @@ locals {
   provided_storage_api_url      = trimspace(var.takos_storage_api_url)
   provided_storage_access_token = trimspace(var.takos_storage_access_token)
   has_takosumi_accounts_oidc    = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
+  extra_worker_env              = { for name, value in var.env : name => value if trimspace(value) != "" }
 }
 
 resource "random_id" "mcp_auth_token" {
@@ -288,6 +312,13 @@ resource "cloudflare_workers_script" "worker" {
         text = local.provided_storage_api_url
       },
     ] : [],
+    [
+      for name, value in local.extra_worker_env : {
+        type = "plain_text"
+        name = name
+        text = value
+      }
+    ],
     [
       {
         type = "secret_text"
