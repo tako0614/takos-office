@@ -2,7 +2,7 @@
   "schemaVersion": "tcs.repo/v1",
   "id": "takos-office",
   "modulePath": ".",
-  "kind": "app",
+  "kind": "worker",
   "surface": "service",
   "provider": "cloudflare",
   "category": "productivity",
