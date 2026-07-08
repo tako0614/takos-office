@@ -67,9 +67,10 @@ Run locally with `bun run start` (needs `TAKOS_STORAGE_API_URL`, `TAKOS_ACCESS_T
 
 ## Boundary
 
-Takos Office is **one** 1st-party Capsule app (`jp.takos.office`), seeded into new Workspaces as a
-single app and removable as a whole. The three editors are no longer independently
-installable — they are surfaces of this app. It remains substitutable: being "office" grants no
+Takos Office is **one** installable Capsule app (`jp.takos.office`). It can be
+added explicitly from a Store or Git install link and removed as a whole. The
+three editors are no longer independently installable — they are surfaces of
+this app. It remains substitutable: being "office" grants no
 architectural privilege over Takos core. See [`AGENTS.md`](AGENTS.md), [`docs/roadmap.md`](docs/roadmap.md),
 and the ecosystem [`AGENTS.md`](../../AGENTS.md).
 

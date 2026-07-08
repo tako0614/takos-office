@@ -1,0 +1,174 @@
+{
+  "schemaVersion": "tcs.repo/v1",
+  "id": "takos-office",
+  "modulePath": ".",
+  "kind": "app",
+  "surface": "service",
+  "provider": "cloudflare",
+  "category": "productivity",
+  "suggestedName": "office",
+  "name": {
+    "ja": "Takos Office",
+    "en": "Takos Office"
+  },
+  "description": {
+    "ja": "docs / slide / sheet をまとめて公開します。",
+    "en": "Deploys docs, slide, and sheet as one office app."
+  },
+  "badge": {
+    "ja": "追加候補",
+    "en": "Installable"
+  },
+  "iconUrl": "app/docs/public/icons/docs.svg",
+  "inputs": [
+    {
+      "name": "project_name",
+      "type": "string",
+      "format": "text",
+      "required": true,
+      "defaultValue": "service-name-with-space",
+      "label": {
+        "ja": "サービス名",
+        "en": "Service name"
+      }
+    },
+    {
+      "name": "worker_name",
+      "type": "string",
+      "format": "subdomain",
+      "required": true,
+      "defaultValue": "service-name-with-space",
+      "label": {
+        "ja": "公開サブドメイン",
+        "en": "Public subdomain"
+      }
+    },
+    {
+      "name": "app_url",
+      "type": "string",
+      "format": "url",
+      "required": true,
+      "label": {
+        "ja": "公開URL",
+        "en": "Public URL"
+      }
+    },
+    {
+      "name": "takos_storage_api_url",
+      "type": "string",
+      "format": "url",
+      "advanced": true,
+      "label": {
+        "ja": "Takos Storage API URL",
+        "en": "Takos Storage API URL"
+      }
+    },
+    {
+      "name": "takos_storage_access_token",
+      "type": "string",
+      "format": "token",
+      "secret": true,
+      "advanced": true,
+      "label": {
+        "ja": "Takos Storage access token",
+        "en": "Takos Storage access token"
+      }
+    },
+    {
+      "name": "mcp_auth_token",
+      "type": "string",
+      "format": "token",
+      "secret": true,
+      "advanced": true,
+      "label": {
+        "ja": "MCP auth token",
+        "en": "MCP auth token"
+      }
+    },
+    {
+      "name": "takosumi_accounts_issuer_url",
+      "type": "string",
+      "format": "url",
+      "advanced": true,
+      "label": {
+        "ja": "OIDC issuer",
+        "en": "OIDC issuer"
+      }
+    },
+    {
+      "name": "takosumi_accounts_client_id",
+      "type": "string",
+      "advanced": true,
+      "label": {
+        "ja": "OIDC client ID",
+        "en": "OIDC client ID"
+      }
+    },
+    {
+      "name": "worker_bundle_url",
+      "type": "string",
+      "format": "url",
+      "advanced": true,
+      "label": {
+        "ja": "Worker artifact URL",
+        "en": "Worker artifact URL"
+      }
+    },
+    {
+      "name": "worker_bundle_sha256",
+      "type": "string",
+      "format": "sha256",
+      "advanced": true,
+      "label": {
+        "ja": "Worker artifact SHA-256",
+        "en": "Worker artifact SHA-256"
+      }
+    }
+  ],
+  "installExperience": {
+    "projections": [
+      {
+        "kind": "service_name",
+        "variable": "project_name"
+      },
+      {
+        "kind": "public_endpoint",
+        "variables": {
+          "subdomain": "worker_name",
+          "url": "app_url",
+          "routePattern": "cloudflare_route_pattern"
+        },
+        "baseDomain": "app.takos.jp"
+      },
+      {
+        "kind": "artifact",
+        "variables": {
+          "url": "worker_bundle_url",
+          "sha256": "worker_bundle_sha256"
+        }
+      }
+    ]
+  },
+  "outputAllowlist": [
+    {
+      "key": "launch_url",
+      "from": "launch_url",
+      "type": "url"
+    },
+    {
+      "key": "url",
+      "from": "url",
+      "type": "url"
+    },
+    {
+      "key": "app_deployment",
+      "from": "app_deployment",
+      "type": "json"
+    },
+    {
+      "key": "service_exports",
+      "from": "service_exports",
+      "type": "json"
+    }
+  ]
+}

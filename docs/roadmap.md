@@ -14,9 +14,9 @@ All three core editors now ship as surfaces of the single `takos-office` worker:
 | slide    | Presentations         | `/slide`   | Available |
 | sheet    | Spreadsheets / 表計算 | `/sheet`   | Available |
 
-They are seeded into new Workspaces as a single `takos-office` Capsule app (removable as a whole) and
-share one unified `/mcp` endpoint. The former standalone `takos-docs` / `takos-slide` / `takos-excel`
-repos are retired.
+They are added explicitly as a single `takos-office` Capsule app (removable as a whole) and share one
+unified `/mcp` endpoint. The former standalone `takos-docs` / `takos-slide` / `takos-excel` repos are
+retired.
 
 The app publishes UI surfaces, file handlers, and `protocol.mcp.server`; it consumes Takos Workspace Storage through
 `takos.storage.workspace` (`storage.filesystem`) instead of owning a separate storage service.
