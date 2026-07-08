@@ -22,7 +22,7 @@
 
 ## 不変条件
 
-- **1 app / 1 worker / 1 Capsule install unit**。`jp.takos.office` として新規 Workspace に seed され、
+- **1 app / 1 worker / 1 Capsule install unit**。`jp.takos.office` としてユーザーが明示的に install でき、
   whole app 単位で uninstall 可能。docs/slide/sheet は個別 uninstall できない（app の surface）。
 - 各エディタは自分の vite `base` (`/docs/` 等) と Router base を持ち、storage は Takos Storage API
   (`takos.storage.workspace` / `storage.filesystem`、`/takos-docs/` `/takos-slide/` `/takos-excel/` フォルダ) のまま。
