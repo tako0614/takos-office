@@ -32,7 +32,6 @@ import {
   envFlagEnabled,
   envValue,
   nativeRenderingEnabled,
-  requiredEnv,
   type RuntimeEnv,
   runtimeEnv,
 } from "../../shared/runtime-env.ts";
@@ -42,13 +41,15 @@ export const SLIDE_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
 export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
-  const token = requiredEnv(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const storageUnavailable = (c: Context) =>
+    c.json({ error: "object_storage_not_configured" }, 503);
   const stores = new Map<string, ReturnType<typeof createPresentationStore>>();
   const storeForSpace = (spaceId: string) => {
     let store = stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       store = createPresentationStore(client);
       stores.set(spaceId, store);
     }
@@ -67,6 +68,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   ): ReturnType<typeof createPresentationStore> | Response => {
     const spaceId = requestSpaceId(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
+    if (!token) return storageUnavailable(c);
     return storeForSpace(spaceId);
   };
   const app = new Hono();

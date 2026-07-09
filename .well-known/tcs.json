@@ -108,7 +108,7 @@
       "name": "worker_bundle_url",
       "type": "string",
       "format": "url",
-      "defaultValue": "https://github.com/tako0614/takos-office/releases/download/v0.1.0/worker-f3267ebffba084c891882f993094df475c0ca94bb1ff97411a168bc6fccffe50.js",
+      "defaultValue": "https://github.com/tako0614/takos-office/releases/download/v0.1.1/worker-3b62241db95c20d164176a756f15648628ea9565c8c725ea943d5a31b3d9d052.js",
       "advanced": true,
       "label": {
         "ja": "Worker artifact URL",
@@ -119,7 +119,7 @@
       "name": "worker_bundle_sha256",
       "type": "string",
       "format": "sha256",
-      "defaultValue": "f3267ebffba084c891882f993094df475c0ca94bb1ff97411a168bc6fccffe50",
+      "defaultValue": "3b62241db95c20d164176a756f15648628ea9565c8c725ea943d5a31b3d9d052",
       "advanced": true,
       "label": {
         "ja": "Worker artifact SHA-256",

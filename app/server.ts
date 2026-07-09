@@ -45,7 +45,6 @@ import {
   envFlagEnabled,
   envValue,
   nativeRenderingEnabled,
-  requiredEnv,
   type RuntimeEnv,
   runtimeEnv,
   processLike,
@@ -82,15 +81,17 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   const apiUrl =
     envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
-  const token = requiredEnv(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const storageUnavailable = (c: Context) =>
+    c.json({ error: "object_storage_not_configured" }, 503);
 
   // ---- Office shell cross-editor APIs (recent + search) ----
   const officeStores = new Map<string, OfficeStores>();
   const storesForSpace = (spaceId: string): OfficeStores => {
     let stores = officeStores.get(spaceId);
     if (!stores) {
-      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       stores = {
         docs: new TakosDocumentStore(client),
         slide: createPresentationStore(client),
@@ -107,6 +108,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     const spaceId = resolveSpace(c);
     const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
     if (unauthorized) return unauthorized;
+    if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
     return c.json({ items: await collectOfficeItems(storesForSpace(spaceId)) });
   });
@@ -115,6 +117,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     const spaceId = resolveSpace(c);
     const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
     if (unauthorized) return unauthorized;
+    if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
     const q = c.req.query("q") ?? "";
     return c.json({
@@ -136,11 +139,12 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     if (configError) return configError;
     const spaceId =
       c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId;
+    if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
 
     let handler = mcpHandlers.get(spaceId);
     if (!handler) {
-      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       const docsStore = new TakosDocumentStore(client);
       const slideStore = createPresentationStore(client);
       const sheetStore = new SpreadsheetStore(client);

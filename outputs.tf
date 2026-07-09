@@ -1,7 +1,7 @@
 output "app_deployment" {
   value = {
     name    = "takos-office"
-    version = "0.1.0"
+    version = "0.1.1"
 
     compute = {
       web = {
@@ -21,15 +21,6 @@ output "app_deployment" {
             }
           }
         ]
-      }
-    }
-
-    resources = {
-      mcp_auth_token = {
-        type     = "secret"
-        bind     = "MCP_AUTH_TOKEN"
-        to       = ["web"]
-        generate = true
       }
     }
 
@@ -152,11 +143,6 @@ output "app_deployment" {
           url = {
             kind     = "url"
             routeRef = "mcp"
-          }
-        }
-        auth = {
-          bearer = {
-            secretRef = "MCP_AUTH_TOKEN"
           }
         }
         display = {
@@ -291,12 +277,6 @@ output "service_exports" {
           name       = "streamable-http"
           protocol   = "https"
           pathPrefix = "/mcp"
-        }
-      ]
-      auth = [
-        {
-          scheme = "bearer"
-          scopes = ["mcp.invoke"]
         }
       ]
       metadata = {
