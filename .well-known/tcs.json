@@ -54,24 +54,24 @@
       }
     },
     {
-      "name": "takos_storage_api_url",
+      "name": "object_storage_api_url",
       "type": "string",
       "format": "url",
       "advanced": true,
       "label": {
-        "ja": "Takos Storage API URL",
-        "en": "Takos Storage API URL"
+        "ja": "Object Storage API URL",
+        "en": "Object Storage API URL"
       }
     },
     {
-      "name": "takos_storage_access_token",
+      "name": "object_storage_access_token",
       "type": "string",
       "format": "token",
       "secret": true,
       "advanced": true,
       "label": {
-        "ja": "Takos Storage access token",
-        "en": "Takos Storage access token"
+        "ja": "Object Storage access token",
+        "en": "Object Storage access token"
       }
     },
     {

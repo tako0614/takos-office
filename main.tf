@@ -78,19 +78,19 @@ variable "cloudflare_workers_subdomain" {
   }
 }
 
-variable "takos_storage_api_url" {
-  description = "Base URL of the Takos Workspace Storage API this Office instance reads/writes (injected as TAKOS_STORAGE_API_URL). Leave empty when the runtime injects the storage binding."
+variable "object_storage_api_url" {
+  description = "Base URL of the object-storage API this Office instance reads/writes (injected as OBJECT_STORAGE_API_URL). Leave empty when the runtime injects the storage binding."
   type        = string
   default     = ""
 
   validation {
-    condition     = trimspace(var.takos_storage_api_url) == "" || can(regex("^https://[^[:space:]]+$", trimspace(var.takos_storage_api_url)))
-    error_message = "takos_storage_api_url must be empty or an https URL."
+    condition     = trimspace(var.object_storage_api_url) == "" || can(regex("^https://[^[:space:]]+$", trimspace(var.object_storage_api_url)))
+    error_message = "object_storage_api_url must be empty or an https URL."
   }
 }
 
-variable "takos_storage_access_token" {
-  description = "Optional bearer token for the Takos Storage API, injected as the TAKOS_STORAGE_ACCESS_TOKEN Worker secret."
+variable "object_storage_access_token" {
+  description = "Optional bearer token for the object-storage API, injected as the OBJECT_STORAGE_ACCESS_TOKEN Worker secret."
   type        = string
   default     = ""
   sensitive   = true
@@ -132,8 +132,8 @@ variable "env" {
       !can(regex("(SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_?KEY|API_?KEY)", upper(name))) &&
       !contains([
         "APP_URL",
-        "TAKOS_STORAGE_API_URL",
-        "TAKOS_STORAGE_ACCESS_TOKEN",
+        "OBJECT_STORAGE_API_URL",
+        "OBJECT_STORAGE_ACCESS_TOKEN",
         "MCP_AUTH_TOKEN",
         "TAKOSUMI_ACCOUNTS_ISSUER_URL",
         "TAKOSUMI_ACCOUNTS_CLIENT_ID",
@@ -248,8 +248,8 @@ locals {
   launch_url                    = trimspace(var.app_url) != "" ? trimspace(var.app_url) : local.workers_dev_url
   provided_mcp_auth_token       = trimspace(var.mcp_auth_token)
   effective_mcp_auth_token      = local.provided_mcp_auth_token != "" ? local.provided_mcp_auth_token : random_id.mcp_auth_token.hex
-  provided_storage_api_url      = trimspace(var.takos_storage_api_url)
-  provided_storage_access_token = trimspace(var.takos_storage_access_token)
+  provided_storage_api_url      = trimspace(var.object_storage_api_url)
+  provided_storage_access_token = trimspace(var.object_storage_access_token)
   has_takosumi_accounts_oidc    = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
   extra_worker_env              = { for name, value in var.env : name => value if trimspace(value) != "" }
 }
@@ -308,7 +308,7 @@ resource "cloudflare_workers_script" "worker" {
     local.provided_storage_api_url != "" ? [
       {
         type = "plain_text"
-        name = "TAKOS_STORAGE_API_URL"
+        name = "OBJECT_STORAGE_API_URL"
         text = local.provided_storage_api_url
       },
     ] : [],
@@ -329,7 +329,7 @@ resource "cloudflare_workers_script" "worker" {
     local.provided_storage_access_token != "" ? [
       {
         type = "secret_text"
-        name = "TAKOS_STORAGE_ACCESS_TOKEN"
+        name = "OBJECT_STORAGE_ACCESS_TOKEN"
         text = local.provided_storage_access_token
       },
     ] : [],

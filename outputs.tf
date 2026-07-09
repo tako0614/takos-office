@@ -10,13 +10,13 @@ output "app_deployment" {
         readiness = "/healthz"
         consume = [
           {
-            publication = "takos.storage.workspace"
+            publication = "storage.object"
             request = {
               scopes = ["files:read", "files:write"]
             }
             inject = {
               env = {
-                url = "TAKOS_STORAGE_API_URL"
+                url = "OBJECT_STORAGE_API_URL"
               }
             }
           }

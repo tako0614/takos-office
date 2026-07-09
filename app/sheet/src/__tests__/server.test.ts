@@ -128,8 +128,8 @@ test("health endpoint allows explicit unauthenticated access when configured", a
 
 test("startup does not require TAKOS_SPACE_ID", async () => {
   const authApp = createExcelAppFromEnv({
-    TAKOS_API_URL: "http://localhost:8787",
-    TAKOS_ACCESS_TOKEN: "token",
+    OBJECT_STORAGE_API_URL: "http://localhost:8787",
+    OBJECT_STORAGE_ACCESS_TOKEN: "token",
     TAKOS_SPACE_ID: undefined,
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
@@ -142,8 +142,8 @@ test("startup does not require TAKOS_SPACE_ID", async () => {
 
 test("file handler route redirects to spreadsheet editor route", async () => {
   const authApp = createExcelAppFromEnv({
-    TAKOS_API_URL: "http://localhost:8787",
-    TAKOS_ACCESS_TOKEN: "token",
+    OBJECT_STORAGE_API_URL: "http://localhost:8787",
+    OBJECT_STORAGE_ACCESS_TOKEN: "token",
     TAKOS_SPACE_ID: "space-1",
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
@@ -223,8 +223,8 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
 
   try {
     const authApp = createExcelAppFromEnv({
-      TAKOS_API_URL: "http://localhost:8787",
-      TAKOS_ACCESS_TOKEN: "token",
+      OBJECT_STORAGE_API_URL: "http://localhost:8787",
+      OBJECT_STORAGE_ACCESS_TOKEN: "token",
       TAKOS_SPACE_ID: undefined,
       TAKOS_NATIVE_RENDERING: "0",
       MCP_AUTH_TOKEN: "secret",
@@ -271,8 +271,8 @@ test("health endpoint fails when token is missing", async () => {
 test("spreadsheet API rejects spaces outside the subject's membership", async () => {
   const sessionSecret = "session-secret";
   const authApp = createExcelAppFromEnv({
-    TAKOS_API_URL: "http://localhost:8787",
-    TAKOS_ACCESS_TOKEN: "token",
+    OBJECT_STORAGE_API_URL: "http://localhost:8787",
+    OBJECT_STORAGE_ACCESS_TOKEN: "token",
     TAKOS_SPACE_ID: undefined,
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
@@ -301,8 +301,8 @@ test("spreadsheet API rejects spaces outside the subject's membership", async ()
 test("spreadsheet API allows spaces in the subject's membership", async () => {
   const sessionSecret = "session-secret";
   const authApp = createExcelAppFromEnv({
-    TAKOS_API_URL: "http://localhost:8787",
-    TAKOS_ACCESS_TOKEN: "token",
+    OBJECT_STORAGE_API_URL: "http://localhost:8787",
+    OBJECT_STORAGE_ACCESS_TOKEN: "token",
     TAKOS_SPACE_ID: undefined,
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",

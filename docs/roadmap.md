@@ -19,7 +19,7 @@ unified `/mcp` endpoint. The former standalone `takos-docs` / `takos-slide` / `t
 retired.
 
 The app publishes UI surfaces, file handlers, and `protocol.mcp.server`; it consumes Takos Workspace Storage through
-`takos.storage.workspace` (`storage.filesystem`) instead of owning a separate storage service.
+`storage.object` instead of owning a separate storage service.
 
 ## Planned apps
 

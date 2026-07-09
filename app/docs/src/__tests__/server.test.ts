@@ -3,8 +3,8 @@ import { expect, test } from "bun:test";
 import { createDocsApp } from "../server.ts";
 
 const env = {
-  TAKOS_API_URL: "http://localhost:8787",
-  TAKOS_ACCESS_TOKEN: "token",
+  OBJECT_STORAGE_API_URL: "http://localhost:8787",
+  OBJECT_STORAGE_ACCESS_TOKEN: "token",
   TAKOS_SPACE_ID: "space-1",
   TAKOS_NATIVE_RENDERING: "0",
   MCP_AUTH_TOKEN: "secret",

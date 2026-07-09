@@ -80,12 +80,9 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
 
   // ---- Shared storage config ----
   const apiUrl =
-    envValue(env, "TAKOS_STORAGE_API_URL") ||
-    envValue(env, "TAKOS_API_URL") ||
+    envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
-  const token =
-    envValue(env, "TAKOS_STORAGE_ACCESS_TOKEN") ||
-    requiredEnv(env, "TAKOS_ACCESS_TOKEN");
+  const token = requiredEnv(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
 
   // ---- Office shell cross-editor APIs (recent + search) ----

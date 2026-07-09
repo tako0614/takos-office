@@ -26,14 +26,14 @@ takos-office/
 
 ## Runtime contract
 
-Takos Office publishes the user-facing office surfaces and consumes Takos Workspace Storage:
+Takos Office publishes the user-facing office surfaces and consumes an object-storage service:
 
 | Direction | Service identity / capability |
 | --------- | ----------------------------- |
 | publish   | `protocol.mcp.server` at `/mcp` |
 | publish   | `interface.ui.surface` for `/docs`, `/slide`, `/sheet` |
 | publish   | `interface.file.handler` for `.takosdoc`, `.takosslide`, `.takossheet` |
-| consume   | `takos.storage.workspace` (`storage.filesystem`) via `TAKOS_STORAGE_API_URL`; bearer comes from `TAKOS_STORAGE_ACCESS_TOKEN` or the existing `TAKOS_ACCESS_TOKEN` runtime authority |
+| consume   | `storage.object` via `OBJECT_STORAGE_API_URL`; bearer comes from `OBJECT_STORAGE_ACCESS_TOKEN` |
 
 ## How it serves
 
@@ -50,7 +50,7 @@ One Cloudflare Worker, one Capsule install unit, three editor surfaces:
 | `/healthz` | readiness probe                          |
 
 Each editor SPA is built with its own vite `base` (`/docs/`, `/slide/`, `/sheet/`) and SolidJS Router
-base, so assets and routes resolve under the subpath. Storage stays the Takos Storage HTTP API
+base, so assets and routes resolve under the subpath. Storage stays the object-storage HTTP API
 (folders `/takos-docs/`, `/takos-slide/`, `/takos-excel/`), unchanged.
 
 ## Build
@@ -62,7 +62,7 @@ bun run check      # tsc --noEmit
 bun test           # editor tests under app/*/src/__tests__
 ```
 
-Run locally with `bun run start` (needs `TAKOS_STORAGE_API_URL`, `TAKOS_ACCESS_TOKEN`,
+Run locally with `bun run start` (needs `OBJECT_STORAGE_API_URL`, `OBJECT_STORAGE_ACCESS_TOKEN`,
 `TAKOS_SPACE_ID`, `MCP_AUTH_TOKEN`).
 
 ## Boundary
