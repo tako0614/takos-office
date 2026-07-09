@@ -45,5 +45,8 @@
 ## Build / Test
 
 - `bun run build`（`build:spa` ×3 + `build:worker`）/ `bun run check`（tsc）/ `bun test`。
+- `dist/worker.js` と editor SPA の `dist/` は local/CI generated output。Git には
+  commit しない。hosted Takosumi install は Git release / CI artifact の
+  `worker_bundle_url` + `worker_bundle_sha256` を使う。
 - site deploy は `site/DEPLOY.md`。
 - roadmap（将来 app: calendar / mail / form / base）は [`docs/roadmap.md`](docs/roadmap.md)。

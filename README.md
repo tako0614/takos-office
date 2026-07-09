@@ -65,6 +65,11 @@ bun test           # editor tests under app/*/src/__tests__
 Run locally with `bun run start` (needs `OBJECT_STORAGE_API_URL`, `OBJECT_STORAGE_ACCESS_TOKEN`,
 `TAKOS_SPACE_ID`, `MCP_AUTH_TOKEN`).
 
+`dist/worker.js` is generated output for local/self-host applies. Hosted
+Takosumi installs should pass `worker_bundle_url` + `worker_bundle_sha256` from
+a Git release or CI artifact. Do not commit the built worker or SPA output to
+the repository.
+
 ## Boundary
 
 Takos Office is **one** installable Capsule app (`jp.takos.office`). It can be
