@@ -16,7 +16,8 @@ output "app_deployment" {
             }
             inject = {
               env = {
-                url = "OBJECT_STORAGE_API_URL"
+                url   = "OBJECT_STORAGE_API_URL"
+                token = "OBJECT_STORAGE_ACCESS_TOKEN"
               }
             }
           }
@@ -223,6 +224,7 @@ output "service_exports" {
           name       = "default"
           protocol   = "https"
           pathPrefix = "/docs"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/docs" : null
         }
       ]
       metadata = {
@@ -241,6 +243,7 @@ output "service_exports" {
           name       = "default"
           protocol   = "https"
           pathPrefix = "/slide"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/slide" : null
         }
       ]
       metadata = {
@@ -259,6 +262,7 @@ output "service_exports" {
           name       = "default"
           protocol   = "https"
           pathPrefix = "/sheet"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/sheet" : null
         }
       ]
       metadata = {
@@ -277,6 +281,7 @@ output "service_exports" {
           name       = "streamable-http"
           protocol   = "https"
           pathPrefix = "/mcp"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/mcp" : null
         }
       ]
       metadata = {
@@ -294,6 +299,7 @@ output "service_exports" {
           name       = "open"
           protocol   = "https"
           pathPrefix = "/docs/files/"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/docs/files/" : null
         }
       ]
       metadata = {
@@ -311,6 +317,7 @@ output "service_exports" {
           name       = "open"
           protocol   = "https"
           pathPrefix = "/slide/files/"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/slide/files/" : null
         }
       ]
       metadata = {
@@ -328,6 +335,7 @@ output "service_exports" {
           name       = "open"
           protocol   = "https"
           pathPrefix = "/sheet/files/"
+          url        = local.launch_url != null ? "${trimsuffix(local.launch_url, "/")}/sheet/files/" : null
         }
       ]
       metadata = {
@@ -367,5 +375,10 @@ output "launch_url" {
 
 output "url" {
   description = "Alias for launch_url for generic Takosumi public URL smoke checks and launcher tiles."
+  value       = local.launch_url
+}
+
+output "public_url" {
+  description = "Canonical public URL for the published Takos Office instance."
   value       = local.launch_url
 }
