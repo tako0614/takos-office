@@ -46,15 +46,16 @@ function flagEnabled(env: AppRuntimeEnv, name: string): boolean {
 function authConfig(env: AppRuntimeEnv) {
   return {
     required: flagEnabled(env, "APP_AUTH_REQUIRED"),
-    issuer: envValue(env, "OIDC_ISSUER_URL") ??
-      envValue(env, "OAUTH_ISSUER_URL"),
-    tokenEndpoint: envValue(env, "OIDC_TOKEN_URL") ??
-      envValue(env, "OAUTH_TOKEN_URL"),
-    userinfoEndpoint: envValue(env, "OIDC_USERINFO_URL") ??
-      envValue(env, "OAUTH_USERINFO_URL"),
-    clientId: envValue(env, "OIDC_CLIENT_ID") ??
-      envValue(env, "OAUTH_CLIENT_ID"),
-    clientSecret: envValue(env, "OIDC_CLIENT_SECRET") ??
+    issuer:
+      envValue(env, "OIDC_ISSUER_URL") ?? envValue(env, "OAUTH_ISSUER_URL"),
+    tokenEndpoint:
+      envValue(env, "OIDC_TOKEN_URL") ?? envValue(env, "OAUTH_TOKEN_URL"),
+    userinfoEndpoint:
+      envValue(env, "OIDC_USERINFO_URL") ?? envValue(env, "OAUTH_USERINFO_URL"),
+    clientId:
+      envValue(env, "OIDC_CLIENT_ID") ?? envValue(env, "OAUTH_CLIENT_ID"),
+    clientSecret:
+      envValue(env, "OIDC_CLIENT_SECRET") ??
       envValue(env, "OAUTH_CLIENT_SECRET"),
     sessionSecret: envValue(env, "APP_SESSION_SECRET"),
   };
@@ -66,28 +67,30 @@ function authMissing(env: AppRuntimeEnv): string[] {
   const requiredValues: Array<[string, string | undefined]> = [
     ["OIDC_ISSUER_URL", config.issuer],
     ["OIDC_CLIENT_ID", config.clientId],
-    ["OIDC_CLIENT_SECRET", config.clientSecret],
     ["APP_SESSION_SECRET", config.sessionSecret],
   ];
-  return requiredValues.flatMap(([name, value]) => value ? [] : [name]);
+  return requiredValues.flatMap(([name, value]) => (value ? [] : [name]));
 }
 
 export function appAuthMisconfigured(env: AppRuntimeEnv): Response | null {
   const missing = authMissing(env);
   if (missing.length === 0) return null;
-  return Response.json({
-    error: "App auth is not configured",
-    missing,
-  }, { status: 503 });
+  return Response.json(
+    {
+      error: "App auth is not configured",
+      missing,
+    },
+    { status: 503 },
+  );
 }
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll(
-    "=",
-    "",
-  );
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
 }
 
 function base64UrlJson(value: unknown): string {
@@ -96,10 +99,10 @@ function base64UrlJson(value: unknown): string {
 
 function parseBase64UrlJson<T>(value: string): T | null {
   try {
-    const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(
-      Math.ceil(value.length / 4) * 4,
-      "=",
-    );
+    const padded = value
+      .replaceAll("-", "+")
+      .replaceAll("_", "/")
+      .padEnd(Math.ceil(value.length / 4) * 4, "=");
     const binary = atob(padded);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes)) as T;
@@ -253,28 +256,29 @@ async function exchangeCode(
 ): Promise<string> {
   const config = authConfig(env);
   const issuer = config.issuer!;
-  const tokenEndpoint = config.tokenEndpoint ||
-    `${issuer.replace(/\/$/, "")}/oauth/token`;
+  const tokenEndpoint =
+    config.tokenEndpoint || `${issuer.replace(/\/$/, "")}/oauth/token`;
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: config.clientId!,
+    redirect_uri: callbackUrl(request),
+    code_verifier: codeVerifier,
+  });
+  if (config.clientSecret) body.set("client_secret", config.clientSecret);
   const res = await fetch(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: config.clientId!,
-      client_secret: config.clientSecret!,
-      redirect_uri: callbackUrl(request),
-      code_verifier: codeVerifier,
-    }),
+    body,
   });
   if (!res.ok) {
     throw new Error(`OAuth token exchange failed: ${res.status}`);
   }
-  const body = await res.json() as { access_token?: string };
-  if (!body.access_token) {
+  const payload = (await res.json()) as { access_token?: string };
+  if (!payload.access_token) {
     throw new Error("OAuth token response missing access_token");
   }
-  return body.access_token;
+  return payload.access_token;
 }
 
 function normalizeSpaceIds(value: unknown): string[] {
@@ -297,13 +301,13 @@ function normalizeSpaceIds(value: unknown): string[] {
 async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
   const config = authConfig(env);
   const issuer = config.issuer!;
-  const userinfoEndpoint = config.userinfoEndpoint ||
-    `${issuer.replace(/\/$/, "")}/oauth/userinfo`;
+  const userinfoEndpoint =
+    config.userinfoEndpoint || `${issuer.replace(/\/$/, "")}/oauth/userinfo`;
   const res = await fetch(userinfoEndpoint, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
-  const body = await res.json() as {
+  const body = (await res.json()) as {
     user?: { id?: string; name?: string };
     sub?: string;
     name?: string;
@@ -322,7 +326,8 @@ async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
   // membership checks work even against an issuer that predates the claim.
   const nestedSpaceId = body.takosumi?.space_id;
   if (
-    typeof nestedSpaceId === "string" && nestedSpaceId.trim() !== "" &&
+    typeof nestedSpaceId === "string" &&
+    nestedSpaceId.trim() !== "" &&
     !spaceIds.includes(nestedSpaceId)
   ) {
     spaceIds.push(nestedSpaceId);
@@ -341,9 +346,15 @@ export async function requireAppAuth(
   if (misconfigured) return misconfigured;
   const raw = parseCookie(request.headers.get("Cookie"), SESSION_COOKIE);
   if (!raw) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const session = await unseal<AppSession>(raw, config.sessionSecret!, "session");
+  const session = await unseal<AppSession>(
+    raw,
+    config.sessionSecret!,
+    "session",
+  );
   if (
-    !session || typeof session.sub !== "string" || session.sub === "" ||
+    !session ||
+    typeof session.sub !== "string" ||
+    session.sub === "" ||
     session.exp <= Math.floor(Date.now() / 1000)
   ) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -352,9 +363,12 @@ export async function requireAppAuth(
   if (typeof requestedSpaceId === "string" && requestedSpaceId !== "") {
     const memberships = Array.isArray(session.spaceIds) ? session.spaceIds : [];
     if (!memberships.includes(requestedSpaceId)) {
-      return Response.json({
-        error: "space_membership_required",
-      }, { status: 403 });
+      return Response.json(
+        {
+          error: "space_membership_required",
+        },
+        { status: 403 },
+      );
     }
   }
   return null;
@@ -410,7 +424,10 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
       ? await unseal<OAuthState>(stateCookie, config.sessionSecret!, "state")
       : null;
     if (
-      !code || !returnedState || !state || state.state !== returnedState ||
+      !code ||
+      !returnedState ||
+      !state ||
+      state.state !== returnedState ||
       state.exp <= Math.floor(Date.now() / 1000)
     ) {
       return Response.json({ error: "Invalid OAuth state" }, { status: 400 });

@@ -96,6 +96,18 @@ variable "object_storage_access_token" {
   sensitive   = true
 }
 
+variable "object_storage_key_prefix" {
+  description = "Object key prefix assigned to this Office Capsule by the storage service grant."
+  type        = string
+  default     = ""
+}
+
+variable "object_storage_workspace_id" {
+  description = "Workspace identifier used to isolate Office records inside the granted object key prefix."
+  type        = string
+  default     = ""
+}
+
 variable "mcp_auth_token" {
   description = "Optional bearer token for the unified /mcp endpoint, injected as MCP_AUTH_TOKEN. Generated when empty."
   type        = string
@@ -134,9 +146,13 @@ variable "env" {
         "APP_URL",
         "OBJECT_STORAGE_API_URL",
         "OBJECT_STORAGE_ACCESS_TOKEN",
+        "OBJECT_STORAGE_KEY_PREFIX",
+        "TAKOS_SPACE_ID",
         "MCP_AUTH_TOKEN",
-        "TAKOSUMI_ACCOUNTS_ISSUER_URL",
-        "TAKOSUMI_ACCOUNTS_CLIENT_ID",
+        "APP_AUTH_REQUIRED",
+        "APP_SESSION_SECRET",
+        "OIDC_ISSUER_URL",
+        "OIDC_CLIENT_ID",
       ], name)
     ])
     error_message = "env keys must be uppercase Worker plain-text variable names and must not be secret-like or reserved by the Takos Office module."
@@ -158,7 +174,7 @@ variable "worker_bundle_path" {
 variable "worker_release_tag" {
   description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
   type        = string
-  default     = "v0.1.4"
+  default     = "v0.2.0"
 
   validation {
     condition     = trimspace(var.worker_release_tag) == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", trimspace(var.worker_release_tag)))
@@ -265,6 +281,8 @@ locals {
   effective_mcp_auth_token      = local.provided_mcp_auth_token != "" ? local.provided_mcp_auth_token : random_id.mcp_auth_token.hex
   provided_storage_api_url      = trimspace(var.object_storage_api_url)
   provided_storage_access_token = trimspace(var.object_storage_access_token)
+  provided_storage_key_prefix   = trimspace(var.object_storage_key_prefix)
+  provided_storage_workspace_id = trimspace(var.object_storage_workspace_id)
   has_takosumi_accounts_oidc    = trimspace(var.takosumi_accounts_issuer_url) != "" && trimspace(var.takosumi_accounts_client_id) != ""
   extra_worker_env              = { for name, value in var.env : name => value if trimspace(value) != "" }
 }
@@ -286,6 +304,14 @@ data "http" "worker_release_manifest" {
 }
 
 resource "random_id" "mcp_auth_token" {
+  byte_length = 32
+
+  keepers = {
+    project_name = local.resource_prefix
+  }
+}
+
+resource "random_id" "app_session_secret" {
   byte_length = 32
 
   keepers = {
@@ -364,16 +390,40 @@ resource "cloudflare_workers_script" "worker" {
         text = local.provided_storage_access_token
       },
     ] : [],
+    local.provided_storage_key_prefix != "" ? [
+      {
+        type = "plain_text"
+        name = "OBJECT_STORAGE_KEY_PREFIX"
+        text = local.provided_storage_key_prefix
+      },
+    ] : [],
+    local.provided_storage_workspace_id != "" ? [
+      {
+        type = "plain_text"
+        name = "TAKOS_SPACE_ID"
+        text = local.provided_storage_workspace_id
+      },
+    ] : [],
     local.has_takosumi_accounts_oidc ? [
       {
         type = "plain_text"
-        name = "TAKOSUMI_ACCOUNTS_ISSUER_URL"
+        name = "APP_AUTH_REQUIRED"
+        text = "true"
+      },
+      {
+        type = "plain_text"
+        name = "OIDC_ISSUER_URL"
         text = trimspace(var.takosumi_accounts_issuer_url)
       },
       {
         type = "plain_text"
-        name = "TAKOSUMI_ACCOUNTS_CLIENT_ID"
+        name = "OIDC_CLIENT_ID"
         text = trimspace(var.takosumi_accounts_client_id)
+      },
+      {
+        type = "secret_text"
+        name = "APP_SESSION_SECRET"
+        text = random_id.app_session_secret.hex
       },
     ] : [],
   )

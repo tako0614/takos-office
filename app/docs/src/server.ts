@@ -32,9 +32,10 @@ import {
 } from "../../shared/runtime-env.ts";
 
 export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
-  const apiUrl = envValue(env, "OBJECT_STORAGE_API_URL") ||
-    "http://localhost:8787";
+  const apiUrl =
+    envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
@@ -43,7 +44,12 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const storeForSpace = (spaceId: string): TakosDocumentStore => {
     let store = stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(apiUrl, token!, spaceId);
+      const client = createTakosStorageClient(
+        apiUrl,
+        token!,
+        spaceId,
+        keyPrefix,
+      );
       store = new TakosDocumentStore(client);
       stores.set(spaceId, store);
     }
@@ -52,8 +58,8 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const requestSpaceId = (c: Context): string | null =>
     envValue(
       {
-        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
-          defaultSpaceId,
+        value:
+          c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId,
       },
       "value",
     ) ?? null;
@@ -65,9 +71,8 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
     if (!token) return storageUnavailable(c);
     return storeForSpace(spaceId);
   };
-  const defaultStore = defaultSpaceId && token
-    ? storeForSpace(defaultSpaceId)
-    : null;
+  const defaultStore =
+    defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
   const app = new Hono();
 
   // Health check

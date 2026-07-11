@@ -45,9 +45,7 @@ export function createApiClient(
     const location = globalThis.location;
     if (!location) return;
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
-    location.href = `${BASE_PATH}/api/auth/login?return_to=${
-      encodeURIComponent(returnTo)
-    }`;
+    location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
   }
 
   async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -66,7 +64,7 @@ export function createApiClient(
     if (!response.ok) {
       throw new Error(`Request failed: ${response.status}`);
     }
-    return await response.json() as T;
+    return (await response.json()) as T;
   }
 
   return {

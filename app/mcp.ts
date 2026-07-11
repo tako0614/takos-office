@@ -34,7 +34,7 @@ export function createOfficeMcpServer(deps: OfficeMcpServerDeps): McpServer {
   const nativeRendering = deps.nativeRendering ?? true;
   return createAppMcpServer({
     name: "takos-office",
-    version: "0.1.4",
+    version: "0.2.0",
     registerTools: (server) => {
       registerDocsTools(
         server,

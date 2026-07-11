@@ -1,7 +1,7 @@
 output "app_deployment" {
   value = {
     name    = "takos-office"
-    version = "0.1.4"
+    version = "0.2.0"
 
     compute = {
       web = {
@@ -16,8 +16,10 @@ output "app_deployment" {
             }
             inject = {
               env = {
-                url   = "OBJECT_STORAGE_API_URL"
-                token = "OBJECT_STORAGE_ACCESS_TOKEN"
+                url       = "OBJECT_STORAGE_API_URL"
+                token     = "OBJECT_STORAGE_ACCESS_TOKEN"
+                prefix    = "OBJECT_STORAGE_KEY_PREFIX"
+                workspace = "TAKOS_SPACE_ID"
               }
             }
           }

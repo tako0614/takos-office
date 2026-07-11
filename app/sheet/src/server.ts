@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { SpreadsheetConflictError, SpreadsheetStore } from "./spreadsheet-store.ts";
+import {
+  SpreadsheetConflictError,
+  SpreadsheetStore,
+} from "./spreadsheet-store.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "./types/index.ts";
 import {
@@ -40,17 +43,22 @@ export function createServerApp(
   const runtimeEnvValue = options.env ?? runtimeEnv();
   const mcpAuthToken = options.mcpAuthToken;
   const mcpAllowUnauthenticated = options.mcpAllowUnauthenticated === true;
-  const defaultSpaceIdFromEnv = envValue(runtimeEnvValue, "TAKOS_SPACE_ID") ??
-    null;
+  const defaultSpaceIdFromEnv =
+    envValue(runtimeEnvValue, "TAKOS_SPACE_ID") ?? null;
   const resolveSpaceId = (c: Context): string | null => {
     if (options.requestSpaceId) return options.requestSpaceId(c);
-    return envValue(
-      {
-        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
-          defaultSpaceIdFromEnv ?? undefined,
-      },
-      "value",
-    ) ?? null;
+    return (
+      envValue(
+        {
+          value:
+            c.req.query("space_id") ??
+            c.req.query("spaceId") ??
+            defaultSpaceIdFromEnv ??
+            undefined,
+        },
+        "value",
+      ) ?? null
+    );
   };
   const currentStore = (c: Context): SpreadsheetStore | Response => {
     if (options.storeForRequest) return options.storeForRequest(c);
@@ -131,16 +139,34 @@ export function createServerApp(
     const expectedUpdatedAt = c.req.header("If-Match") || undefined;
     try {
       return c.json(
-        await store.replaceSpreadsheet({
-          ...body,
-          id: current?.id ?? body.id ?? id,
-        }, { expectedUpdatedAt }),
+        await store.replaceSpreadsheet(
+          {
+            ...body,
+            id: current?.id ?? body.id ?? id,
+          },
+          { expectedUpdatedAt },
+        ),
       );
     } catch (error) {
       if (error instanceof SpreadsheetConflictError) {
         return c.json({ current: error.current }, 409);
       }
       throw error;
+    }
+  });
+  app.patch("/api/spreadsheets/:id", async (c) => {
+    const store = currentStore(c);
+    if (store instanceof Response) return store;
+    const body = await c.req.json<{ title?: unknown }>();
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return c.json({ error: "title_required" }, 400);
+    }
+    const id = c.req.param("id");
+    try {
+      await store.setSpreadsheetTitle(id, body.title.trim());
+      return c.json(await store.getSpreadsheet(id));
+    } catch {
+      return c.json({ error: "Spreadsheet not found" }, 404);
     }
   });
   app.delete("/api/spreadsheets/:id", async (c) => {
@@ -182,9 +208,10 @@ export function createServerApp(
 }
 
 export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
-  const apiUrl = envValue(env, "OBJECT_STORAGE_API_URL") ||
-    "http://localhost:8787";
+  const apiUrl =
+    envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
@@ -192,7 +219,12 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const storeForSpace = (spaceId: string): SpreadsheetStore => {
     let store = stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(apiUrl, token!, spaceId);
+      const client = createTakosStorageClient(
+        apiUrl,
+        token!,
+        spaceId,
+        keyPrefix,
+      );
       store = new SpreadsheetStore(client);
       stores.set(spaceId, store);
     }
@@ -201,22 +233,18 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const requestSpaceId = (c: Context): string | null =>
     envValue(
       {
-        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
-          defaultSpaceId,
+        value:
+          c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId,
       },
       "value",
     ) ?? null;
-  const defaultStore = defaultSpaceId && token
-    ? storeForSpace(defaultSpaceId)
-    : null;
+  const defaultStore =
+    defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
   return createServerApp(defaultStore, {
     env,
     nativeRendering: nativeRenderingEnabled(env),
     mcpAuthToken: envValue(env, "MCP_AUTH_TOKEN"),
-    mcpAllowUnauthenticated: envFlagEnabled(
-      env,
-      "MCP_ALLOW_UNAUTHENTICATED",
-    ),
+    mcpAllowUnauthenticated: envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
     requestSpaceId,
     storeForRequest: (c) => {
       const spaceId = requestSpaceId(c);

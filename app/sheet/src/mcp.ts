@@ -65,7 +65,15 @@ const MAX_FORMAT_STRING_LENGTH = 120;
 const MAX_SCREENSHOT_WIDTH = 2_400;
 const MAX_SCREENSHOT_HEIGHT = 1_600;
 
-const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH).regex(/^[A-Za-z0-9._-]+$/, "id may only contain letters, digits, '.', '_' and '-'");
+const idSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_ID_LENGTH)
+  .regex(
+    /^[A-Za-z0-9._-]+$/,
+    "id may only contain letters, digits, '.', '_' and '-'",
+  );
 const titleSchema = z.string().max(MAX_TITLE_LENGTH);
 const cellAddressSchema = z
   .string()
@@ -116,13 +124,14 @@ export function createMcpServer(
   store: SpreadsheetStore,
   options: McpServerOptions = {},
 ): McpServer {
-  const runtimeCapabilities = options.runtimeCapabilities ??
+  const runtimeCapabilities =
+    options.runtimeCapabilities ??
     createExcelRuntimeCapabilityManifest({
       nativeRendering: options.nativeRendering ?? true,
     });
   return createAppMcpServer({
     name: "takos-excel",
-    version: "0.1.4",
+    version: "0.2.0",
     registerTools: (mcp) => registerExcelTools(mcp, store, runtimeCapabilities),
   });
 }
@@ -229,9 +238,9 @@ export function registerExcelTools(
     "Add a new sheet tab",
     {
       spreadsheetId: idSchema.describe("Spreadsheet ID"),
-      name: titleSchema.optional().describe(
-        "Tab name (auto-generated if omitted)",
-      ),
+      name: titleSchema
+        .optional()
+        .describe("Tab name (auto-generated if omitted)"),
     },
     async (args) => {
       try {
@@ -431,9 +440,9 @@ export function registerExcelTools(
     italic: z.boolean().optional(),
     underline: z.boolean().optional(),
     textColor: safeCssValueSchema.optional().describe("CSS color string"),
-    bgColor: safeCssValueSchema.optional().describe(
-      "CSS background color string",
-    ),
+    bgColor: safeCssValueSchema
+      .optional()
+      .describe("CSS background color string"),
     fontSize: z.number().int().min(6).max(72).optional(),
     textAlign: z.enum(["left", "center", "right"]).optional(),
     numberFormat: z
@@ -576,9 +585,12 @@ export function registerExcelTools(
     {
       spreadsheetId: idSchema.describe("Spreadsheet ID"),
       sheetId: idSchema.describe("Sheet tab ID"),
-      row: z.number().int().min(1).max(MAX_SPREADSHEET_ROWS).describe(
-        "Row number (1-based)",
-      ),
+      row: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_SPREADSHEET_ROWS)
+        .describe("Row number (1-based)"),
       height: z.number().int().min(18).max(200).describe("Height in pixels"),
     },
     async (args) => {
@@ -830,9 +842,9 @@ export function registerExcelTools(
         const sheet = ss.sheets.find((s) => s.id === args.sheetId);
         if (!sheet) return error(`Sheet not found: ${args.sheetId}`);
         const rendererModule = "./lib/grid-renderer.ts";
-        const { renderSheetToBuffer } = await import(
+        const { renderSheetToBuffer } = (await import(
           rendererModule
-        ) as typeof import("./lib/grid-renderer.ts");
+        )) as typeof import("./lib/grid-renderer.ts");
 
         const buf = renderSheetToBuffer(sheet, {
           rows: Math.min(100, Math.max(1, Math.trunc(args.rows ?? 20))),
@@ -925,9 +937,10 @@ export function registerExcelTools(
         .max(2)
         .optional()
         .describe("Comparison values (e.g. threshold numbers)"),
-      format: z.object(formatSchema).strict().describe(
-        "Format to apply when matched",
-      ),
+      format: z
+        .object(formatSchema)
+        .strict()
+        .describe("Format to apply when matched"),
     },
     async (args) => {
       try {

@@ -1,18 +1,9 @@
-// Shared storage client for takos-office. Docs / slide / sheet now live in one
-// worker, so this is the single source for all Office surfaces.
+// Shared object-storage client for the unified Takos Office Worker.
 
 /**
- * Client for the Takos product storage API.
- *
- * Provides typed access to the spaces.storage endpoints:
- *   GET    /api/spaces/:spaceId/storage              — list files
- *   POST   /api/spaces/:spaceId/storage/files         — create file
- *   GET    /api/spaces/:spaceId/storage/:fileId       — get file metadata
- *   GET    /api/spaces/:spaceId/storage/:fileId/content — get file content
- *   PUT    /api/spaces/:spaceId/storage/:fileId/content — write file content
- *   PATCH  /api/spaces/:spaceId/storage/:fileId       — rename/move
- *   DELETE /api/spaces/:spaceId/storage/:fileId       — delete file
- *   POST   /api/spaces/:spaceId/storage/folders       — create folder
+ * Office stores typed records on the provider-neutral `storage.object` HTTP
+ * surface. The service exposes raw objects (`/o`); this adapter owns Office's
+ * file/folder model without requiring a Takos product API.
  */
 
 export interface StorageFile {
@@ -46,128 +37,147 @@ export interface TakosStorageClient {
   delete(fileId: string): Promise<void>;
 }
 
+type OfficeObjectRecord = {
+  schema: "takos.office.object-record.v1";
+  file: StorageFile;
+  content?: string;
+};
+
+type ObjectListing = {
+  objects?: Array<{ key?: unknown }>;
+  truncated?: boolean;
+};
+
+const RECORD_SCHEMA = "takos.office.object-record.v1" as const;
+const RECORDS_PATH = "office/v1/records";
+
 export function createTakosStorageClient(
   apiUrl: string,
   token: string,
   spaceId: string,
+  keyPrefix = "",
 ): TakosStorageClient {
-  const baseUrl = `${apiUrl}/api/spaces/${spaceId}/storage`;
-  const filePaths = new Map<string, string>();
+  const objectApiUrl = normalizeObjectApiUrl(apiUrl);
+  const recordsPrefix = [
+    normalizeKeyPrefix(keyPrefix),
+    RECORDS_PATH,
+    encodeKeyPart(spaceId),
+    "",
+  ]
+    .join("/")
+    .replace(/^\/+/, "");
 
-  function asRecord(value: unknown): Record<string, unknown> {
-    return value && typeof value === "object"
-      ? value as Record<string, unknown>
-      : {};
+  function recordKey(fileId: string): string {
+    return `${recordsPrefix}${encodeKeyPart(fileId)}.json`;
   }
 
-  function normalizeFile(raw: unknown): StorageFile {
-    const data = asRecord(raw);
-    const file: StorageFile = {
-      id: String(data.id),
-      name: String(data.name),
-      path: typeof data.path === "string" ? data.path : undefined,
-      parentId: typeof data.parentId === "string"
-        ? data.parentId
-        : typeof data.parent_id === "string"
-        ? data.parent_id
-        : undefined,
-      parent_id: typeof data.parent_id === "string" ? data.parent_id : null,
-      type: data.type === "folder" ? "folder" : "file",
-      size: typeof data.size === "number" ? data.size : undefined,
-      mimeType: typeof data.mimeType === "string"
-        ? data.mimeType
-        : typeof data.mime_type === "string"
-        ? data.mime_type
-        : null,
-      mime_type: typeof data.mime_type === "string"
-        ? data.mime_type
-        : typeof data.mimeType === "string"
-        ? data.mimeType
-        : null,
-      createdAt: typeof data.createdAt === "string"
-        ? data.createdAt
-        : typeof data.created_at === "string"
-        ? data.created_at
-        : "",
-      created_at: typeof data.created_at === "string"
-        ? data.created_at
-        : undefined,
-      updatedAt: typeof data.updatedAt === "string"
-        ? data.updatedAt
-        : typeof data.updated_at === "string"
-        ? data.updated_at
-        : "",
-      updated_at: typeof data.updated_at === "string"
-        ? data.updated_at
-        : undefined,
-    };
-    if (file.path) filePaths.set(file.id, file.path);
-    return file;
-  }
-
-  function fileFromResponse(data: unknown): StorageFile {
-    const record = asRecord(data);
-    return normalizeFile(record.file ?? record.folder ?? data);
-  }
-
-  function pathFor(name: string, parentId?: string): string {
-    const parentPath = parentId ? filePaths.get(parentId) : undefined;
-    if (!parentPath || parentPath === "/") return name;
-    return `${parentPath.replace(/\/$/, "")}/${name}`;
-  }
-
-  async function fetchApi(
+  async function objectRequest(
     path: string,
-    options?: RequestInit,
+    options: RequestInit = {},
   ): Promise<Response> {
-    const res = await fetch(`${baseUrl}${path}`, {
+    const headers = new Headers(options.headers);
+    headers.set("authorization", `Bearer ${token}`);
+    const response = await fetch(`${objectApiUrl}${path}`, {
       ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
+      headers,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new ObjectStorageError(response.status, body);
+    }
+    return response;
+  }
+
+  async function readRecord(
+    fileId: string,
+  ): Promise<OfficeObjectRecord | null> {
+    try {
+      const response = await objectRequest(
+        `/${encodeURIComponent(recordKey(fileId))}`,
+      );
+      return parseRecord(await response.json());
+    } catch (error) {
+      if (error instanceof ObjectStorageError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async function writeRecord(record: OfficeObjectRecord): Promise<void> {
+    await objectRequest(`/${encodeURIComponent(recordKey(record.file.id))}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify(record),
+    });
+  }
+
+  async function deleteRecord(fileId: string): Promise<void> {
+    try {
+      await objectRequest(`/${encodeURIComponent(recordKey(fileId))}`, {
+        method: "DELETE",
+      });
+    } catch (error) {
+      if (!(error instanceof ObjectStorageError) || error.status !== 404) {
+        throw error;
+      }
+    }
+  }
+
+  async function allRecords(): Promise<OfficeObjectRecord[]> {
+    const response = await objectRequest(
+      `?prefix=${encodeURIComponent(recordsPrefix)}`,
+    );
+    const listing = (await response.json()) as ObjectListing;
+    if (listing.truncated === true) {
       throw new Error(
-        `Takos API error: ${res.status} ${res.statusText} — ${body}`,
+        "Object storage listing was truncated; pagination is required before Office can continue.",
       );
     }
-    return res;
+    const keys = (listing.objects ?? []).flatMap((entry) =>
+      typeof entry.key === "string" && entry.key.startsWith(recordsPrefix)
+        ? [entry.key]
+        : [],
+    );
+    return (
+      await Promise.all(
+        keys.map(async (key) => {
+          const response = await objectRequest(`/${encodeURIComponent(key)}`);
+          return parseRecord(await response.json());
+        }),
+      )
+    ).filter((record): record is OfficeObjectRecord => record !== null);
   }
 
   async function list(prefix?: string): Promise<StorageFile[]> {
-    const query = prefix ? `?path=${encodeURIComponent(prefix)}` : "";
-    const res = await fetchApi(query);
-    const data: unknown = await res.json();
-    const envelope = asRecord(data);
-    const raw = Array.isArray(envelope.files)
-      ? envelope.files
-      : Array.isArray(data)
-      ? data
-      : [];
-    return raw.map(normalizeFile);
+    const records = await allRecords();
+    if (!prefix) {
+      return records
+        .filter((record) => !record.file.parentId)
+        .map((record) => record.file);
+    }
+    const folder = records.find(
+      (record) =>
+        record.file.type === "folder" &&
+        (record.file.path === prefix || record.file.name === prefix),
+    );
+    if (!folder) return [];
+    return records
+      .filter((record) => record.file.parentId === folder.file.id)
+      .map((record) => record.file);
   }
 
   async function get(fileId: string): Promise<StorageFile | null> {
-    try {
-      const res = await fetchApi(`/${encodeURIComponent(fileId)}`);
-      return fileFromResponse(await res.json());
-    } catch {
-      return null;
-    }
+    return (await readRecord(fileId))?.file ?? null;
   }
 
   async function getContent(fileId: string): Promise<string> {
-    const res = await fetchApi(`/${encodeURIComponent(fileId)}/content`);
-    const contentType = res.headers.get("Content-Type") ?? "";
-    if (contentType.includes("application/json")) {
-      const data = await res.json();
-      if (typeof data.content === "string") return data.content;
-      return JSON.stringify(data);
+    const record = await readRecord(fileId);
+    if (!record) throw new ObjectStorageError(404, "record not found");
+    if (record.file.type !== "file") {
+      throw new Error(`Office record ${fileId} is a folder, not a file.`);
     }
-    return res.text();
+    return record.content ?? "";
   }
 
   async function putContent(
@@ -175,9 +185,21 @@ export function createTakosStorageClient(
     content: string,
     mimeType?: string,
   ): Promise<void> {
-    await fetchApi(`/${encodeURIComponent(fileId)}/content`, {
-      method: "PUT",
-      body: JSON.stringify({ content, mime_type: mimeType }),
+    const record = await readRecord(fileId);
+    if (!record) throw new ObjectStorageError(404, "record not found");
+    if (record.file.type !== "file") {
+      throw new Error(`Office record ${fileId} is a folder, not a file.`);
+    }
+    const now = new Date().toISOString();
+    await writeRecord({
+      ...record,
+      content,
+      file: normalizeFile({
+        ...record.file,
+        size: new TextEncoder().encode(content).byteLength,
+        mimeType: mimeType ?? record.file.mimeType,
+        updatedAt: now,
+      }),
     });
   }
 
@@ -186,43 +208,99 @@ export function createTakosStorageClient(
     parentId?: string,
     options?: { content?: string; mimeType?: string },
   ): Promise<StorageFile> {
-    const res = await fetchApi("/files", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        parentId,
-        path: pathFor(name, parentId),
-        content: options?.content ?? "",
-        mime_type: options?.mimeType,
-      }),
+    const parent = parentId ? await readRecord(parentId) : null;
+    if (parentId && (!parent || parent.file.type !== "folder")) {
+      throw new Error(`Office parent folder ${parentId} was not found.`);
+    }
+    const content = options?.content ?? "";
+    const now = new Date().toISOString();
+    const file = normalizeFile({
+      id: crypto.randomUUID(),
+      name,
+      path: pathFor(parent?.file, name),
+      parentId,
+      type: "file",
+      size: new TextEncoder().encode(content).byteLength,
+      mimeType: options?.mimeType ?? null,
+      createdAt: now,
+      updatedAt: now,
     });
-    return fileFromResponse(await res.json());
+    await writeRecord({ schema: RECORD_SCHEMA, file, content });
+    return file;
   }
 
   async function createFolder(
     name: string,
     parentId?: string,
   ): Promise<StorageFile> {
-    const res = await fetchApi("/folders", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        parentId,
-        parent_path: parentId ? filePaths.get(parentId) : undefined,
-      }),
+    const parent = parentId ? await readRecord(parentId) : null;
+    if (parentId && (!parent || parent.file.type !== "folder")) {
+      throw new Error(`Office parent folder ${parentId} was not found.`);
+    }
+    const now = new Date().toISOString();
+    const file = normalizeFile({
+      id: crypto.randomUUID(),
+      name,
+      path: pathFor(parent?.file, name),
+      parentId,
+      type: "folder",
+      createdAt: now,
+      updatedAt: now,
     });
-    return fileFromResponse(await res.json());
+    await writeRecord({ schema: RECORD_SCHEMA, file });
+    return file;
   }
 
   async function rename(fileId: string, name: string): Promise<void> {
-    await fetchApi(`/${encodeURIComponent(fileId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name }),
-    });
+    const records = await allRecords();
+    const record = records.find((entry) => entry.file.id === fileId);
+    if (!record) throw new ObjectStorageError(404, "record not found");
+    const previousPath = record.file.path ?? record.file.name;
+    const parent = record.file.parentId
+      ? records.find((entry) => entry.file.id === record.file.parentId)?.file
+      : undefined;
+    const nextPath = pathFor(parent, name);
+    const now = new Date().toISOString();
+    const changed = records.filter(
+      (entry) =>
+        entry.file.id === fileId ||
+        (record.file.type === "folder" &&
+          typeof entry.file.path === "string" &&
+          entry.file.path.startsWith(`${previousPath}/`)),
+    );
+    await Promise.all(
+      changed.map((entry) => {
+        const own = entry.file.id === fileId;
+        const path = own
+          ? nextPath
+          : `${nextPath}${entry.file.path!.slice(previousPath.length)}`;
+        return writeRecord({
+          ...entry,
+          file: normalizeFile({
+            ...entry.file,
+            ...(own ? { name } : {}),
+            path,
+            updatedAt: now,
+          }),
+        });
+      }),
+    );
   }
 
   async function del(fileId: string): Promise<void> {
-    await fetchApi(`/${encodeURIComponent(fileId)}`, { method: "DELETE" });
+    const records = await allRecords();
+    const record = records.find((entry) => entry.file.id === fileId);
+    if (!record) return;
+    const path = record.file.path ?? record.file.name;
+    const ids = records.flatMap((entry) =>
+      entry.file.id === fileId ||
+      (record.file.type === "folder" &&
+        typeof entry.file.path === "string" &&
+        entry.file.path.startsWith(`${path}/`))
+        ? [entry.file.id]
+        : [],
+    );
+    await Promise.all(ids.map(deleteRecord));
   }
 
   return {
@@ -234,5 +312,68 @@ export function createTakosStorageClient(
     createFolder,
     rename,
     delete: del,
+  };
+}
+
+class ObjectStorageError extends Error {
+  constructor(
+    readonly status: number,
+    body: string,
+  ) {
+    super(`Object storage API error: ${status}${body ? ` - ${body}` : ""}`);
+    this.name = "ObjectStorageError";
+  }
+}
+
+function normalizeObjectApiUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return trimmed.endsWith("/o") ? trimmed : `${trimmed}/o`;
+}
+
+function normalizeKeyPrefix(value: string): string {
+  // Bare segment only — the records-prefix join() supplies the separators, so
+  // a trailing slash here would produce a double-slash key prefix.
+  return value.trim().replace(/^\/+|\/+$/g, "");
+}
+
+function encodeKeyPart(value: string): string {
+  return encodeURIComponent(value).replaceAll("%", "~");
+}
+
+function pathFor(parent: StorageFile | undefined, name: string): string {
+  const parentPath = parent?.path?.replace(/\/+$/, "");
+  return parentPath ? `${parentPath}/${name}` : name;
+}
+
+function parseRecord(value: unknown): OfficeObjectRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Partial<OfficeObjectRecord>;
+  if (record.schema !== RECORD_SCHEMA || !record.file) return null;
+  return {
+    schema: RECORD_SCHEMA,
+    file: normalizeFile(record.file),
+    ...(typeof record.content === "string" ? { content: record.content } : {}),
+  };
+}
+
+function normalizeFile(value: Partial<StorageFile>): StorageFile {
+  const createdAt = value.createdAt ?? value.created_at ?? "";
+  const updatedAt = value.updatedAt ?? value.updated_at ?? createdAt;
+  const parentId = value.parentId ?? value.parent_id ?? undefined;
+  const mimeType = value.mimeType ?? value.mime_type ?? null;
+  return {
+    id: String(value.id ?? ""),
+    name: String(value.name ?? ""),
+    ...(value.path ? { path: value.path } : {}),
+    ...(parentId ? { parentId } : {}),
+    parent_id: parentId ?? null,
+    type: value.type === "folder" ? "folder" : "file",
+    ...(typeof value.size === "number" ? { size: value.size } : {}),
+    mimeType,
+    mime_type: mimeType,
+    createdAt,
+    created_at: createdAt,
+    updatedAt,
+    updated_at: updatedAt,
   };
 }
