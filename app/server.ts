@@ -33,11 +33,7 @@ import {
   createMcpRequestHandler,
   mcpAuthMisconfigured,
 } from "./shared/mcp-factory.ts";
-import {
-  appAuthMisconfigured,
-  registerAuthRoutes,
-  requireAppAuth,
-} from "./shared/app-auth.ts";
+import { appAuthMisconfigured, requireAppAuth } from "./shared/app-auth.ts";
 import {
   collectOfficeItems,
   type OfficeStores,
@@ -77,7 +73,6 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   };
   app.get("/health", health);
   app.get("/healthz", health);
-  registerAuthRoutes(app, env);
 
   // ---- Office shell landing ----
   app.get("/", (c) => c.html(renderShellPage()));
@@ -87,7 +82,6 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
-  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
@@ -97,12 +91,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   const storesForSpace = (spaceId: string): OfficeStores => {
     let stores = officeStores.get(spaceId);
     if (!stores) {
-      const client = createTakosStorageClient(
-        apiUrl,
-        token!,
-        spaceId,
-        keyPrefix,
-      );
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       stores = {
         docs: new TakosDocumentStore(client),
         slide: createPresentationStore(client),
@@ -155,12 +144,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
 
     let handler = mcpHandlers.get(spaceId);
     if (!handler) {
-      const client = createTakosStorageClient(
-        apiUrl,
-        token!,
-        spaceId,
-        keyPrefix,
-      );
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       const docsStore = new TakosDocumentStore(client);
       const slideStore = createPresentationStore(client);
       const sheetStore = new SpreadsheetStore(client);

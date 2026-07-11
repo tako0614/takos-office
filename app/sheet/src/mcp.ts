@@ -122,7 +122,7 @@ export function createMcpServer(
     });
   return createAppMcpServer({
     name: "takos-excel",
-    version: "0.1.3",
+    version: "0.1.1",
     registerTools: (mcp) => registerExcelTools(mcp, store, runtimeCapabilities),
   });
 }

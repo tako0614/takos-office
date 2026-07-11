@@ -143,21 +143,6 @@ export function createServerApp(
       throw error;
     }
   });
-  app.patch("/api/spreadsheets/:id", async (c) => {
-    const store = currentStore(c);
-    if (store instanceof Response) return store;
-    const body = await c.req.json<{ title?: unknown }>();
-    if (typeof body.title !== "string" || !body.title.trim()) {
-      return c.json({ error: "title_required" }, 400);
-    }
-    const id = c.req.param("id");
-    try {
-      await store.setSpreadsheetTitle(id, body.title.trim());
-      return c.json(await store.getSpreadsheet(id));
-    } catch {
-      return c.json({ error: "Spreadsheet not found" }, 404);
-    }
-  });
   app.delete("/api/spreadsheets/:id", async (c) => {
     const store = currentStore(c);
     if (store instanceof Response) return store;
@@ -200,7 +185,6 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
-  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
@@ -208,12 +192,7 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const storeForSpace = (spaceId: string): SpreadsheetStore => {
     let store = stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(
-        apiUrl,
-        token!,
-        spaceId,
-        keyPrefix,
-      );
+      const client = createTakosStorageClient(apiUrl, token!, spaceId);
       store = new SpreadsheetStore(client);
       stores.set(spaceId, store);
     }

@@ -45,7 +45,7 @@ export function createApiClient(
     const location = globalThis.location;
     if (!location) return;
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
-    location.href = `/api/auth/login?return_to=${
+    location.href = `${BASE_PATH}/api/auth/login?return_to=${
       encodeURIComponent(returnTo)
     }`;
   }
