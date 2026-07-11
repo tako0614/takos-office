@@ -66,7 +66,6 @@ function authMissing(env: AppRuntimeEnv): string[] {
   const requiredValues: Array<[string, string | undefined]> = [
     ["OIDC_ISSUER_URL", config.issuer],
     ["OIDC_CLIENT_ID", config.clientId],
-    ["OIDC_CLIENT_SECRET", config.clientSecret],
     ["APP_SESSION_SECRET", config.sessionSecret],
   ];
   return requiredValues.flatMap(([name, value]) => value ? [] : [name]);
@@ -255,26 +254,27 @@ async function exchangeCode(
   const issuer = config.issuer!;
   const tokenEndpoint = config.tokenEndpoint ||
     `${issuer.replace(/\/$/, "")}/oauth/token`;
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    client_id: config.clientId!,
+    redirect_uri: callbackUrl(request),
+    code_verifier: codeVerifier,
+  });
+  if (config.clientSecret) body.set("client_secret", config.clientSecret);
   const res = await fetch(tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: config.clientId!,
-      client_secret: config.clientSecret!,
-      redirect_uri: callbackUrl(request),
-      code_verifier: codeVerifier,
-    }),
+    body,
   });
   if (!res.ok) {
     throw new Error(`OAuth token exchange failed: ${res.status}`);
   }
-  const body = await res.json() as { access_token?: string };
-  if (!body.access_token) {
+  const payload = await res.json() as { access_token?: string };
+  if (!payload.access_token) {
     throw new Error("OAuth token response missing access_token");
   }
-  return body.access_token;
+  return payload.access_token;
 }
 
 function normalizeSpaceIds(value: unknown): string[] {

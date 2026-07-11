@@ -1,6 +1,9 @@
 node_modules/
 dist/
 app/*/dist/
+.terraform/
+*.tfplan
+crash.log
 .wrangler/
 .env
 .env.*

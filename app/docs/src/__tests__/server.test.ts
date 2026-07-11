@@ -41,6 +41,80 @@ async function makeSessionCookie(
   return `${data}.${base64Url(new Uint8Array(signature))}`;
 }
 
+const OBJECT_API_BASE = "http://localhost:8787/o";
+
+type OfficeRecord = {
+  schema: "takos.office.object-record.v1";
+  file: {
+    id: string;
+    name: string;
+    path?: string;
+    parentId?: string;
+    type: "file" | "folder";
+    size?: number;
+    mimeType?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  content?: string;
+};
+
+const recordKey = (spaceId: string, fileId: string) =>
+  `office/v1/records/${spaceId}/${fileId}.json`;
+
+/**
+ * In-memory mock of the provider-neutral `storage.object` surface used by
+ * createTakosStorageClient: GET `<base>?prefix=` lists keys, and
+ * GET/PUT/DELETE `<base>/<encoded key>` reads/writes/removes one record.
+ */
+function installObjectStorageMock(records: Map<string, OfficeRecord>) {
+  const originalFetch = globalThis.fetch;
+  const calls: { method: string; url: string; body?: string }[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+    const body = typeof init?.body === "string" ? init.body : undefined;
+    calls.push({ method, url, ...(body !== undefined ? { body } : {}) });
+
+    if (!url.startsWith(OBJECT_API_BASE)) {
+      return Promise.resolve(
+        Response.json({ error: "unexpected" }, { status: 500 }),
+      );
+    }
+    const rest = url.slice(OBJECT_API_BASE.length);
+    if (rest === "" || rest.startsWith("?")) {
+      const prefix = new URL(url).searchParams.get("prefix") ?? "";
+      const objects = [...records.keys()]
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => ({ key }));
+      return Promise.resolve(Response.json({ objects }));
+    }
+    const key = decodeURIComponent(rest.slice(1));
+    if (method === "PUT") {
+      records.set(key, JSON.parse(body ?? "{}") as OfficeRecord);
+      return Promise.resolve(Response.json({ key }));
+    }
+    if (method === "DELETE") {
+      records.delete(key);
+      return Promise.resolve(Response.json({ deleted: true }));
+    }
+    const record = records.get(key);
+    if (!record) {
+      return Promise.resolve(
+        Response.json({ error: "object_not_found" }, { status: 404 }),
+      );
+    }
+    return Promise.resolve(Response.json(record));
+  }) as typeof fetch;
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
+  };
+}
+
 test("document collection writes require app auth when enabled", async () => {
   const { app } = createDocsApp({
     ...env,
@@ -125,8 +199,6 @@ test("file handler route redirects to document editor route", async () => {
 });
 
 test("document API opens and saves advertised file by storage id in request space", async () => {
-  const originalFetch = globalThis.fetch;
-  const calls: { method: string; url: string; body?: string }[] = [];
   const now = "2026-04-30T00:00:00.000Z";
   const doc = {
     id: "doc-1",
@@ -135,52 +207,34 @@ test("document API opens and saves advertised file by storage id in request spac
     createdAt: now,
     updatedAt: now,
   };
-
-  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
-    const request = input instanceof Request ? input : null;
-    const url = request?.url ?? String(input);
-    const method = init?.method ?? request?.method ?? "GET";
-    calls.push({
-      method,
-      url,
-      body: typeof init?.body === "string" ? init.body : undefined,
-    });
-
-    if (url.endsWith("/api/spaces/space-q/storage")) {
-      return Promise.resolve(Response.json({
-        files: [{
-          id: "folder-1",
-          name: "takos-docs",
-          path: "takos-docs",
-          type: "folder",
-          created_at: now,
-          updated_at: now,
-        }],
-      }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage?path=takos-docs")) {
-      return Promise.resolve(Response.json({ files: [] }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage/file-1")) {
-      return Promise.resolve(Response.json({
-        file: {
-          id: "file-1",
-          name: "Report.takosdoc",
-          type: "file",
-          mime_type: "application/vnd.takos.docs+json",
-          created_at: now,
-          updated_at: now,
-        },
-      }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage/file-1/content")) {
-      if (method === "PUT") return Promise.resolve(Response.json({ file: {} }));
-      return Promise.resolve(Response.json({ content: JSON.stringify(doc) }));
-    }
-    return Promise.resolve(Response.json({ error: "unexpected" }, {
-      status: 500,
-    }));
-  }) as typeof fetch;
+  const records = new Map<string, OfficeRecord>([
+    [recordKey("space-q", "folder-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "folder-1",
+        name: "takos-docs",
+        path: "takos-docs",
+        type: "folder",
+        createdAt: now,
+        updatedAt: now,
+      },
+    }],
+    [recordKey("space-q", "file-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "file-1",
+        name: "Report.takosdoc",
+        path: "takos-docs/Report.takosdoc",
+        parentId: "folder-1",
+        type: "file",
+        mimeType: "application/vnd.takos.docs+json",
+        createdAt: now,
+        updatedAt: now,
+      },
+      content: JSON.stringify(doc),
+    }],
+  ]);
+  const mock = installObjectStorageMock(records);
 
   try {
     const { app } = createDocsApp({
@@ -203,15 +257,91 @@ test("document API opens and saves advertised file by storage id in request spac
     expect(putRes.status).toEqual(200);
     expect((await putRes.json()).id).toEqual("doc-1");
 
-    const saveCall = calls.find((call) =>
+    // The save must land on file-1's record key in the request space.
+    const savedKey = recordKey("space-q", "file-1");
+    const saveCall = mock.calls.find((call) =>
       call.method === "PUT" &&
-      call.url.endsWith("/api/spaces/space-q/storage/file-1/content")
+      call.url === `${OBJECT_API_BASE}/${encodeURIComponent(savedKey)}`
     );
     expect(saveCall).toBeTruthy();
-    if (!saveCall) throw new Error("expected storage save request");
-    expect(JSON.parse(saveCall.body ?? "{}").mime_type).toEqual("application/vnd.takos.docs+json");
+    const saved = records.get(savedKey);
+    expect(saved?.file.mimeType).toEqual("application/vnd.takos.docs+json");
+    expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Updated");
   } finally {
-    globalThis.fetch = originalFetch;
+    mock.restore();
+  }
+});
+
+test("document API renames a document via PATCH and persists the new title", async () => {
+  const now = "2026-04-30T00:00:00.000Z";
+  const doc = {
+    id: "doc-1",
+    title: "Report",
+    content: "{}",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const records = new Map<string, OfficeRecord>([
+    [recordKey("space-q", "folder-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "folder-1",
+        name: "takos-docs",
+        path: "takos-docs",
+        type: "folder",
+        createdAt: now,
+        updatedAt: now,
+      },
+    }],
+    [recordKey("space-q", "file-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "file-1",
+        name: "doc-1.takosdoc",
+        path: "takos-docs/doc-1.takosdoc",
+        parentId: "folder-1",
+        type: "file",
+        mimeType: "application/vnd.takos.docs+json",
+        createdAt: now,
+        updatedAt: now,
+      },
+      content: JSON.stringify(doc),
+    }],
+  ]);
+  const mock = installObjectStorageMock(records);
+
+  try {
+    const { app } = createDocsApp({
+      ...env,
+      TAKOS_SPACE_ID: undefined,
+    });
+    const res = await app.request(
+      new Request("http://localhost/api/documents/doc-1?space_id=space-q", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "New name" }),
+      }),
+    );
+    expect(res.status).toEqual(200);
+    const renamed = await res.json();
+    expect(renamed.id).toEqual("doc-1");
+    expect(renamed.title).toEqual("New name");
+
+    // The stored record was re-PUT with the new title.
+    const saved = records.get(recordKey("space-q", "file-1"));
+    expect(JSON.parse(saved?.content ?? "{}").title).toEqual("New name");
+
+    const missing = await app.request(
+      new Request("http://localhost/api/documents/nope?space_id=space-q", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "New name" }),
+      }),
+    );
+    expect(missing.status).toEqual(404);
+    expect(await missing.json()).toEqual({ error: "Document not found" });
+  } finally {
+    mock.restore();
   }
 });
 

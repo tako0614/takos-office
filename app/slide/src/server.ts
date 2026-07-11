@@ -42,6 +42,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl = envValue(env, "OBJECT_STORAGE_API_URL") ||
     "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
@@ -49,7 +50,12 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const storeForSpace = (spaceId: string) => {
     let store = stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(apiUrl, token!, spaceId);
+      const client = createTakosStorageClient(
+        apiUrl,
+        token!,
+        spaceId,
+        keyPrefix,
+      );
       store = createPresentationStore(client);
       stores.set(spaceId, store);
     }
@@ -136,6 +142,19 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
         return c.json({ current: error.current }, 409);
       }
       throw error;
+    }
+  });
+  app.patch("/api/presentations/:id", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
+    const body = await c.req.json<{ title?: unknown }>();
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return c.json({ error: "title_required" }, 400);
+    }
+    try {
+      return c.json(await store.setTitle(c.req.param("id"), body.title.trim()));
+    } catch {
+      return c.json({ error: "Presentation not found" }, 404);
     }
   });
   app.delete("/api/presentations/:id", async (c) => {

@@ -36,6 +36,114 @@ async function makeSessionCookie(
   return `${data}.${base64Url(new Uint8Array(signature))}`;
 }
 
+const OBJECT_API_BASE = "http://localhost:8787/o";
+
+type OfficeRecord = {
+  schema: "takos.office.object-record.v1";
+  file: {
+    id: string;
+    name: string;
+    path?: string;
+    parentId?: string;
+    type: "file" | "folder";
+    size?: number;
+    mimeType?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  content?: string;
+};
+
+const recordKey = (spaceId: string, fileId: string) =>
+  `office/v1/records/${spaceId}/${fileId}.json`;
+
+/**
+ * In-memory mock of the provider-neutral `storage.object` surface used by
+ * createTakosStorageClient: GET `<base>?prefix=` lists keys, and
+ * GET/PUT/DELETE `<base>/<encoded key>` reads/writes/removes one record.
+ */
+function installObjectStorageMock(records: Map<string, OfficeRecord>) {
+  const originalFetch = globalThis.fetch;
+  const calls: { method: string; url: string; body?: string }[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+    const body = typeof init?.body === "string" ? init.body : undefined;
+    calls.push({ method, url, ...(body !== undefined ? { body } : {}) });
+
+    if (!url.startsWith(OBJECT_API_BASE)) {
+      return Promise.resolve(
+        Response.json({ error: "unexpected" }, { status: 500 }),
+      );
+    }
+    const rest = url.slice(OBJECT_API_BASE.length);
+    if (rest === "" || rest.startsWith("?")) {
+      const prefix = new URL(url).searchParams.get("prefix") ?? "";
+      const objects = [...records.keys()]
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => ({ key }));
+      return Promise.resolve(Response.json({ objects }));
+    }
+    const key = decodeURIComponent(rest.slice(1));
+    if (method === "PUT") {
+      records.set(key, JSON.parse(body ?? "{}") as OfficeRecord);
+      return Promise.resolve(Response.json({ key }));
+    }
+    if (method === "DELETE") {
+      records.delete(key);
+      return Promise.resolve(Response.json({ deleted: true }));
+    }
+    const record = records.get(key);
+    if (!record) {
+      return Promise.resolve(
+        Response.json({ error: "object_not_found" }, { status: 404 }),
+      );
+    }
+    return Promise.resolve(Response.json(record));
+  }) as typeof fetch;
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
+  };
+}
+
+function seedSpreadsheetRecords(
+  now: string,
+  spreadsheet: { id: string },
+  fileName = `${spreadsheet.id}.takossheet`,
+) {
+  return new Map<string, OfficeRecord>([
+    [recordKey("space-q", "folder-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "folder-1",
+        name: "takos-excel",
+        path: "takos-excel",
+        type: "folder",
+        createdAt: now,
+        updatedAt: now,
+      },
+    }],
+    [recordKey("space-q", "file-1"), {
+      schema: "takos.office.object-record.v1",
+      file: {
+        id: "file-1",
+        name: fileName,
+        path: `takos-excel/${fileName}`,
+        parentId: "folder-1",
+        type: "file",
+        mimeType: "application/vnd.takos.excel+json",
+        createdAt: now,
+        updatedAt: now,
+      },
+      content: JSON.stringify(spreadsheet),
+    }],
+  ]);
+}
+
 const store = {} as never;
 const app = createServerApp(store, { mcpAuthToken: "secret" });
 
@@ -155,8 +263,6 @@ test("file handler route redirects to spreadsheet editor route", async () => {
 });
 
 test("spreadsheet API opens and saves advertised file by storage id in request space", async () => {
-  const originalFetch = globalThis.fetch;
-  const calls: { method: string; url: string; body?: string }[] = [];
   const now = "2026-04-30T00:00:00.000Z";
   const spreadsheet = {
     id: "sheet-1",
@@ -172,54 +278,8 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
     createdAt: now,
     updatedAt: now,
   };
-
-  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
-    const request = input instanceof Request ? input : null;
-    const url = request?.url ?? String(input);
-    const method = init?.method ?? request?.method ?? "GET";
-    calls.push({
-      method,
-      url,
-      body: typeof init?.body === "string" ? init.body : undefined,
-    });
-
-    if (url.endsWith("/api/spaces/space-q/storage")) {
-      return Promise.resolve(Response.json({
-        files: [{
-          id: "folder-1",
-          name: "takos-excel",
-          path: "takos-excel",
-          type: "folder",
-          created_at: now,
-          updated_at: now,
-        }],
-      }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage?path=takos-excel")) {
-      return Promise.resolve(Response.json({ files: [] }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage/file-1")) {
-      return Promise.resolve(Response.json({
-        file: {
-          id: "file-1",
-          name: "Budget.takossheet",
-          type: "file",
-          mime_type: "application/vnd.takos.excel+json",
-          created_at: now,
-          updated_at: now,
-        },
-      }));
-    }
-    if (url.endsWith("/api/spaces/space-q/storage/file-1/content")) {
-      if (method === "PUT") return Promise.resolve(Response.json({ file: {} }));
-      return Promise.resolve(
-        Response.json({ content: JSON.stringify(spreadsheet) }),
-      );
-    }
-    return Promise.resolve(Response.json({ error: "unexpected" }, {
-      status: 500,
-    }));
-  }) as typeof fetch;
+  const records = seedSpreadsheetRecords(now, spreadsheet, "Budget.takossheet");
+  const mock = installObjectStorageMock(records);
 
   try {
     const authApp = createExcelAppFromEnv({
@@ -248,15 +308,132 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
     expect(putRes.status).toEqual(200);
     expect((await putRes.json()).id).toEqual("sheet-1");
 
-    const saveCall = calls.find((call) =>
+    // The save must land on file-1's record key in the request space.
+    const savedKey = recordKey("space-q", "file-1");
+    const saveCall = mock.calls.find((call) =>
       call.method === "PUT" &&
-      call.url.endsWith("/api/spaces/space-q/storage/file-1/content")
+      call.url === `${OBJECT_API_BASE}/${encodeURIComponent(savedKey)}`
     );
     expect(saveCall).toBeTruthy();
-    if (!saveCall) throw new Error("expected storage save request");
-    expect(JSON.parse(saveCall.body ?? "{}").mime_type).toEqual("application/vnd.takos.excel+json");
+    const saved = records.get(savedKey);
+    expect(saved?.file.mimeType).toEqual("application/vnd.takos.excel+json");
+    expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Updated");
   } finally {
-    globalThis.fetch = originalFetch;
+    mock.restore();
+  }
+});
+
+test("spreadsheet API renames a spreadsheet via PATCH and persists the new title", async () => {
+  const now = "2026-04-30T00:00:00.000Z";
+  const spreadsheet = {
+    id: "sheet-1",
+    title: "Budget",
+    sheets: [{
+      id: "tab-1",
+      name: "Sheet1",
+      cells: {},
+      colWidths: {},
+      rowHeights: {},
+    }],
+    activeSheetId: "tab-1",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const records = seedSpreadsheetRecords(now, spreadsheet);
+  const mock = installObjectStorageMock(records);
+
+  try {
+    const authApp = createExcelAppFromEnv({
+      OBJECT_STORAGE_API_URL: "http://localhost:8787",
+      OBJECT_STORAGE_ACCESS_TOKEN: "token",
+      TAKOS_SPACE_ID: undefined,
+      TAKOS_NATIVE_RENDERING: "0",
+      MCP_AUTH_TOKEN: "secret",
+    });
+    const res = await authApp.request(
+      new Request(
+        "http://localhost/api/spreadsheets/sheet-1?space_id=space-q",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "New name" }),
+        },
+      ),
+    );
+    expect(res.status).toEqual(200);
+    const renamed = await res.json();
+    expect(renamed.id).toEqual("sheet-1");
+    expect(renamed.title).toEqual("New name");
+    // PATCH responds with the full updated spreadsheet.
+    expect(renamed.sheets.length).toEqual(1);
+    expect(renamed.activeSheetId).toEqual("tab-1");
+
+    // The stored record was re-PUT with the new title.
+    const saved = records.get(recordKey("space-q", "file-1"));
+    expect(JSON.parse(saved?.content ?? "{}").title).toEqual("New name");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("spreadsheet API PATCH rejects empty or missing titles and unknown ids", async () => {
+  const now = "2026-04-30T00:00:00.000Z";
+  const spreadsheet = {
+    id: "sheet-1",
+    title: "Budget",
+    sheets: [{
+      id: "tab-1",
+      name: "Sheet1",
+      cells: {},
+      colWidths: {},
+      rowHeights: {},
+    }],
+    activeSheetId: "tab-1",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const records = seedSpreadsheetRecords(now, spreadsheet);
+  const mock = installObjectStorageMock(records);
+
+  try {
+    const authApp = createExcelAppFromEnv({
+      OBJECT_STORAGE_API_URL: "http://localhost:8787",
+      OBJECT_STORAGE_ACCESS_TOKEN: "token",
+      TAKOS_SPACE_ID: undefined,
+      TAKOS_NATIVE_RENDERING: "0",
+      MCP_AUTH_TOKEN: "secret",
+    });
+    const patch = (id: string, body: unknown) =>
+      authApp.request(
+        new Request(
+          `http://localhost/api/spreadsheets/${id}?space_id=space-q`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        ),
+      );
+
+    const emptyTitle = await patch("sheet-1", { title: "" });
+    expect(emptyTitle.status).toEqual(400);
+    expect(await emptyTitle.json()).toEqual({ error: "title_required" });
+
+    const missingTitle = await patch("sheet-1", {});
+    expect(missingTitle.status).toEqual(400);
+    expect(await missingTitle.json()).toEqual({ error: "title_required" });
+
+    const unknownId = await patch("nope", { title: "New name" });
+    expect(unknownId.status).toEqual(404);
+    expect(await unknownId.json()).toEqual({
+      error: "Spreadsheet not found",
+    });
+
+    // The rejected requests never rewrote the stored record.
+    const saved = records.get(recordKey("space-q", "file-1"));
+    expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Budget");
+  } finally {
+    mock.restore();
   }
 });
 
