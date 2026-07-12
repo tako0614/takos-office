@@ -76,9 +76,36 @@ async function jsonRequest(
     },
     expectedStatus,
   );
-  const parsed: unknown = await response.json();
+  const body = await response.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    fail(
+      `${path} did not return valid JSON (${response.headers.get("content-type") ?? "unknown content type"}): ${body.slice(0, 500)}`,
+    );
+  }
   if (!isRecord(parsed)) fail(`${path} did not return a JSON object`);
   return parsed;
+}
+
+function parseMcpResponse(body: string, contentType: string): JsonRecord {
+  const candidates = contentType.includes("text/event-stream")
+    ? body
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trim())
+        .filter((line) => line && line !== "[DONE]")
+    : [body];
+  for (const candidate of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (isRecord(parsed)) return parsed;
+    } catch {
+      // A stream can contain keepalive or non-JSON events before the response.
+    }
+  }
+  fail(`MCP response was not valid JSON or SSE JSON: ${body.slice(0, 500)}`);
 }
 
 async function callMcp(
@@ -87,11 +114,12 @@ async function callMcp(
   params?: JsonRecord,
 ): Promise<JsonRecord> {
   if (!mcpToken) fail("OFFICE_MCP_AUTH_TOKEN is required");
-  const payload = await jsonRequest(baseUrl, "/mcp", {
+  const response = await expectResponse(new URL("/mcp", baseUrl), {
     method: "POST",
     headers: {
       authorization: `Bearer ${mcpToken}`,
       accept: "application/json, text/event-stream",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
@@ -100,6 +128,10 @@ async function callMcp(
       ...(params ? { params } : {}),
     }),
   });
+  const payload = parseMcpResponse(
+    await response.text(),
+    response.headers.get("content-type") ?? "",
+  );
   if (isRecord(payload.error)) {
     fail(
       `MCP ${method} failed: ${String(payload.error.message ?? "unknown error")}`,
