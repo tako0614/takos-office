@@ -197,6 +197,19 @@ function assertArrayContainsId(
   }
 }
 
+function assertArrayDoesNotContainId(
+  value: unknown,
+  id: string,
+  label: string,
+): void {
+  if (
+    Array.isArray(value) &&
+    value.some((entry) => isRecord(entry) && entry.id === id)
+  ) {
+    fail(`${label} still contained ${id}`);
+  }
+}
+
 function headersRecord(
   headers: HeadersInit | undefined,
 ): Record<string, string> {
@@ -249,84 +262,83 @@ try {
     content: `<h1>${documentTitle}</h1><p>storage round trip</p>`,
   });
   documentId = requiredString(document, "id");
-  const readDocument = await jsonRequest(
-    baseUrl,
-    `/docs/api/documents/${encodeURIComponent(documentId)}`,
-  );
+  const readDocument = await callTool(baseUrl, "docs_get", { id: documentId });
   assertTitle(readDocument, documentTitle, "document");
-  checks.push("docs.mcp-create-api-read");
-  const renamedDocument = `${documentTitle} updated`;
-  const updatedDocument = await jsonRequest(
+  await jsonRequest(
     baseUrl,
     `/docs/api/documents/${encodeURIComponent(documentId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ title: renamedDocument }),
-    },
+    {},
+    401,
   );
+  checks.push("api.auth-gate");
+  const renamedDocument = `${documentTitle} updated`;
+  await callTool(baseUrl, "docs_set_title", {
+    id: documentId,
+    title: renamedDocument,
+  });
+  const updatedDocument = await callTool(baseUrl, "docs_get", {
+    id: documentId,
+  });
   assertTitle(updatedDocument, renamedDocument, "updated document");
-  checks.push("docs.update");
+  checks.push("docs.mcp-crud");
 
   const presentationTitle = `Office E2E slide ${suffix}`;
   const presentation = await callTool(baseUrl, "slide_create", {
     title: presentationTitle,
   });
   presentationId = requiredString(presentation, "id");
-  const readPresentation = await jsonRequest(
-    baseUrl,
-    `/slide/api/presentations/${encodeURIComponent(presentationId)}`,
-  );
+  const readPresentation = await callTool(baseUrl, "slide_get", {
+    id: presentationId,
+  });
   assertTitle(readPresentation, presentationTitle, "presentation");
-  checks.push("slide.mcp-create-api-read");
   const renamedPresentation = `${presentationTitle} updated`;
-  const updatedPresentation = await jsonRequest(
-    baseUrl,
-    `/slide/api/presentations/${encodeURIComponent(presentationId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ title: renamedPresentation }),
-    },
-  );
+  await callTool(baseUrl, "slide_set_title", {
+    id: presentationId,
+    title: renamedPresentation,
+  });
+  const updatedPresentation = await callTool(baseUrl, "slide_get", {
+    id: presentationId,
+  });
   assertTitle(updatedPresentation, renamedPresentation, "updated presentation");
-  checks.push("slide.update");
+  checks.push("slide.mcp-crud");
 
   const spreadsheetTitle = `Office E2E sheet ${suffix}`;
   const spreadsheet = await callTool(baseUrl, "sheet_create", {
     title: spreadsheetTitle,
   });
   spreadsheetId = requiredString(spreadsheet, "id");
-  const readSpreadsheet = await jsonRequest(
-    baseUrl,
-    `/sheet/api/spreadsheets/${encodeURIComponent(spreadsheetId)}`,
-  );
+  const readSpreadsheet = await callTool(baseUrl, "sheet_get", {
+    id: spreadsheetId,
+  });
   assertTitle(readSpreadsheet, spreadsheetTitle, "spreadsheet");
-  checks.push("sheet.mcp-create-api-read");
   const renamedSpreadsheet = `${spreadsheetTitle} updated`;
-  const updatedSpreadsheet = await jsonRequest(
-    baseUrl,
-    `/sheet/api/spreadsheets/${encodeURIComponent(spreadsheetId)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify({ title: renamedSpreadsheet }),
-    },
-  );
+  await callTool(baseUrl, "sheet_set_title", {
+    id: spreadsheetId,
+    title: renamedSpreadsheet,
+  });
+  const updatedSpreadsheet = await callTool(baseUrl, "sheet_get", {
+    id: spreadsheetId,
+  });
   assertTitle(updatedSpreadsheet, renamedSpreadsheet, "updated spreadsheet");
-  checks.push("sheet.update");
+  checks.push("sheet.mcp-crud");
 
-  const officeItems = await jsonRequest(baseUrl, "/api/office/items");
-  assertArrayContainsId(officeItems.items, documentId, "Office items");
-  assertArrayContainsId(officeItems.items, presentationId, "Office items");
-  assertArrayContainsId(officeItems.items, spreadsheetId, "Office items");
-  checks.push("office.items");
-
-  const search = await jsonRequest(
-    baseUrl,
-    `/api/office/search?q=${encodeURIComponent(suffix)}`,
+  const documentSearch = await callTool(baseUrl, "docs_search", {
+    query: suffix,
+  });
+  assertArrayContainsId(documentSearch.results, documentId, "Document search");
+  const presentationList = await callTool(baseUrl, "slide_list", {});
+  assertArrayContainsId(
+    presentationList.value,
+    presentationId,
+    "Presentation list",
   );
-  assertArrayContainsId(search.items, documentId, "Office search");
-  assertArrayContainsId(search.items, presentationId, "Office search");
-  assertArrayContainsId(search.items, spreadsheetId, "Office search");
-  checks.push("office.search");
+  const spreadsheetList = await callTool(baseUrl, "sheet_list", {});
+  assertArrayContainsId(
+    spreadsheetList.value,
+    spreadsheetId,
+    "Spreadsheet list",
+  );
+  checks.push("office.mcp-search");
 
   await expectResponse(
     new URL(`/docs/files/${encodeURIComponent(documentId)}`, baseUrl),
@@ -347,34 +359,31 @@ try {
 } finally {
   if (documentId) {
     await callTool(baseUrl, "docs_delete", { id: documentId });
-    await expectResponse(
-      new URL(`/docs/api/documents/${encodeURIComponent(documentId)}`, baseUrl),
-      {},
-      404,
+    const documents = await callTool(baseUrl, "docs_list", {});
+    assertArrayDoesNotContainId(
+      documents.documents,
+      documentId,
+      "Document list",
     );
     checks.push("docs.cleanup");
   }
   if (presentationId) {
     await callTool(baseUrl, "slide_delete", { id: presentationId });
-    await expectResponse(
-      new URL(
-        `/slide/api/presentations/${encodeURIComponent(presentationId)}`,
-        baseUrl,
-      ),
-      {},
-      404,
+    const presentations = await callTool(baseUrl, "slide_list", {});
+    assertArrayDoesNotContainId(
+      presentations.value,
+      presentationId,
+      "Presentation list",
     );
     checks.push("slide.cleanup");
   }
   if (spreadsheetId) {
     await callTool(baseUrl, "sheet_delete", { id: spreadsheetId });
-    await expectResponse(
-      new URL(
-        `/sheet/api/spreadsheets/${encodeURIComponent(spreadsheetId)}`,
-        baseUrl,
-      ),
-      {},
-      404,
+    const spreadsheets = await callTool(baseUrl, "sheet_list", {});
+    assertArrayDoesNotContainId(
+      spreadsheets.value,
+      spreadsheetId,
+      "Spreadsheet list",
     );
     checks.push("sheet.cleanup");
   }
