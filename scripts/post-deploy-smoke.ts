@@ -187,7 +187,9 @@ try {
   await expectResponse(new URL("/healthz", baseUrl));
   checks.push("health");
   for (const path of ["/", "/docs", "/slide", "/sheet"] as const) {
-    await expectResponse(new URL(path, baseUrl));
+    await expectResponse(new URL(path, baseUrl), {
+      headers: { accept: "text/html,*/*" },
+    });
     checks.push(path === "/" ? "shell" : `ui.${path.slice(1)}`);
   }
 
