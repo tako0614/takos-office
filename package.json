@@ -13,6 +13,7 @@
     "build": "bun run build:spa && bun run build:worker",
     "start": "bun run app/server.ts",
     "mcp": "bun run app/server.ts",
+    "smoke:post-deploy": "bun run scripts/post-deploy-smoke.ts",
     "test": "bun test app/__tests__ app/docs/src/__tests__ app/slide/src/__tests__ app/sheet/src/__tests__",
     "check": "tsc --noEmit"
   },
