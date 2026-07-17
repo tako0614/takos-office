@@ -233,7 +233,9 @@ test("mcp endpoint fails closed when token is missing", async () => {
   );
 
   expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({ error: "MCP_AUTH_TOKEN is required" });
+  expect(await res.json()).toEqual({
+    error: "MCP bearer authentication is not configured",
+  });
 });
 
 test("health endpoint allows explicit unauthenticated access when configured", async () => {
@@ -418,7 +420,9 @@ test("health endpoint fails when token is missing", async () => {
   const res = await app.request("/health");
 
   expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({ error: "MCP_AUTH_TOKEN is required" });
+  expect(await res.json()).toEqual({
+    error: "MCP bearer authentication is not configured",
+  });
 });
 
 test("presentation API rejects spaces outside the subject's membership", async () => {

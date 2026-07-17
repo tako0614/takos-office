@@ -34,6 +34,10 @@ import {
   mcpAuthMisconfigured,
 } from "./shared/mcp-factory.ts";
 import {
+  canonicalInterfaceResourceUri,
+  hasValidInterfaceOAuthConfiguration,
+} from "./shared/interface-oauth-auth.ts";
+import {
   appAuthMisconfigured,
   registerAuthRoutes,
   requireAppAuth,
@@ -61,8 +65,45 @@ export type OfficeServerOptions = {
   shutdownGraceMs?: number;
 };
 
-export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
+export type OfficeAppOptions = {
+  interfaceUserInfoFetch?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
+};
+
+function mcpResourceUri(publicUrl?: string): string | undefined {
+  const canonical = publicUrl ? canonicalInterfaceResourceUri(publicUrl) : null;
+  if (!canonical) return undefined;
+  return new URL("mcp", canonical.endsWith("/") ? canonical : `${canonical}/`)
+    .href;
+}
+
+export function createOfficeApp(
+  env: OfficeRuntimeEnv = runtimeEnv(),
+  options: OfficeAppOptions = {},
+) {
   const app = new Hono();
+  const mcpAudience = mcpResourceUri(envValue(env, "APP_URL"));
+  const interfaceOAuth = mcpAudience
+    ? {
+        issuerUrl: envValue(env, "OIDC_ISSUER_URL"),
+        expectedAudience: mcpAudience,
+        expectedWorkspaceId: envValue(env, "APP_WORKSPACE_ID"),
+        expectedCapsuleId: envValue(env, "APP_CAPSULE_ID"),
+        ...(options.interfaceUserInfoFetch
+          ? { fetchImpl: options.interfaceUserInfoFetch }
+          : {}),
+      }
+    : undefined;
+  const interfaceOAuthConfigured = interfaceOAuth
+    ? hasValidInterfaceOAuthConfiguration({
+        issuerUrl: interfaceOAuth.issuerUrl,
+        audience: interfaceOAuth.expectedAudience,
+        workspaceId: interfaceOAuth.expectedWorkspaceId,
+        capsuleId: interfaceOAuth.expectedCapsuleId,
+      })
+    : false;
 
   // ---- Office-wide readiness probe ----
   const health = (c: Context) => {
@@ -71,6 +112,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     const mcpAuthError = mcpAuthMisconfigured(
       envValue(env, "MCP_AUTH_TOKEN"),
       envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
+      interfaceOAuthConfigured,
     );
     if (mcpAuthError) return mcpAuthError;
     return c.json({ status: "ok", service: "takos-office" });
@@ -88,6 +130,9 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const managedWorkspaceId = interfaceOAuthConfigured
+    ? interfaceOAuth?.expectedWorkspaceId
+    : undefined;
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
@@ -145,10 +190,21 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
     const configError = mcpAuthMisconfigured(
       envValue(env, "MCP_AUTH_TOKEN"),
       envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
+      interfaceOAuthConfigured,
     );
     if (configError) return configError;
-    const spaceId =
-      c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId;
+    const requestedSpaceId = c.req.query("space_id") ?? c.req.query("spaceId");
+    if (
+      managedWorkspaceId &&
+      requestedSpaceId &&
+      requestedSpaceId !== managedWorkspaceId
+    ) {
+      return c.json(
+        { error: "workspace does not match managed MCP owner" },
+        403,
+      );
+    }
+    const spaceId = managedWorkspaceId ?? requestedSpaceId ?? defaultSpaceId;
     if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
 
@@ -177,6 +233,7 @@ export function createOfficeApp(env: OfficeRuntimeEnv = runtimeEnv()) {
             env,
             "MCP_ALLOW_UNAUTHENTICATED",
           ),
+          ...(interfaceOAuth ? { interfaceOAuth } : {}),
         },
       );
       mcpHandlers.set(spaceId, handler);
