@@ -22,12 +22,18 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+  hasValidInterfaceOAuthConfiguration,
+  verifyInterfaceOAuthBearer,
+  type InterfaceOAuthOptions,
+} from "./interface-oauth-auth.ts";
 
 export const MAX_MCP_REQUEST_BYTES = 1_000_000;
 
 export type McpAuthOptions = {
   authToken?: string;
   allowUnauthenticated?: boolean;
+  interfaceOAuth?: InterfaceOAuthOptions;
 };
 
 export type McpTextContent = {
@@ -87,33 +93,68 @@ async function constantTimeEqual(
 export function mcpAuthMisconfigured(
   authToken?: string,
   allowUnauthenticated = false,
+  interfaceOAuthConfigured = false,
 ): Response | null {
-  if (authToken || allowUnauthenticated) return null;
-  return new Response(JSON.stringify({ error: "MCP_AUTH_TOKEN is required" }), {
-    status: 503,
-    headers: { "Content-Type": "application/json" },
-  });
+  if (authToken || allowUnauthenticated || interfaceOAuthConfigured)
+    return null;
+  return new Response(
+    JSON.stringify({ error: "MCP bearer authentication is not configured" }),
+    {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 }
 
 async function authorizeMcpRequest(
   request: Request,
-  authToken?: string,
-  allowUnauthenticated = false,
+  options: McpAuthOptions,
 ): Promise<Response | null> {
-  const configError = mcpAuthMisconfigured(authToken, allowUnauthenticated);
+  const interfaceOAuthConfigured = options.interfaceOAuth
+    ? hasValidInterfaceOAuthConfiguration({
+        issuerUrl: options.interfaceOAuth.issuerUrl,
+        audience: options.interfaceOAuth.expectedAudience,
+        workspaceId: options.interfaceOAuth.expectedWorkspaceId,
+        capsuleId: options.interfaceOAuth.expectedCapsuleId,
+      })
+    : false;
+  const configError = mcpAuthMisconfigured(
+    options.authToken,
+    options.allowUnauthenticated,
+    interfaceOAuthConfigured,
+  );
   if (configError) return configError;
-  if (!authToken) return null;
+  if (options.allowUnauthenticated) return null;
 
-  const header = request.headers.get("Authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token || !(await constantTimeEqual(token, authToken))) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  const match = /^Bearer[ \t]+(.+)$/iu.exec(
+    request.headers.get("authorization") ?? "",
+  );
+  const token = match?.[1]?.trim();
+  if (token) {
+    if (
+      options.authToken &&
+      (await constantTimeEqual(token, options.authToken))
+    ) {
+      return null;
+    }
+    if (
+      interfaceOAuthConfigured &&
+      options.interfaceOAuth &&
+      (await verifyInterfaceOAuthBearer(
+        request,
+        token,
+        "mcp.invoke",
+        options.interfaceOAuth,
+      ))
+    ) {
+      return null;
+    }
   }
 
-  return null;
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 async function readBoundedJsonRequest(
@@ -217,11 +258,7 @@ export function createMcpRequestHandler(
   options: McpAuthOptions = {},
 ) {
   return async (request: Request): Promise<Response> => {
-    const authResponse = await authorizeMcpRequest(
-      request,
-      options.authToken,
-      options.allowUnauthenticated,
-    );
+    const authResponse = await authorizeMcpRequest(request, options);
     if (authResponse) return authResponse;
 
     const transport = new WebStandardStreamableHTTPServerTransport({
