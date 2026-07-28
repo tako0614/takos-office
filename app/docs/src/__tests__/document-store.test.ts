@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 
-import { DocumentConflictError, TakosDocumentStore } from "../document-store.ts";
-import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
+import {
+  DocumentConflictError,
+  TakosDocumentStore,
+} from "../document-store.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../../shared/lib/takos-storage.ts";
 import type { Document } from "../types/index.ts";
 
 function makeDocument(overrides: Partial<Document> = {}): Document {
@@ -40,11 +46,14 @@ function createMemoryStorage() {
   };
 
   const client: TakosStorageClient = {
+    ready() {
+      return Promise.resolve();
+    },
     list(prefix?: string) {
       const all = [...files.values()];
       if (!prefix) return Promise.resolve(all);
-      const folder = all.find((file) =>
-        file.type === "folder" && file.name === prefix
+      const folder = all.find(
+        (file) => file.type === "folder" && file.name === prefix,
       );
       return Promise.resolve(
         folder ? all.filter((file) => file.parentId === folder.id) : [],
@@ -98,11 +107,7 @@ test("TakosDocumentStore ignores legacy .json files", async () => {
     folder.id,
     "application/vnd.takos.docs+json",
   );
-  const currentFile = storage.makeFile(
-    "current.takosdoc",
-    "file",
-    folder.id,
-  );
+  const currentFile = storage.makeFile("current.takosdoc", "file", folder.id);
   storage.content.set(legacyFile.id, JSON.stringify(legacyDoc));
   storage.content.set(currentFile.id, JSON.stringify(currentDoc));
 
@@ -117,8 +122,8 @@ test("TakosDocumentStore creates only .takosdoc files", async () => {
   const store = new TakosDocumentStore(storage.client);
 
   const doc = await store.create("Report");
-  const createdFile = [...storage.files.values()].find((file) =>
-    file.type === "file"
+  const createdFile = [...storage.files.values()].find(
+    (file) => file.type === "file",
   );
 
   expect(createdFile?.name).toEqual(`${doc.id}.takosdoc`);
@@ -148,7 +153,9 @@ test("TakosDocumentStore reflects external writes on re-read (no stale cache)", 
 
   // Reads must reflect the backing store, not a stale in-process copy.
   expect((await store.get("doc-1"))?.title).toEqual("Updated elsewhere");
-  expect((await store.list()).map((d) => d.title)).toEqual(["Updated elsewhere"]);
+  expect((await store.list()).map((d) => d.title)).toEqual([
+    "Updated elsewhere",
+  ]);
 
   // Simulate an externally created doc appearing in the folder.
   const newFile = storage.makeFile("doc-2.takosdoc", "file", folder.id);
@@ -201,14 +208,20 @@ test("upsert with a matching expectedUpdatedAt overwrites", async () => {
   const file = storage.makeFile("doc-1.takosdoc", "file", folder.id);
   storage.content.set(
     file.id,
-    JSON.stringify(makeDocument({ id: "doc-1", updatedAt: "2026-01-01T00:00:00.000Z" })),
+    JSON.stringify(
+      makeDocument({ id: "doc-1", updatedAt: "2026-01-01T00:00:00.000Z" }),
+    ),
   );
 
   const store = new TakosDocumentStore(storage.client);
   await store.list(); // warm fileId memo
 
   const saved = await store.upsert(
-    makeDocument({ id: "doc-1", content: "new", updatedAt: "2026-01-02T00:00:00.000Z" }),
+    makeDocument({
+      id: "doc-1",
+      content: "new",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    }),
     { expectedUpdatedAt: "2026-01-01T00:00:00.000Z" },
   );
   expect(saved.content).toEqual("new");
@@ -236,7 +249,11 @@ test("upsert with a stale expectedUpdatedAt throws DocumentConflictError and doe
   let conflict: DocumentConflictError | null = null;
   try {
     await store.upsert(
-      makeDocument({ id: "doc-1", content: "mine", updatedAt: "2026-06-01T00:00:00.000Z" }),
+      makeDocument({
+        id: "doc-1",
+        content: "mine",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      }),
       { expectedUpdatedAt: "2026-04-30T00:00:00.000Z" }, // the version we loaded
     );
   } catch (e) {
@@ -258,7 +275,9 @@ test("upsert without options overwrites unconditionally (back-compat)", async ()
   const store = new TakosDocumentStore(storage.client);
   await store.list();
 
-  const saved = await store.upsert(makeDocument({ id: "doc-1", content: "forced" }));
+  const saved = await store.upsert(
+    makeDocument({ id: "doc-1", content: "forced" }),
+  );
   expect(saved.content).toEqual("forced");
 });
 
@@ -304,9 +323,13 @@ test("update with a stale expectedUpdatedAt throws a conflict (no silent loss)",
   // clobbering C1 with stale-derived content.
   let conflict: unknown;
   try {
-    await store.update("d1", { content: "C0+insert" }, {
-      expectedUpdatedAt: readA!.updatedAt,
-    });
+    await store.update(
+      "d1",
+      { content: "C0+insert" },
+      {
+        expectedUpdatedAt: readA!.updatedAt,
+      },
+    );
   } catch (e) {
     conflict = e;
   }

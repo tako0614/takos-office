@@ -105,9 +105,6 @@ function isAppRoute(pathname) {
     return true;
   }
   if (pathname.includes("/api/") || pathname.includes("/files/")) return true;
-  if (pathname.endsWith("/mcp") || pathname.endsWith("/health") || pathname.endsWith("/healthz")) {
-    return true;
-  }
   return false;
 }
 

@@ -30,7 +30,9 @@ async function syncDocumentToApi(
       headers: {
         "Content-Type": "application/json",
         // Send the loaded version so the server can reject a stale overwrite.
-        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+        ...(baseUpdatedAt
+          ? { "If-Match": baseUpdatedAt }
+          : { "If-None-Match": "*" }),
       },
       body: JSON.stringify(doc),
       credentials: "same-origin",
@@ -41,27 +43,26 @@ async function syncDocumentToApi(
     redirectToLogin();
   }
   if (response.status === 409) {
-    const body = await response.json() as { current: Document };
-    // Adopt the server's current version locally so the next save is based
-    // on it, then surface the conflict to the caller to reload.
-    const docs = loadDocuments();
-    const index = docs.findIndex((entry) => entry.id === body.current.id);
-    if (index >= 0) docs[index] = body.current;
-    else docs.push(body.current);
-    saveDocuments(docs);
+    const body = (await response.json()) as { current: Document };
+    // Keep the local cache as the recovery copy. DocumentWriter rebases its
+    // precondition but retains the rejected draft until it is saved.
     throw new DocumentConflictError(body.current);
   }
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
-  return await response.json() as Document;
+  return (await response.json()) as Document;
 }
 
-async function deleteDocumentFromApi(id: string): Promise<void> {
+async function deleteDocumentFromApi(
+  id: string,
+  expectedUpdatedAt: string,
+): Promise<void> {
   const response = await fetch(
     withCurrentSpaceId(`${API_DOCUMENTS_PATH}/${encodeURIComponent(id)}`),
     {
       method: "DELETE",
+      headers: { "If-Match": expectedUpdatedAt },
       credentials: "same-origin",
     },
   );
@@ -94,7 +95,7 @@ export async function loadDocumentFromApi(id: string): Promise<Document> {
 
 export function loadDocuments(): Document[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(api.cacheKey());
     if (!raw) return [];
     return JSON.parse(raw) as Document[];
   } catch {
@@ -103,7 +104,7 @@ export function loadDocuments(): Document[] {
 }
 
 export function saveDocuments(documents: Document[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
+  localStorage.setItem(api.cacheKey(), JSON.stringify(documents));
 }
 
 export function getDocument(id: string): Document | undefined {
@@ -138,6 +139,9 @@ export async function updateDocumentInStorage(
 
 export function removeDocument(id: string): Promise<void> {
   const docs = loadDocuments();
+  const current = docs.find((d) => d.id === id);
   saveDocuments(docs.filter((d) => d.id !== id));
-  return deleteDocumentFromApi(id);
+  return current
+    ? deleteDocumentFromApi(id, current.updatedAt)
+    : Promise.resolve();
 }

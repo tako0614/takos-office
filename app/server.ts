@@ -23,7 +23,10 @@ import { createDocsApp } from "./docs/src/server.ts";
 import { createSlideAppFromEnv } from "./slide/src/server.ts";
 import { createExcelAppFromEnv } from "./sheet/src/server.ts";
 
-import { createTakosStorageClient } from "./shared/lib/takos-storage.ts";
+import {
+  createTakosStorageClient,
+  type ObjectStorageFetch,
+} from "./shared/lib/takos-storage.ts";
 import { TakosDocumentStore } from "./docs/src/document-store.ts";
 import { createPresentationStore } from "./slide/src/presentation-store.ts";
 import { SpreadsheetStore } from "./sheet/src/spreadsheet-store.ts";
@@ -70,6 +73,7 @@ export type OfficeAppOptions = {
     input: RequestInfo | URL,
     init?: RequestInit,
   ) => Promise<Response>;
+  storageFetch?: ObjectStorageFetch;
 };
 
 function mcpResourceUri(publicUrl?: string): string | undefined {
@@ -106,7 +110,11 @@ export function createOfficeApp(
     : false;
 
   // ---- Office-wide readiness probe ----
-  const health = (c: Context) => {
+  const configuredStorageUrl = envValue(env, "OBJECT_STORAGE_API_URL");
+  const configuredStorageToken = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
+  const configuredStorageWorkspace =
+    envValue(env, "APP_WORKSPACE_ID") ?? envValue(env, "TAKOS_SPACE_ID");
+  const health = async (c: Context) => {
     const authError = appAuthMisconfigured(env);
     if (authError) return authError;
     const mcpAuthError = mcpAuthMisconfigured(
@@ -115,6 +123,24 @@ export function createOfficeApp(
       interfaceOAuthConfigured,
     );
     if (mcpAuthError) return mcpAuthError;
+    if (
+      !configuredStorageUrl ||
+      !configuredStorageToken ||
+      !configuredStorageWorkspace
+    ) {
+      return c.json({ error: "object_storage_not_configured" }, 503);
+    }
+    try {
+      await createTakosStorageClient(
+        configuredStorageUrl,
+        configuredStorageToken,
+        configuredStorageWorkspace,
+        envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "",
+        { fetchImpl: options.storageFetch },
+      ).ready();
+    } catch {
+      return c.json({ error: "object_storage_unavailable" }, 503);
+    }
     return c.json({ status: "ok", service: "takos-office" });
   };
   app.get("/health", health);
@@ -125,14 +151,14 @@ export function createOfficeApp(
   app.get("/", (c) => c.html(renderShellPage()));
 
   // ---- Shared storage config ----
-  const apiUrl =
-    envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
+  const apiUrl = configuredStorageUrl || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
-  const managedWorkspaceId = interfaceOAuthConfigured
-    ? interfaceOAuth?.expectedWorkspaceId
-    : undefined;
+  // UI/storage ownership is independent of whether MCP Interface OAuth is
+  // enabled. A standalone bearer deployment may still be pinned to one
+  // Workspace and must not accept a caller-selected alternate owner.
+  const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
@@ -146,6 +172,7 @@ export function createOfficeApp(
         token!,
         spaceId,
         keyPrefix,
+        { fetchImpl: options.storageFetch },
       );
       stores = {
         docs: new TakosDocumentStore(client),
@@ -156,27 +183,44 @@ export function createOfficeApp(
     }
     return stores;
   };
-  const resolveSpace = (c: Context) =>
+  const requestedSpace = (c: Context) =>
     c.req.query("space_id") ?? c.req.query("spaceId") ?? defaultSpaceId;
+  const resolveSpace = (c: Context) => managedWorkspaceId ?? requestedSpace(c);
+  const workspaceMismatch = (c: Context) => {
+    const requested = requestedSpace(c);
+    return managedWorkspaceId && requested && requested !== managedWorkspaceId;
+  };
 
   app.get("/api/office/items", async (c) => {
+    if (workspaceMismatch(c)) {
+      return c.json({ error: "workspace_owner_mismatch" }, 403);
+    }
     const spaceId = resolveSpace(c);
     const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
     if (unauthorized) return unauthorized;
     if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
-    return c.json({ items: await collectOfficeItems(storesForSpace(spaceId)) });
+    return c.json({
+      items: (await collectOfficeItems(storesForSpace(spaceId))).slice(0, 500),
+    });
   });
 
   app.get("/api/office/search", async (c) => {
+    if (workspaceMismatch(c)) {
+      return c.json({ error: "workspace_owner_mismatch" }, 403);
+    }
     const spaceId = resolveSpace(c);
     const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
     if (unauthorized) return unauthorized;
     if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
     const q = c.req.query("q") ?? "";
+    if (q.length > 512) return c.json({ error: "query_too_long" }, 400);
     return c.json({
-      items: await searchOfficeItems(storesForSpace(spaceId), q),
+      items: (await searchOfficeItems(storesForSpace(spaceId), q)).slice(
+        0,
+        500,
+      ),
     });
   });
 
@@ -215,6 +259,7 @@ export function createOfficeApp(
         token!,
         spaceId,
         keyPrefix,
+        { fetchImpl: options.storageFetch },
       );
       const docsStore = new TakosDocumentStore(client);
       const slideStore = createPresentationStore(client);

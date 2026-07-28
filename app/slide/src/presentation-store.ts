@@ -24,6 +24,8 @@ import type {
   StorageFile,
   TakosStorageClient,
 } from "../../shared/lib/takos-storage.ts";
+import { ObjectStorageConflictError } from "../../shared/lib/takos-storage.ts";
+import { nextEntityRevision } from "../../shared/lib/entity-revision.ts";
 import { exportPresentationToPdf } from "./lib/pdf-exporter.ts";
 import { BUILT_IN_TEMPLATES, getTemplate } from "./lib/templates.ts";
 
@@ -186,11 +188,12 @@ function assertImageUrl(value: unknown): string {
 
 function allowedElementKeys(element: SlideElement): Set<string> {
   const keys = new Set(COMMON_ELEMENT_KEYS);
-  const typeKeys = element.type === "text"
-    ? TEXT_ELEMENT_KEYS
-    : element.type === "shape"
-    ? SHAPE_ELEMENT_KEYS
-    : IMAGE_ELEMENT_KEYS;
+  const typeKeys =
+    element.type === "text"
+      ? TEXT_ELEMENT_KEYS
+      : element.type === "shape"
+        ? SHAPE_ELEMENT_KEYS
+        : IMAGE_ELEMENT_KEYS;
   for (const key of typeKeys) keys.add(key);
   return keys;
 }
@@ -200,7 +203,9 @@ export function sanitizeElementUpdateProperties(
   properties: Record<string, unknown>,
 ): Partial<Omit<SlideElement, "id" | "type">> {
   if (
-    !properties || typeof properties !== "object" || Array.isArray(properties)
+    !properties ||
+    typeof properties !== "object" ||
+    Array.isArray(properties)
   ) {
     throw new Error("properties must be an object");
   }
@@ -271,7 +276,9 @@ export function sanitizeElementUpdateProperties(
         break;
       case "shapeType":
         if (
-          value !== "rect" && value !== "ellipse" && value !== "triangle" &&
+          value !== "rect" &&
+          value !== "ellipse" &&
+          value !== "triangle" &&
           value !== "arrow"
         ) {
           throw new Error(
@@ -317,7 +324,7 @@ export interface PresentationStore {
     presentation: Presentation,
     opts?: PresentationWriteOptions,
   ): Promise<Presentation>;
-  delete(id: string): Promise<boolean>;
+  delete(id: string, opts?: PresentationWriteOptions): Promise<boolean>;
   setTitle(id: string, title: string): Promise<Presentation>;
 
   // Slide operations
@@ -448,10 +455,7 @@ export interface PresentationStore {
 
   // Templates
   listTemplates(): { id: string; name: string; description: string }[];
-  createFromTemplate(
-    title: string,
-    templateId: string,
-  ): Promise<Presentation>;
+  createFromTemplate(title: string, templateId: string): Promise<Presentation>;
   addSlideFromTemplate(
     presentationId: string,
     templateId: string,
@@ -477,6 +481,7 @@ export function createPresentationStore(
    * from storage.
    */
   const fileIds = new Map<string, string>();
+  const recordRevisions = new Map<string, string>();
   let folderId: string | null = null;
 
   // -- internal helpers ----------------------------------------------------
@@ -499,13 +504,17 @@ export function createPresentationStore(
   ): Promise<{ p: Presentation; fileId: string } | undefined> {
     // When the caller already holds the StorageFile metadata (e.g. from a
     // folder listing) skip the redundant per-file get() round-trip.
-    const file = known ?? await client.get(fileId);
+    const file = known ?? (await client.get(fileId));
     if (!file || file.type !== "file" || !isSupportedFile(file)) {
       return undefined;
     }
     const raw = await client.getContent(file.id);
     const p = JSON.parse(raw) as Presentation;
     fileIds.set(p.id, file.id);
+    if (file.revision) {
+      recordRevisions.set(p.id, file.revision);
+      recordRevisions.set(file.id, file.revision);
+    }
     return { p, fileId: file.id };
   }
 
@@ -572,9 +581,7 @@ export function createPresentationStore(
         const entry = await loadFile(file.id, file);
         if (entry) entries.push(entry);
       } catch {
-        console.warn(
-          `[takos-slide] Skipping unreadable file: ${file.name}`,
-        );
+        console.warn(`[takos-slide] Skipping unreadable file: ${file.name}`);
       }
     }
     return entries;
@@ -583,7 +590,18 @@ export function createPresentationStore(
   async function persist(id: string, p: Presentation): Promise<void> {
     const fileId = fileIdFor(id);
     if (!fileId) return;
-    await client.putContent(fileId, JSON.stringify(p), MIME_TYPE);
+    try {
+      await client.putContent(fileId, JSON.stringify(p), MIME_TYPE, {
+        expectedRevision:
+          recordRevisions.get(id) ?? recordRevisions.get(fileId),
+      });
+    } catch (error) {
+      if (error instanceof ObjectStorageConflictError) {
+        const current = await loadFile(fileId);
+        if (current) throw new PresentationConflictError(current.p);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -628,7 +646,7 @@ export function createPresentationStore(
   }
 
   function touch(p: Presentation): void {
-    p.updatedAt = now();
+    p.updatedAt = nextEntityRevision(p.updatedAt);
   }
 
   // -- store ---------------------------------------------------------------
@@ -683,25 +701,43 @@ export function createPresentationStore(
     async replace(presentation: Presentation, opts?: PresentationWriteOptions) {
       await ensureFolder();
       const fileId = await resolveFileId(presentation.id);
-      const next = {
-        ...presentation,
-        updatedAt: presentation.updatedAt || now(),
-      };
       if (fileId) {
         // Optimistic concurrency: refuse to overwrite a presentation that
         // changed since the caller loaded it (e.g. a concurrent MCP write), so
         // the whole in-memory snapshot can't silently clobber it.
+        const latest = await loadFile(fileId);
         if (opts?.expectedUpdatedAt !== undefined) {
-          const latest = await loadFile(fileId);
           if (latest && latest.p.updatedAt !== opts.expectedUpdatedAt) {
             throw new PresentationConflictError(latest.p);
           }
         }
-        await client.putContent(fileId, JSON.stringify(next), MIME_TYPE);
+        const next = {
+          ...presentation,
+          id: latest?.p.id ?? presentation.id,
+          createdAt: latest?.p.createdAt ?? presentation.createdAt,
+          updatedAt: nextEntityRevision(latest?.p.updatedAt),
+        };
+        try {
+          await client.putContent(fileId, JSON.stringify(next), MIME_TYPE, {
+            expectedRevision: latest
+              ? recordRevisions.get(latest.p.id)
+              : undefined,
+          });
+        } catch (error) {
+          if (error instanceof ObjectStorageConflictError) {
+            const current = await loadFile(fileId);
+            if (current) throw new PresentationConflictError(current.p);
+          }
+          throw error;
+        }
         fileIds.set(next.id, fileId);
         return next;
       }
 
+      const next = {
+        ...presentation,
+        updatedAt: nextEntityRevision(),
+      };
       const file = await client.create(
         `${next.id}${FILE_EXTENSION}`,
         folderId ?? undefined,
@@ -711,11 +747,29 @@ export function createPresentationStore(
       return next;
     },
 
-    async delete(id: string) {
+    async delete(id: string, opts?: PresentationWriteOptions) {
       await ensureFolder();
       const fileId = await resolveFileId(id);
       if (!fileId) return false;
-      await client.delete(fileId);
+      const current = await loadFile(fileId);
+      if (!current) return false;
+      if (
+        opts?.expectedUpdatedAt !== undefined &&
+        current.p.updatedAt !== opts.expectedUpdatedAt
+      ) {
+        throw new PresentationConflictError(current.p);
+      }
+      try {
+        await client.delete(fileId, {
+          expectedRevision: recordRevisions.get(current.p.id),
+        });
+      } catch (error) {
+        if (error instanceof ObjectStorageConflictError) {
+          const latest = await loadFile(fileId);
+          if (latest) throw new PresentationConflictError(latest.p);
+        }
+        throw error;
+      }
       fileIds.delete(id);
       return true;
     },

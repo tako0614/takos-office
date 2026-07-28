@@ -38,7 +38,9 @@ async function syncPresentationToApi(
       headers: {
         "Content-Type": "application/json",
         // Send the loaded version so the server can reject a stale overwrite.
-        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+        ...(baseUpdatedAt
+          ? { "If-Match": baseUpdatedAt }
+          : { "If-None-Match": "*" }),
       },
       body: JSON.stringify(presentation),
       credentials: "same-origin",
@@ -49,27 +51,26 @@ async function syncPresentationToApi(
     redirectToLogin();
   }
   if (response.status === 409) {
-    const body = await response.json() as { current: Presentation };
-    // Adopt the server's current version locally so the next save is based on
-    // it, then surface the conflict to the caller to reload.
-    const all = loadPresentations();
-    const index = all.findIndex((entry) => entry.id === body.current.id);
-    if (index >= 0) all[index] = body.current;
-    else all.push(body.current);
-    savePresentations(all);
+    const body = (await response.json()) as { current: Presentation };
+    // Preserve the local recovery copy. The writer keeps the rejected snapshot
+    // queued and rebases its next conditional request.
     throw new PresentationConflictError(body.current);
   }
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
-  return await response.json() as Presentation;
+  return (await response.json()) as Presentation;
 }
 
-async function deletePresentationFromApi(id: string): Promise<void> {
+async function deletePresentationFromApi(
+  id: string,
+  expectedUpdatedAt: string,
+): Promise<void> {
   const response = await fetch(
     withCurrentSpaceId(`${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`),
     {
       method: "DELETE",
+      headers: { "If-Match": expectedUpdatedAt },
       credentials: "same-origin",
     },
   );
@@ -97,8 +98,8 @@ export async function loadPresentationFromApi(
     `${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`,
   );
   const presentations = loadPresentations();
-  const index = presentations.findIndex((entry) =>
-    entry.id === presentation.id
+  const index = presentations.findIndex(
+    (entry) => entry.id === presentation.id,
   );
   if (index >= 0) presentations[index] = presentation;
   else presentations.push(presentation);
@@ -112,7 +113,7 @@ function generateId(): string {
 
 export function loadPresentations(): Presentation[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(api.cacheKey());
     if (!raw) return [];
     return JSON.parse(raw) as Presentation[];
   } catch {
@@ -121,7 +122,7 @@ export function loadPresentations(): Presentation[] {
 }
 
 export function savePresentations(presentations: Presentation[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(presentations));
+  localStorage.setItem(api.cacheKey(), JSON.stringify(presentations));
 }
 
 export function createDefaultSlide(): Slide {
@@ -169,9 +170,16 @@ export function savePresentation(
 export function deletePresentation(
   id: string,
 ): LocalSaveResult<Presentation[]> {
-  const presentations = loadPresentations().filter((p) => p.id !== id);
+  const all = loadPresentations();
+  const current = all.find((p) => p.id === id);
+  const presentations = all.filter((p) => p.id !== id);
   savePresentations(presentations);
-  return { value: presentations, remote: deletePresentationFromApi(id) };
+  return {
+    value: presentations,
+    remote: current
+      ? deletePresentationFromApi(id, current.updatedAt)
+      : Promise.resolve(),
+  };
 }
 
 export function getPresentation(id: string): Presentation | undefined {

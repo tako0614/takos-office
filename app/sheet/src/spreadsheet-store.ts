@@ -40,6 +40,8 @@ import type {
   StorageFile,
   TakosStorageClient,
 } from "../../shared/lib/takos-storage.ts";
+import { ObjectStorageConflictError } from "../../shared/lib/takos-storage.ts";
+import { nextEntityRevision } from "../../shared/lib/entity-revision.ts";
 
 const FOLDER_NAME = "takos-excel";
 const FILE_EXTENSION = ".takossheet";
@@ -76,6 +78,7 @@ export class SpreadsheetStore {
    * writes. NOT an authoritative read cache: reads re-fetch from storage.
    */
   private fileIds = new Map<string, string>();
+  private recordRevisions = new Map<string, string>();
   /**
    * Working copy loaded by getSpreadsheet() for the current operation. A
    * mutation calls getSpreadsheet() (fresh from storage), mutates the object,
@@ -100,18 +103,23 @@ export class SpreadsheetStore {
     return file.name.endsWith(FILE_EXTENSION);
   }
 
-  private async loadFile(fileId: string, known?: StorageFile): Promise<
-    { ss: Spreadsheet; fileId: string } | undefined
-  > {
+  private async loadFile(
+    fileId: string,
+    known?: StorageFile,
+  ): Promise<{ ss: Spreadsheet; fileId: string } | undefined> {
     // When the caller already holds the StorageFile metadata (e.g. from a
     // folder listing) skip the redundant per-file get() round-trip.
-    const file = known ?? await this.client.get(fileId);
+    const file = known ?? (await this.client.get(fileId));
     if (!file || file.type !== "file" || !this.isSupportedFile(file)) {
       return undefined;
     }
     const raw = await this.client.getContent(file.id);
     const ss = JSON.parse(raw) as Spreadsheet;
     this.fileIds.set(ss.id, file.id);
+    if (file.revision) {
+      this.recordRevisions.set(ss.id, file.revision);
+      this.recordRevisions.set(file.id, file.revision);
+    }
     return { ss, fileId: file.id };
   }
 
@@ -182,9 +190,7 @@ export class SpreadsheetStore {
         const entry = await this.loadFile(file.id, file);
         if (entry) entries.push(entry);
       } catch {
-        console.warn(
-          `[takos-excel] Skipping unreadable file: ${file.name}`,
-        );
+        console.warn(`[takos-excel] Skipping unreadable file: ${file.name}`);
       }
     }
     return entries;
@@ -198,15 +204,28 @@ export class SpreadsheetStore {
   private async persist(id: string): Promise<void> {
     const entry = this.working.get(id);
     if (!entry) return;
-    await this.client.putContent(
-      entry.fileId,
-      JSON.stringify(entry.ss),
-      MIME_TYPE,
-    );
+    try {
+      await this.client.putContent(
+        entry.fileId,
+        JSON.stringify(entry.ss),
+        MIME_TYPE,
+        {
+          expectedRevision:
+            this.recordRevisions.get(id) ??
+            this.recordRevisions.get(entry.fileId),
+        },
+      );
+    } catch (error) {
+      if (error instanceof ObjectStorageConflictError) {
+        const current = await this.loadFile(entry.fileId);
+        if (current) throw new SpreadsheetConflictError(current.ss);
+      }
+      throw error;
+    }
   }
 
   private touch(ss: Spreadsheet): void {
-    ss.updatedAt = new Date().toISOString();
+    ss.updatedAt = nextEntityRevision(ss.updatedAt);
   }
 
   // -----------------------------------------------------------------------
@@ -261,8 +280,9 @@ export class SpreadsheetStore {
     // copy so a subsequent mutation + persist() operates on this same object.
     // Resolve id -> fileId from folder metadata (no full-folder body download).
     const fileId = await this.resolveFileId(id);
-    const entry = (fileId ? await this.loadFile(fileId) : undefined) ??
-      await this.loadFile(id);
+    const entry =
+      (fileId ? await this.loadFile(fileId) : undefined) ??
+      (await this.loadFile(id));
     if (!entry) {
       this.working.delete(id);
       throw new Error(`Spreadsheet not found: ${id}`);
@@ -272,11 +292,32 @@ export class SpreadsheetStore {
     return entry.ss;
   }
 
-  async deleteSpreadsheet(id: string): Promise<void> {
+  async deleteSpreadsheet(
+    id: string,
+    opts?: SpreadsheetWriteOptions,
+  ): Promise<void> {
     await this.ensureFolder();
     const fileId = await this.resolveFileId(id);
     if (!fileId) throw new Error(`Spreadsheet not found: ${id}`);
-    await this.client.delete(fileId);
+    const current = await this.loadFile(fileId);
+    if (!current) throw new Error(`Spreadsheet not found: ${id}`);
+    if (
+      opts?.expectedUpdatedAt !== undefined &&
+      current.ss.updatedAt !== opts.expectedUpdatedAt
+    ) {
+      throw new SpreadsheetConflictError(current.ss);
+    }
+    try {
+      await this.client.delete(fileId, {
+        expectedRevision: this.recordRevisions.get(current.ss.id),
+      });
+    } catch (error) {
+      if (error instanceof ObjectStorageConflictError) {
+        const latest = await this.loadFile(fileId);
+        if (latest) throw new SpreadsheetConflictError(latest.ss);
+      }
+      throw error;
+    }
     this.fileIds.delete(id);
     this.working.delete(id);
   }
@@ -287,29 +328,48 @@ export class SpreadsheetStore {
   ): Promise<Spreadsheet> {
     await this.ensureFolder();
     const fileId = await this.resolveFileId(spreadsheet.id);
-    const updated = {
-      ...spreadsheet,
-      updatedAt: spreadsheet.updatedAt || new Date().toISOString(),
-    };
     if (fileId) {
       // Optimistic concurrency: refuse to overwrite a spreadsheet that changed
       // since the caller loaded it (e.g. a concurrent MCP write), so the whole
       // in-memory snapshot can't silently clobber it.
+      const latest = await this.loadFile(fileId);
       if (opts?.expectedUpdatedAt !== undefined) {
-        const latest = await this.loadFile(fileId);
         if (latest && latest.ss.updatedAt !== opts.expectedUpdatedAt) {
           throw new SpreadsheetConflictError(latest.ss);
         }
       }
-      await this.client.putContent(
-        fileId,
-        JSON.stringify(updated),
-        MIME_TYPE,
-      );
+      const updated = {
+        ...spreadsheet,
+        id: latest?.ss.id ?? spreadsheet.id,
+        createdAt: latest?.ss.createdAt ?? spreadsheet.createdAt,
+        updatedAt: nextEntityRevision(latest?.ss.updatedAt),
+      };
+      try {
+        await this.client.putContent(
+          fileId,
+          JSON.stringify(updated),
+          MIME_TYPE,
+          {
+            expectedRevision: latest
+              ? this.recordRevisions.get(latest.ss.id)
+              : undefined,
+          },
+        );
+      } catch (error) {
+        if (error instanceof ObjectStorageConflictError) {
+          const current = await this.loadFile(fileId);
+          if (current) throw new SpreadsheetConflictError(current.ss);
+        }
+        throw error;
+      }
       this.fileIds.set(updated.id, fileId);
       return updated;
     }
 
+    const updated = {
+      ...spreadsheet,
+      updatedAt: nextEntityRevision(),
+    };
     const file = await this.client.create(
       `${updated.id}${FILE_EXTENSION}`,
       this.folderId ?? undefined,
@@ -540,9 +600,10 @@ export class SpreadsheetStore {
     if (!Number.isInteger(count) || count < 1) {
       throw new Error(`Invalid count: ${count}`);
     }
-    const axisMax = op === "insertRows" || op === "deleteRows"
-      ? MAX_SPREADSHEET_ROWS
-      : MAX_SPREADSHEET_COLUMNS;
+    const axisMax =
+      op === "insertRows" || op === "deleteRows"
+        ? MAX_SPREADSHEET_ROWS
+        : MAX_SPREADSHEET_COLUMNS;
     if (at >= axisMax) throw new Error(`Index out of bounds: ${at}`);
     if (op === "deleteRows" || op === "deleteColumns") {
       if (at + count > axisMax) throw new Error(`Range out of bounds`);
@@ -649,8 +710,11 @@ export class SpreadsheetStore {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
     const bounds = parseRange(range);
     const width = bounds.endCol - bounds.startCol + 1;
-    if (!Number.isInteger(columnIndex) || columnIndex < 0 ||
-      columnIndex >= width) {
+    if (
+      !Number.isInteger(columnIndex) ||
+      columnIndex < 0 ||
+      columnIndex >= width
+    ) {
       throw new Error(`Sort column out of range: ${columnIndex}`);
     }
     sheet.cells = sortRangeRows(sheet.cells, bounds, columnIndex, direction);
@@ -704,10 +768,7 @@ export class SpreadsheetStore {
   async getUsedRange(
     spreadsheetId: string,
     sheetId?: string,
-  ): Promise<
-    & { sheetId: string }
-    & ReturnType<typeof computeUsedRange>
-  > {
+  ): Promise<{ sheetId: string } & ReturnType<typeof computeUsedRange>> {
     const ss = await this.getSpreadsheet(spreadsheetId);
     const resolvedId = sheetId ?? ss.activeSheetId ?? ss.sheets[0]?.id;
     const sheet = ss.sheets.find((s) => s.id === resolvedId);

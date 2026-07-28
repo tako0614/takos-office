@@ -1,63 +1,47 @@
-# AGENTS.md — takos-office
+# AGENTS.md
 
-`takos-office` は Takos ecosystem の **office suite を 1 つの worker に統合した 1st-party app**。
-文書 (docs) / プレゼン (slide) / 表計算 (sheet) を `/docs` `/slide` `/sheet` のサブパスで配信し、
-`/mcp` に docs/slide/sheet 全ツールを束ねた単一 MCP を公開する。旧 `takos-docs` / `takos-slide` /
-`takos-excel` はこの app に畳み込まれ、retire 済み。
+> このファイルは `takos-control/engineering.policy.json` と `ecosystem.repos.json` から generator v1 で生成されています。手編集しないでください。
 
-## 責務
+## Repository
 
-### 持つ
+- Scope: Installable office-suite Capsule combining document, slide, and spreadsheet surfaces.
+- Repository kind: `product`
+- Direct sibling dependencies: なし
+- Repository gate: `bun run check`
+- Canonical docs: [README.md](README.md)
 
-- 3 エディタを mount する unified Hono worker (`app/server.ts`) と単一 MCP (`app/mcp.ts`)
-- 共有ヘルパの単一ソース (`app/shared/`: app-auth / mcp-factory / lib/takos-storage)
-- 単一 plain OpenTofu module (`main.tf` / `outputs.tf`) と、service-side Interface blueprint が参照する
-  ordinary URL Output (`mcp_url` / 3 UI URL / 3 file-open URL)
-- marketing site (`site/`) と roadmap (`docs/`)
+## Ownership
 
-### 持たない
+- Owns: One Worker and Capsule containing docs, slide, and sheet surfaces / Single namespaced office MCP and file handlers / office.takos.jp marketing surface
+- Does not own: Takos core privilege or platform runtime / Object storage, which is consumed through storage.object / Operator secrets or deployment authority
+- Hazards: Docs, slide, and sheet are one install and uninstall unit. / Official site publication fails closed until a runnable adapter exists. / Stale takos-apps topology wording must not be reintroduced.
 
-- Takos core に対する architectural privilege（office であることは特権ではない、substitutable）
-- platform 層の federation / 新 runtime（統合は worker 内の compose に閉じる）
-- secrets / deploy 実行（repo 外の operator 環境で行う）
+## Required workflow
 
-## 不変条件
+- repo固有の挙動・契約・architectureは、このrepo自身のsourceとdocsを正本にします。共通工学ルールをこのrepoで再定義しません。
+- 通常変更はこのrepo内に閉じます。横断変更はtask ledgerに対象repoと順序を宣言し、unrelatedなdirty workを変更・stage・commitしません。
+- handoff前に `bun run check` を実行します。これはread-onlyで、`format-check`, `lint-or-static-analysis`, `type-or-compile`, `portable-tests`, `portable-build` を完全に検証し、未実装項目をskipしてはいけません。
+- このrepoにformat writerはありません。`bun run fmt` は存在せず、実行するとcoreutilsのfmt(1)が動いて何もせず成功します。formatを直すときはformatterを直接呼びます。
+- task ledgerが必要な条件: The change modifies more than one repository. / The work changes production or release behavior. / The work changes a persisted schema or migrates data. / The work changes security, identity, credentials, authorization, billing, or authority. / The work destructively changes data or repository history.
+- secret、credential、production記録、private keyをrepoへcommitしません。
 
-- **1 app / 1 worker / 1 Capsule install unit**。`jp.takos.office` としてユーザーが明示的に install でき、
-  whole app 単位で uninstall 可能。docs/slide/sheet は個別 uninstall できない（app の surface）。
-- 各エディタは自分の vite `base` (`/docs/` 等) と Router base を持ち、storage は `storage.object`
-  Interface から注入される `OBJECT_STORAGE_API_URL` / `OBJECT_STORAGE_ACCESS_TOKEN`、`/takos-docs/` `/takos-slide/`
-  `/takos-excel/` フォルダ) を使う。
-  MIME / 拡張子 (`.takosdoc` / `.takosslide` / `.takossheet`) は維持する。
-- MCP ツール名は名前空間付き (`docs_*` / `slide_*` / `sheet_*`)。衝突させない。
-- managed `/mcp` の正本認証は短命な InterfaceBinding OAuth credential。Accounts UserInfo の
-  current-state 結果に対し、exact audience (`mcp_url`) / `mcp.invoke` / Workspace / Capsule / subject /
-  Interface + Binding + positive resolved revision evidence を毎回 fail-closed 検証する。Interface id / revision は
-  module input や Worker env に pin しない。
-- `mcp_auth_token` / `MCP_AUTH_TOKEN` は値を明示した direct/self-host deployment だけの standalone
-  bearer。空値から生成せず、InterfaceBinding delivery や Output として扱わない。
-- `app_deployment` / `service_exports` は retired runtime authority。repo の Output に戻さず、Interface 宣言は
-  Takosumi service-side `InstallConfig.interfaceBlueprints` に置く。
-- public vocabulary は ecosystem 正本に従う（Workspace / Project / Capsule / Run / StateVersion / Output …）。
-  office 専用の platform 語彙を増やさない。
+## Deploy
 
-## エディタを足す / 変える
+- このrepoがproduction targetを持つなら、入口は `bun run deploy` 一つです。無ければ作ります。承認待ちの列も、登録する先もありません。entrypointは副作用なしの `--contract` で、自分に立つtriggerと各obligationの果たし方を宣言します。
+- 実行するかどうかはoperatorの判断です。task ledger、branch名、green checkのいずれもdeployを承認しません。逆に、どれも欠けているからといってdeployが禁止されるわけでもありません。
+- どのsurfaceも次のobligationを負います。
 
-- エディタ source は `app/<editor>/src/` に置く。新エディタを足すなら vite `base` + Router base を
-  サブパスに設定し、`app/server.ts` で `app.route("/<editor>", …)` を mount、`app/mcp.ts` に
-  `register<Editor>Tools` を追加、`app/build-worker.ts` の `editors` 配列と `outputs.tf` の ordinary
-  UI / file-open URL Output、service-side InstallConfig の Interface blueprint を同時に更新する。
-- 共有コードは `app/shared/` の単一コピーを編集する（重複コピーを作らない）。i18n の scaffold も
-  `app/shared/i18n.ts` の `createI18n(catalogs)` に単一化済みで、各エディタは自分の `en` / `ja`
-  catalog だけを持つ（旧 `scripts/check-takos-apps-dedupe.mjs` の scaffold 同期検査は不要）。
+  - **provenance**: The published bytes belong to one reviewed commit, are built from that worktree, and the commit and artifact digest are recorded. Whatever validates them must cover those bytes.
+  - **post-conditions**: After publishing, state how you know the thing works for a real user, and confirm it.
+  - **reversal**: State how to get back. If you cannot get back, say so and name the forward-repair plan instead.
+  - **failure-handling**: State what the entrypoint prints on failure and what it refuses to do. Raw diagnostics, no blind retry, and a clear split between failing before and after the target was touched.
 
-## Build / Test
+- 次のtriggerが立つと義務が増えます。判別できないものはirreversible扱いです。
 
-- `bun run build`（`build:spa` ×3 + `build:worker`）/ `bun run check`（tsc）/ `bun test` /
-  `tofu fmt -check` / `tofu validate`。OpenTofu 契約を変えたら ecosystem root の
-  `bun run test:install-cross-product` も実行する。
-- `dist/worker.js` と editor SPA の `dist/` は local/CI generated output。Git には
-  commit しない。hosted Takosumi install は Git release / CI artifact の
-  `worker_bundle_url` + `worker_bundle_sha256` を使う。
-- site deploy は `site/DEPLOY.md`。
-- roadmap（将来 app: calendar / mail / form / base）は [`docs/roadmap.md`](docs/roadmap.md)。
+  - **irreversible** (The step leaves the previous artifact unable to serve again: a schema or data migration, a topology change, or anything that rewrites durable state.) → pre-mutation-proof, independent-review
+  - **authority** (The step moves money, identity, authentication, authorization, or the deploy mechanism itself.) → independent-review
+  - **published-identity** (Publication mints a version, digest, or tag that consumers pin.) → no-overwrite
+  - **asynchronous** (Publication completes through an external review or staged delivery the deploy does not control, such as an app store.) → halt
+
+- 果たし方は各surfaceが自分の言葉で決めます。中央は義務を決め、機構は決めません。宣言を弱められませんが、強める分には自由です。
+- 利用者/operatorが自分の環境へself-host deployすることは別authorityで、このruleの対象外です。

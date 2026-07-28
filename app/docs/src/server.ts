@@ -1,35 +1,32 @@
 /**
  * HTTP server for takos-docs MCP endpoint.
  *
- * Starts a Hono app on the configured port with:
- * - GET  /healthz — readiness probe
- * - POST /mcp     — Streamable HTTP MCP endpoint for document tools
+ * Mounted below `/docs` by the single Takos Office worker.
  */
 
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { DocumentConflictError, TakosDocumentStore } from "./document-store.ts";
-import { createDocsMcpServer } from "./mcp.ts";
-import {
-  createMcpRequestHandler,
-  mcpAuthMisconfigured,
-} from "../../shared/mcp-factory.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
-import type { Document } from "./types/index.ts";
-import {
-  appAuthMisconfigured,
-  registerAuthRoutes,
-  requireAppAuth,
-} from "../../shared/app-auth.ts";
-import { createDocsRuntimeCapabilityManifest } from "./runtime-capabilities.ts";
+import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
 import { serverLog } from "./server-log.ts";
 import {
-  envFlagEnabled,
   envValue,
-  nativeRenderingEnabled,
   type RuntimeEnv,
   runtimeEnv,
 } from "../../shared/runtime-env.ts";
+import {
+  ifMatchRevision,
+  inputErrorResponse,
+  preconditionRequired,
+  readApiJson,
+  withEntityTag,
+} from "../../shared/http-policy.ts";
+import {
+  documentCreateSchema,
+  documentSchema,
+  titlePatchSchema,
+} from "../../shared/office-schema.ts";
 
 export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl =
@@ -37,6 +34,7 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
@@ -55,7 +53,7 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
     }
     return store;
   };
-  const requestSpaceId = (c: Context): string | null =>
+  const selectedSpaceId = (c: Context): string | null =>
     envValue(
       {
         value:
@@ -63,7 +61,17 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
       },
       "value",
     ) ?? null;
+  const requestSpaceId = (c: Context): string | null =>
+    managedWorkspaceId ?? selectedSpaceId(c);
+  const workspaceMismatch = (c: Context): Response | null => {
+    const requested = selectedSpaceId(c);
+    return managedWorkspaceId && requested && requested !== managedWorkspaceId
+      ? c.json({ error: "workspace_owner_mismatch" }, 403)
+      : null;
+  };
   const storeForRequest = (c: Context): TakosDocumentStore | Response => {
+    const mismatch = workspaceMismatch(c);
+    if (mismatch) return mismatch;
     const spaceId = requestSpaceId(c);
     if (!spaceId) {
       return c.json({ error: "space_id is required" }, 400);
@@ -74,23 +82,6 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   const defaultStore =
     defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
   const app = new Hono();
-
-  // Health check
-  const health = (c: Context) => {
-    const authError = appAuthMisconfigured(env);
-    if (authError) return authError;
-    const mcpAuthError = mcpAuthMisconfigured(
-      envValue(env, "MCP_AUTH_TOKEN"),
-      envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
-    );
-    if (mcpAuthError) return mcpAuthError;
-    return c.json({
-      status: "ok",
-      service: "takos-docs",
-    });
-  };
-  app.get("/health", health);
-  app.get("/healthz", health);
 
   registerAuthRoutes(app, env);
 
@@ -116,44 +107,38 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   app.post("/api/documents", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const body = await c.req.json<Partial<Document>>();
-    if (body.id && body.title && body.createdAt && body.updatedAt) {
-      const doc = await store.upsert({
-        id: body.id,
-        title: body.title,
-        content: body.content ?? "",
-        createdAt: body.createdAt,
-        updatedAt: body.updatedAt,
-      });
-      return c.json(doc, 201);
-    }
+    const body = await readApiJson(c.req.raw, documentCreateSchema);
     const doc = await store.create(
       body.title || "Untitled document",
       body.content,
     );
-    return c.json(doc, 201);
+    return withEntityTag(c.json(doc, 201), doc.updatedAt);
   });
   app.get("/api/documents/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
     const doc = await store.get(c.req.param("id"));
-    return doc ? c.json(doc) : c.json({ error: "Document not found" }, 404);
+    return doc
+      ? withEntityTag(c.json(doc), doc.updatedAt)
+      : c.json({ error: "Document not found" }, 404);
   });
   app.put("/api/documents/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const body = await c.req.json<Document>();
+    const body = await readApiJson(c.req.raw, documentSchema);
     const id = c.req.param("id");
     const current = await store.get(id);
-    // `If-Match: <updatedAt>` enables optimistic concurrency: the autosave
-    // refuses to overwrite a doc that changed since it was loaded.
-    const ifMatch = c.req.header("If-Match");
+    const ifMatch = ifMatchRevision(c.req.raw);
+    if (current && !ifMatch) return preconditionRequired(c);
+    if (!current && c.req.header("if-none-match") !== "*") {
+      return preconditionRequired(c);
+    }
     try {
       const doc = await store.upsert(
-        { ...body, id: current?.id ?? body.id ?? id },
-        ifMatch ? { expectedUpdatedAt: ifMatch } : undefined,
+        { ...body, id: current?.id ?? id },
+        current ? { expectedUpdatedAt: ifMatch! } : undefined,
       );
-      return c.json(doc);
+      return withEntityTag(c.json(doc), doc.updatedAt);
     } catch (e) {
       if (e instanceof DocumentConflictError) {
         return c.json({ error: "conflict", current: e.current }, 409);
@@ -164,13 +149,47 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   app.patch("/api/documents/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const doc = await store.update(c.req.param("id"), await c.req.json());
-    return doc ? c.json(doc) : c.json({ error: "Document not found" }, 404);
+    const current = await store.get(c.req.param("id"));
+    if (!current) return c.json({ error: "Document not found" }, 404);
+    const ifMatch = ifMatchRevision(c.req.raw);
+    if (!ifMatch) return preconditionRequired(c);
+    const body = await readApiJson(c.req.raw, titlePatchSchema);
+    try {
+      const doc = await store.update(c.req.param("id"), body, {
+        expectedUpdatedAt: ifMatch,
+      });
+      return doc
+        ? withEntityTag(c.json(doc), doc.updatedAt)
+        : c.json({ error: "Document not found" }, 404);
+    } catch (error) {
+      if (error instanceof DocumentConflictError) {
+        return c.json({ error: "conflict", current: error.current }, 409);
+      }
+      throw error;
+    }
   });
   app.delete("/api/documents/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    return c.json({ deleted: await store.delete(c.req.param("id")) });
+    const current = await store.get(c.req.param("id"));
+    if (!current) return c.json({ deleted: false });
+    const ifMatch = ifMatchRevision(c.req.raw);
+    if (!ifMatch) return preconditionRequired(c);
+    if (ifMatch !== current.updatedAt) {
+      return c.json({ error: "conflict", current }, 409);
+    }
+    try {
+      return c.json({
+        deleted: await store.delete(c.req.param("id"), {
+          expectedUpdatedAt: ifMatch,
+        }),
+      });
+    } catch (error) {
+      if (error instanceof DocumentConflictError) {
+        return c.json({ error: "conflict", current: error.current }, 409);
+      }
+      throw error;
+    }
   });
 
   app.get("/files/:id", (c) => {
@@ -180,47 +199,11 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
     return c.redirect(`${url.pathname}${url.search}`, 302);
   });
 
-  // MCP endpoint — lazy-initialized
-  const mcpHandlers = new Map<
-    string,
-    (request: Request) => Promise<Response>
-  >();
-  app.all("/mcp", (c) => {
-    const configError = mcpAuthMisconfigured(
-      envValue(env, "MCP_AUTH_TOKEN"),
-      envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
-    );
-    if (configError) return configError;
-    const spaceId = requestSpaceId(c);
-    if (!spaceId) return c.json({ error: "space_id is required" }, 400);
-    if (!token) return storageUnavailable(c);
-    let mcpHandler = mcpHandlers.get(spaceId);
-    if (!mcpHandler) {
-      const store = storeForSpace(spaceId);
-      mcpHandler = createMcpRequestHandler(
-        () =>
-          createDocsMcpServer({
-            store,
-            runtimeCapabilities: createDocsRuntimeCapabilityManifest({
-              nativeRendering: nativeRenderingEnabled(env),
-            }),
-          }),
-        {
-          authToken: envValue(env, "MCP_AUTH_TOKEN"),
-          allowUnauthenticated: envFlagEnabled(
-            env,
-            "MCP_ALLOW_UNAUTHENTICATED",
-          ),
-        },
-      );
-      mcpHandlers.set(spaceId, mcpHandler);
-    }
-    return mcpHandler(c.req.raw);
-  });
-
   app.onError((err, c) => {
+    const input = inputErrorResponse(err, c);
+    if (input) return input;
     serverLog.error("takos-docs.server.request_error", { error: err });
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: "internal_error" }, 500);
   });
 
   return { app, store: defaultStore };

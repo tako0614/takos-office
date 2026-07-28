@@ -4,7 +4,10 @@ import {
   SpreadsheetConflictError,
   SpreadsheetStore,
 } from "../spreadsheet-store.ts";
-import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "../types/index.ts";
 
 function makeSpreadsheet(overrides: Partial<Spreadsheet> = {}): Spreadsheet {
@@ -12,13 +15,15 @@ function makeSpreadsheet(overrides: Partial<Spreadsheet> = {}): Spreadsheet {
   return {
     id: overrides.id ?? "spreadsheet-1",
     title: overrides.title ?? "Budget",
-    sheets: overrides.sheets ?? [{
-      id: "sheet-1",
-      name: "Sheet1",
-      cells: {},
-      colWidths: {},
-      rowHeights: {},
-    }],
+    sheets: overrides.sheets ?? [
+      {
+        id: "sheet-1",
+        name: "Sheet1",
+        cells: {},
+        colWidths: {},
+        rowHeights: {},
+      },
+    ],
     activeSheetId: overrides.activeSheetId ?? "sheet-1",
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
@@ -50,11 +55,14 @@ function createMemoryStorage() {
   };
 
   const client: TakosStorageClient = {
+    ready() {
+      return Promise.resolve();
+    },
     list(prefix?: string) {
       const all = [...files.values()];
       if (!prefix) return Promise.resolve(all);
-      const folder = all.find((file) =>
-        file.type === "folder" && file.name === prefix
+      const folder = all.find(
+        (file) => file.type === "folder" && file.name === prefix,
       );
       return Promise.resolve(
         folder ? all.filter((file) => file.parentId === folder.id) : [],
@@ -108,11 +116,7 @@ test("SpreadsheetStore ignores legacy .json files", async () => {
     folder.id,
     "application/vnd.takos.excel+json",
   );
-  const currentFile = storage.makeFile(
-    "current.takossheet",
-    "file",
-    folder.id,
-  );
+  const currentFile = storage.makeFile("current.takossheet", "file", folder.id);
   storage.content.set(legacyFile.id, JSON.stringify(legacySpreadsheet));
   storage.content.set(currentFile.id, JSON.stringify(currentSpreadsheet));
 
@@ -132,8 +136,8 @@ test("SpreadsheetStore creates only .takossheet files", async () => {
   const store = new SpreadsheetStore(storage.client);
 
   const id = await store.createSpreadsheet("Budget");
-  const createdFile = [...storage.files.values()].find((file) =>
-    file.type === "file"
+  const createdFile = [...storage.files.values()].find(
+    (file) => file.type === "file",
   );
 
   expect(createdFile?.name).toEqual(`${id}.takossheet`);
@@ -152,7 +156,9 @@ test("SpreadsheetStore reflects external writes on re-read (no stale cache)", as
   const store = new SpreadsheetStore(storage.client);
 
   expect((await store.getSpreadsheet("ss1")).title).toEqual("Original");
-  expect((await store.listSpreadsheets()).map((s) => s.title)).toEqual(["Original"]);
+  expect((await store.listSpreadsheets()).map((s) => s.title)).toEqual([
+    "Original",
+  ]);
 
   // Another replica / external write updates the backing store.
   storage.content.set(
@@ -160,8 +166,12 @@ test("SpreadsheetStore reflects external writes on re-read (no stale cache)", as
     JSON.stringify(makeSpreadsheet({ id: "ss1", title: "Updated elsewhere" })),
   );
 
-  expect((await store.getSpreadsheet("ss1")).title).toEqual("Updated elsewhere");
-  expect((await store.listSpreadsheets()).map((s) => s.title)).toEqual(["Updated elsewhere"]);
+  expect((await store.getSpreadsheet("ss1")).title).toEqual(
+    "Updated elsewhere",
+  );
+  expect((await store.listSpreadsheets()).map((s) => s.title)).toEqual([
+    "Updated elsewhere",
+  ]);
 
   // A mutation must build on the externally-updated state, not a stale copy.
   await store.setSpreadsheetTitle("ss1", "Renamed");
@@ -218,10 +228,7 @@ test("SpreadsheetStore setCell preserves externally-written cells (fresh read)",
   const storage = createMemoryStorage();
   const folder = storage.makeFile("takos-excel", "folder");
   const file = storage.makeFile("ss1.takossheet", "file", folder.id);
-  storage.content.set(
-    file.id,
-    JSON.stringify(makeSpreadsheet({ id: "ss1" })),
-  );
+  storage.content.set(file.id, JSON.stringify(makeSpreadsheet({ id: "ss1" })));
 
   const store = new SpreadsheetStore(storage.client);
   await store.listSpreadsheets(); // warm any memo
@@ -260,7 +267,11 @@ test("replaceSpreadsheet with a stale expectedUpdatedAt throws a conflict", asyn
   let conflict: unknown;
   try {
     await store.replaceSpreadsheet(
-      makeSpreadsheet({ id: "ss1", title: "Browser snapshot", updatedAt: "v0" }),
+      makeSpreadsheet({
+        id: "ss1",
+        title: "Browser snapshot",
+        updatedAt: "v0",
+      }),
       { expectedUpdatedAt: "v0" },
     );
   } catch (e) {

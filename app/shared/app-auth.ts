@@ -19,13 +19,14 @@ type AppSession = {
   sub: string;
   name?: string;
   spaceIds: string[];
+  accessToken: string;
   exp: number;
 };
 
 export type RequireAppAuthOptions = {
   /**
    * If provided, the subject's session must include the spaceId in its
-   * `space_memberships` claim. Otherwise the request is rejected with 403
+   * `workspace_memberships` claim. Otherwise the request is rejected with 403
    * `space_membership_required`.
    */
   spaceId?: string | null;
@@ -43,9 +44,19 @@ function flagEnabled(env: AppRuntimeEnv, name: string): boolean {
   return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
 }
 
+/**
+ * Fail closed: Office surfaces are authenticated unless an operator asks in
+ * so many words for an anonymous deployment. A half-configured install then
+ * answers 503 (see appAuthMisconfigured) instead of serving documents,
+ * slides and sheets to anyone who finds the URL.
+ */
+function authRequired(env: AppRuntimeEnv): boolean {
+  return !flagEnabled(env, "ALLOW_UNAUTHENTICATED_ACCESS");
+}
+
 function authConfig(env: AppRuntimeEnv) {
   return {
-    required: flagEnabled(env, "APP_AUTH_REQUIRED"),
+    required: authRequired(env),
     issuer:
       envValue(env, "OIDC_ISSUER_URL") ?? envValue(env, "OAUTH_ISSUER_URL"),
     tokenEndpoint:
@@ -248,6 +259,19 @@ function callbackUrl(request: Request): string {
   return new URL("/api/auth/callback", appBaseUrl(request)).toString();
 }
 
+function oidcEndpoint(value: string, issuer: string): string {
+  const endpoint = new URL(value);
+  const authority = new URL(issuer);
+  if (
+    endpoint.protocol !== "https:" ||
+    authority.protocol !== "https:" ||
+    endpoint.origin !== authority.origin
+  ) {
+    throw new Error("OIDC endpoints must stay on the HTTPS issuer origin");
+  }
+  return endpoint.toString();
+}
+
 async function exchangeCode(
   env: AppRuntimeEnv,
   request: Request,
@@ -256,8 +280,10 @@ async function exchangeCode(
 ): Promise<string> {
   const config = authConfig(env);
   const issuer = config.issuer!;
-  const tokenEndpoint =
-    config.tokenEndpoint || `${issuer.replace(/\/$/, "")}/oauth/token`;
+  const tokenEndpoint = oidcEndpoint(
+    config.tokenEndpoint || `${issuer.replace(/\/$/, "")}/oauth/token`,
+    issuer,
+  );
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -270,6 +296,8 @@ async function exchangeCode(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    redirect: "manual",
+    signal: AbortSignal.timeout(5_000),
   });
   if (!res.ok) {
     throw new Error(`OAuth token exchange failed: ${res.status}`);
@@ -277,6 +305,9 @@ async function exchangeCode(
   const payload = (await res.json()) as { access_token?: string };
   if (!payload.access_token) {
     throw new Error("OAuth token response missing access_token");
+  }
+  if (payload.access_token.length > 2_048) {
+    throw new Error("OAuth access token exceeds the Office session limit");
   }
   return payload.access_token;
 }
@@ -289,7 +320,7 @@ function normalizeSpaceIds(value: unknown): string[] {
       seen.add(entry);
     } else if (entry && typeof entry === "object") {
       const record = entry as Record<string, unknown>;
-      const candidate = record.space_id ?? record.spaceId ?? record.id;
+      const candidate = record.workspace_id ?? record.id;
       if (typeof candidate === "string" && candidate.trim() !== "") {
         seen.add(candidate);
       }
@@ -301,30 +332,49 @@ function normalizeSpaceIds(value: unknown): string[] {
 async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
   const config = authConfig(env);
   const issuer = config.issuer!;
-  const userinfoEndpoint =
-    config.userinfoEndpoint || `${issuer.replace(/\/$/, "")}/oauth/userinfo`;
+  const userinfoEndpoint = oidcEndpoint(
+    config.userinfoEndpoint || `${issuer.replace(/\/$/, "")}/oauth/userinfo`,
+    issuer,
+  );
   const res = await fetch(userinfoEndpoint, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    redirect: "manual",
+    signal: AbortSignal.timeout(5_000),
   });
-  if (!res.ok) throw new Error(`OAuth userinfo failed: ${res.status}`);
-  const body = (await res.json()) as {
+  if (!res.ok) throw new UserInfoError(res.status);
+  const contentLength = Number(res.headers.get("content-length") ?? "0");
+  if (contentLength > 64 * 1024) {
+    throw new Error("OAuth userinfo response is too large");
+  }
+  const raw = await res.text();
+  if (new TextEncoder().encode(raw).byteLength > 64 * 1024) {
+    throw new Error("OAuth userinfo response is too large");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("OAuth userinfo response is invalid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("OAuth userinfo response is invalid");
+  }
+  const body = parsed as {
     user?: { id?: string; name?: string };
     sub?: string;
     name?: string;
-    space_memberships?: unknown;
+    workspace_memberships?: unknown;
     spaceMemberships?: unknown;
-    takosumi?: { space_id?: unknown };
+    takosumi?: { workspace_id?: unknown };
   };
   const sub = body.user?.id ?? body.sub;
   if (!sub) throw new Error("OAuth userinfo response missing subject");
-  const spaceIds = normalizeSpaceIds(
-    body.space_memberships ?? body.spaceMemberships,
-  );
+  const spaceIds = normalizeSpaceIds(body.workspace_memberships);
   // Backward-compat fallback: Takosumi Accounts userinfo historically emits
-  // only the nested `takosumi.space_id` (a single accessible space) and no
-  // flat `space_memberships` claim. Fold that single space into spaceIds so
+  // only the nested `takosumi.workspace_id` (a single accessible workspace) and no
+  // flat `workspace_memberships` claim. Fold that single workspace in so
   // membership checks work even against an issuer that predates the claim.
-  const nestedSpaceId = body.takosumi?.space_id;
+  const nestedSpaceId = body.takosumi?.workspace_id;
   if (
     typeof nestedSpaceId === "string" &&
     nestedSpaceId.trim() !== "" &&
@@ -333,6 +383,28 @@ async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
     spaceIds.push(nestedSpaceId);
   }
   return { sub, name: body.user?.name ?? body.name, spaceIds };
+}
+
+class UserInfoError extends Error {
+  constructor(readonly status: number) {
+    super(`OAuth userinfo failed: ${status}`);
+    this.name = "UserInfoError";
+  }
+}
+
+function sameOriginMutation(request: Request): boolean {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase())) {
+    return true;
+  }
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      return new URL(origin).origin === new URL(request.url).origin;
+    } catch {
+      return false;
+    }
+  }
+  return request.headers.get("sec-fetch-site") === "same-origin";
 }
 
 export async function requireAppAuth(
@@ -359,17 +431,73 @@ export async function requireAppAuth(
   ) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!sameOriginMutation(request)) {
+    return Response.json({ error: "csrf_check_failed" }, { status: 403 });
+  }
+  if (
+    typeof session.accessToken !== "string" ||
+    session.accessToken.length === 0 ||
+    session.accessToken.length > 2_048
+  ) {
+    return Response.json(
+      { error: "reauthentication_required" },
+      {
+        status: 401,
+      },
+    );
+  }
   const requestedSpaceId = options.spaceId;
-  if (typeof requestedSpaceId === "string" && requestedSpaceId !== "") {
-    const memberships = Array.isArray(session.spaceIds) ? session.spaceIds : [];
-    if (!memberships.includes(requestedSpaceId)) {
+  if (typeof requestedSpaceId !== "string" || requestedSpaceId === "") {
+    return null;
+  }
+  const sessionMemberships = Array.isArray(session.spaceIds)
+    ? session.spaceIds
+    : [];
+  if (!sessionMemberships.includes(requestedSpaceId)) {
+    return Response.json(
+      {
+        error: "space_membership_required",
+      },
+      { status: 403 },
+    );
+  }
+  let currentUser: Awaited<ReturnType<typeof fetchUserInfo>>;
+  try {
+    currentUser = await fetchUserInfo(env, session.accessToken);
+  } catch (error) {
+    if (
+      error instanceof UserInfoError &&
+      (error.status === 401 || error.status === 403)
+    ) {
       return Response.json(
+        { error: "reauthentication_required" },
         {
-          error: "space_membership_required",
+          status: 401,
         },
-        { status: 403 },
       );
     }
+    return Response.json(
+      { error: "identity_provider_unavailable" },
+      {
+        status: 503,
+      },
+    );
+  }
+  if (currentUser.sub !== session.sub) {
+    return Response.json(
+      { error: "reauthentication_required" },
+      {
+        status: 401,
+      },
+    );
+  }
+  if (!currentUser.spaceIds.includes(requestedSpaceId)) {
+    return Response.json(
+      {
+        error: "space_membership_required",
+      },
+      { status: 403 },
+    );
   }
   return null;
 }
@@ -444,6 +572,7 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
         sub: user.sub,
         name: user.name,
         spaceIds: user.spaceIds,
+        accessToken,
         exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
       } satisfies AppSession,
       config.sessionSecret!,
@@ -466,7 +595,9 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
     return c.json({ authenticated: true });
   });
 
-  app.post("/api/auth/logout", () => {
+  app.post("/api/auth/logout", async (c) => {
+    const unauthorized = await requireAppAuth(env, c.req.raw);
+    if (unauthorized) return unauthorized;
     return new Response(JSON.stringify({ success: true }), {
       headers: {
         "Content-Type": "application/json",

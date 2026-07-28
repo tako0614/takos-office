@@ -209,9 +209,50 @@ test("client storage normalizes spaceId query to space_id", async () => {
 
   try {
     await addDocument(makeDoc({ id: "space-test" }));
-    expect(requestedUrl).toEqual("/api/documents/space-test?space_id=space-camel");
+    expect(requestedUrl).toEqual(
+      "/api/documents/space-test?space_id=space-camel",
+    );
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalLocation) {
+      Object.defineProperty(globalThis, "location", originalLocation);
+    } else {
+      delete (globalThis as { location?: Location }).location;
+    }
+  }
+});
+
+test("browser caches never cross Workspace boundaries", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "location",
+  );
+  try {
+    Object.defineProperty(globalThis, "location", {
+      value: new URL("http://localhost/docs?space_id=workspace-a"),
+      configurable: true,
+    });
+    saveDocuments([makeDoc({ id: "workspace-a-doc" })]);
+
+    Object.defineProperty(globalThis, "location", {
+      value: new URL("http://localhost/docs?space_id=workspace-b"),
+      configurable: true,
+    });
+    expect(loadDocuments()).toEqual([]);
+    saveDocuments([makeDoc({ id: "workspace-b-doc" })]);
+
+    Object.defineProperty(globalThis, "location", {
+      value: new URL("http://localhost/docs?space_id=workspace-a"),
+      configurable: true,
+    });
+    expect(loadDocuments().map((doc) => doc.id)).toEqual(["workspace-a-doc"]);
+  } finally {
+    localStorage.removeItem(
+      `${STORAGE_KEY}:workspace:${encodeURIComponent("workspace-a")}`,
+    );
+    localStorage.removeItem(
+      `${STORAGE_KEY}:workspace:${encodeURIComponent("workspace-b")}`,
+    );
     if (originalLocation) {
       Object.defineProperty(globalThis, "location", originalLocation);
     } else {

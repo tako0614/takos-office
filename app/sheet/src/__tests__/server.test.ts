@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  createExcelAppFromEnv,
-  createServerApp,
-  EXCEL_MAX_MCP_REQUEST_BYTES,
-} from "../server.ts";
+import { createExcelAppFromEnv, createServerApp } from "../server.ts";
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -18,7 +14,11 @@ async function makeSessionCookie(
   secret: string,
   payload: { sub: string; name?: string; spaceIds: string[]; exp: number },
 ): Promise<string> {
-  const data = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const data = base64Url(
+    new TextEncoder().encode(
+      JSON.stringify({ ...payload, accessToken: "test-access-token" }),
+    ),
+  );
   // Mirror app-auth seal(): the MAC is bound to the "session" purpose.
   const signed = `session.${data}`;
   const key = await crypto.subtle.importKey(
@@ -100,7 +100,14 @@ function installObjectStorageMock(records: Map<string, OfficeRecord>) {
         Response.json({ error: "object_not_found" }, { status: 404 }),
       );
     }
-    return Promise.resolve(Response.json(record));
+    return Promise.resolve(
+      new Response(JSON.stringify(record), {
+        headers: {
+          "content-type": "application/json",
+          etag: `"${record.file.updatedAt}"`,
+        },
+      }),
+    );
   }) as typeof fetch;
   return {
     calls,
@@ -151,12 +158,26 @@ function seedSpreadsheetRecords(
 }
 
 const store = {} as never;
-const app = createServerApp(store, { mcpAuthToken: "secret" });
+// Sign-in is required by default, so tests that exercise non-auth behaviour
+// take the explicit public opt-in.
+const PUBLIC_ENV = { ALLOW_UNAUTHENTICATED_ACCESS: "1" };
+const app = createServerApp(store, {
+  env: PUBLIC_ENV,
+});
 
-test("health endpoint returns ok", async () => {
-  const res = await app.request("/health");
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
+test("sheet sub-app exposes no MCP or health control surface", async () => {
+  expect((await app.request("/health")).status).toEqual(404);
+  expect((await app.request("/healthz")).status).toEqual(404);
+  expect(
+    (
+      await app.request(
+        new Request("http://localhost/mcp", {
+          method: "POST",
+          body: "{}",
+        }),
+      )
+    ).status,
+  ).toEqual(404);
 });
 
 test("root path is not a text landing route", async () => {
@@ -167,7 +188,6 @@ test("root path is not a text landing route", async () => {
 test("spreadsheet collection writes require app auth when enabled", async () => {
   const authApp = createServerApp(store, {
     env: {
-      APP_AUTH_REQUIRED: "1",
       OAUTH_ISSUER_URL: "https://takos.example",
       OAUTH_CLIENT_ID: "client",
       OAUTH_CLIENT_SECRET: "secret",
@@ -186,76 +206,6 @@ test("spreadsheet collection writes require app auth when enabled", async () => 
   expect(await res.json()).toEqual({ error: "Unauthorized" });
 });
 
-test("mcp endpoint rejects oversized request bodies", async () => {
-  const authApp = createServerApp(store, { mcpAuthToken: "secret" });
-  const res = await authApp.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer secret",
-        "content-type": "application/json",
-        "content-length": String(EXCEL_MAX_MCP_REQUEST_BYTES + 1),
-      },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(413);
-  expect(await res.json()).toEqual({ error: "Request body too large" });
-});
-
-test("mcp endpoint enforces optional bearer auth before handling body", async () => {
-  const authApp = createServerApp(store, { mcpAuthToken: "secret" });
-  const res = await authApp.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(401);
-  expect(await res.json()).toEqual({ error: "Unauthorized" });
-});
-
-test("mcp endpoint fails closed when token is missing", async () => {
-  const authApp = createServerApp(store);
-  const res = await authApp.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
-test("health endpoint allows explicit unauthenticated access when configured", async () => {
-  const authApp = createServerApp(store, { mcpAllowUnauthenticated: true });
-  const res = await authApp.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
-});
-
-test("startup does not require TAKOS_SPACE_ID", async () => {
-  const authApp = createExcelAppFromEnv({
-    OBJECT_STORAGE_API_URL: "http://localhost:8787",
-    OBJECT_STORAGE_ACCESS_TOKEN: "token",
-    TAKOS_SPACE_ID: undefined,
-    TAKOS_NATIVE_RENDERING: "0",
-    MCP_AUTH_TOKEN: "secret",
-  });
-  const res = await authApp.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
-});
-
 test("file handler route redirects to spreadsheet editor route", async () => {
   const authApp = createExcelAppFromEnv({
     OBJECT_STORAGE_API_URL: "http://localhost:8787",
@@ -263,6 +213,7 @@ test("file handler route redirects to spreadsheet editor route", async () => {
     TAKOS_SPACE_ID: "space-1",
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
+    ALLOW_UNAUTHENTICATED_ACCESS: "1",
   });
   const res = await authApp.request("/files/file-1?space_id=space-q");
 
@@ -298,6 +249,7 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
       TAKOS_SPACE_ID: undefined,
       TAKOS_NATIVE_RENDERING: "0",
       MCP_AUTH_TOKEN: "secret",
+      ALLOW_UNAUTHENTICATED_ACCESS: "1",
     });
     const getRes = await authApp.request(
       "/api/spreadsheets/file-1?space_id=space-q",
@@ -308,12 +260,20 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
     const putRes = await authApp.request(
       new Request("http://localhost/api/spreadsheets/file-1?space_id=space-q", {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "if-match": now,
+        },
         body: JSON.stringify({ ...spreadsheet, title: "Updated" }),
       }),
     );
     expect(putRes.status).toEqual(200);
-    expect((await putRes.json()).id).toEqual("sheet-1");
+    const savedSpreadsheet = await putRes.json();
+    expect(savedSpreadsheet.id).toEqual("sheet-1");
+    expect(savedSpreadsheet.updatedAt).not.toEqual(now);
+    expect(putRes.headers.get("etag")).toEqual(
+      `"${savedSpreadsheet.updatedAt}"`,
+    );
 
     // The save must land on file-1's record key in the request space.
     const savedKey = recordKey("space-q", "file-1");
@@ -326,6 +286,9 @@ test("spreadsheet API opens and saves advertised file by storage id in request s
     const saved = records.get(savedKey);
     expect(saved?.file.mimeType).toEqual("application/vnd.takos.excel+json");
     expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Updated");
+    expect(JSON.parse(saved?.content ?? "{}").updatedAt).toEqual(
+      savedSpreadsheet.updatedAt,
+    );
   } finally {
     mock.restore();
   }
@@ -359,13 +322,17 @@ test("spreadsheet API renames a spreadsheet via PATCH and persists the new title
       TAKOS_SPACE_ID: undefined,
       TAKOS_NATIVE_RENDERING: "0",
       MCP_AUTH_TOKEN: "secret",
+      ALLOW_UNAUTHENTICATED_ACCESS: "1",
     });
     const res = await authApp.request(
       new Request(
         "http://localhost/api/spreadsheets/sheet-1?space_id=space-q",
         {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "if-match": now,
+          },
           body: JSON.stringify({ title: "New name" }),
         },
       ),
@@ -414,6 +381,7 @@ test("spreadsheet API PATCH rejects empty or missing titles and unknown ids", as
       TAKOS_SPACE_ID: undefined,
       TAKOS_NATIVE_RENDERING: "0",
       MCP_AUTH_TOKEN: "secret",
+      ALLOW_UNAUTHENTICATED_ACCESS: "1",
     });
     const patch = (id: string, body: unknown) =>
       authApp.request(
@@ -421,7 +389,10 @@ test("spreadsheet API PATCH rejects empty or missing titles and unknown ids", as
           `http://localhost/api/spreadsheets/${id}?space_id=space-q`,
           {
             method: "PATCH",
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "if-match": now,
+            },
             body: JSON.stringify(body),
           },
         ),
@@ -429,11 +400,11 @@ test("spreadsheet API PATCH rejects empty or missing titles and unknown ids", as
 
     const emptyTitle = await patch("sheet-1", { title: "" });
     expect(emptyTitle.status).toEqual(400);
-    expect(await emptyTitle.json()).toEqual({ error: "title_required" });
+    expect(await emptyTitle.json()).toEqual({ error: "invalid_request" });
 
     const missingTitle = await patch("sheet-1", {});
     expect(missingTitle.status).toEqual(400);
-    expect(await missingTitle.json()).toEqual({ error: "title_required" });
+    expect(await missingTitle.json()).toEqual({ error: "invalid_request" });
 
     const unknownId = await patch("nope", { title: "New name" });
     expect(unknownId.status).toEqual(404);
@@ -449,16 +420,6 @@ test("spreadsheet API PATCH rejects empty or missing titles and unknown ids", as
   }
 });
 
-test("health endpoint fails when token is missing", async () => {
-  const authApp = createServerApp(store);
-  const res = await authApp.request("/health");
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
 test("spreadsheet API rejects spaces outside the subject's membership", async () => {
   const sessionSecret = "session-secret";
   const authApp = createExcelAppFromEnv({
@@ -467,7 +428,6 @@ test("spreadsheet API rejects spaces outside the subject's membership", async ()
     TAKOS_SPACE_ID: undefined,
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
-    APP_AUTH_REQUIRED: "1",
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -497,7 +457,6 @@ test("spreadsheet API allows spaces in the subject's membership", async () => {
     TAKOS_SPACE_ID: undefined,
     TAKOS_NATIVE_RENDERING: "0",
     MCP_AUTH_TOKEN: "secret",
-    APP_AUTH_REQUIRED: "1",
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",

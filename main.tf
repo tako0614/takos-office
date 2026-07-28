@@ -180,7 +180,7 @@ variable "worker_bundle_path" {
 }
 
 variable "worker_release_tag" {
-  description = "GitHub release tag whose takosumi-artifact.json selects the default Worker bundle and SHA-256. Set empty to use worker_bundle_path."
+  description = "Release tag selected from release.lock.json. Unpinned tags are rejected. Set empty to use worker_bundle_path."
   type        = string
   default     = "v0.3.1"
 
@@ -202,7 +202,7 @@ variable "worker_bundle_url" {
 }
 
 variable "worker_bundle_sha256" {
-  description = "Expected SHA-256 of the Worker module JS. Accepts lowercase hex or sha256:<hex>. Required when worker_bundle_url is set; optional for local worker_bundle_path."
+  description = "Expected SHA-256 of the Worker module JS. Required with worker_bundle_url, optional for worker_bundle_path, and only an additional equality assertion in release-tag mode."
   type        = string
   default     = ""
 
@@ -225,7 +225,7 @@ variable "worker_assets_directory" {
 }
 
 variable "enable_worker_assets" {
-  description = "Upload worker_assets_directory as Cloudflare Workers static assets with the Worker script. Remote worker_bundle_url artifacts are expected to embed assets, so this is ignored when worker_bundle_url is set."
+  description = "Upload worker_assets_directory as Cloudflare Workers static assets with a local Worker script. Remote release and explicit URL artifacts are expected to embed assets."
   type        = bool
   default     = false
 }
@@ -266,21 +266,70 @@ variable "worker_compatibility_flags" {
 }
 
 locals {
-  cloudflare_resources_enabled  = var.enable_cloudflare_resources
-  cloudflare_worker_enabled     = local.cloudflare_resources_enabled && var.enable_cloudflare_worker_script
-  cloudflare_route_enabled      = local.cloudflare_worker_enabled && trimspace(var.cloudflare_route_zone_id) != "" && trimspace(var.cloudflare_route_pattern) != ""
-  worker_release_tag            = trimspace(var.worker_release_tag)
-  worker_bundle_explicit_url    = trimspace(var.worker_bundle_url)
-  worker_bundle_uses_manifest   = local.cloudflare_worker_enabled && local.worker_bundle_explicit_url == "" && local.worker_release_tag != ""
-  worker_release_manifest       = local.worker_bundle_uses_manifest ? jsondecode(data.http.worker_release_manifest[0].response_body) : null
-  worker_bundle_url             = local.worker_bundle_explicit_url != "" ? local.worker_bundle_explicit_url : try(local.worker_release_manifest.artifact.url, "")
+  cloudflare_resources_enabled = var.enable_cloudflare_resources
+  cloudflare_worker_enabled    = local.cloudflare_resources_enabled && var.enable_cloudflare_worker_script
+  cloudflare_route_enabled     = local.cloudflare_worker_enabled && trimspace(var.cloudflare_route_zone_id) != "" && trimspace(var.cloudflare_route_pattern) != ""
+
+  worker_release_lock              = jsondecode(file("${path.module}/release.lock.json"))
+  worker_release_tag               = trimspace(var.worker_release_tag)
+  worker_bundle_explicit_url       = trimspace(var.worker_bundle_url)
+  worker_bundle_explicit_url_mode  = local.cloudflare_worker_enabled && local.worker_bundle_explicit_url != ""
+  worker_bundle_release_tag_mode   = local.cloudflare_worker_enabled && local.worker_bundle_explicit_url == "" && local.worker_release_tag != ""
+  worker_release_pin               = local.worker_bundle_release_tag_mode ? try(local.worker_release_lock.releases[local.worker_release_tag], null) : null
+  worker_release_pin_commit        = try(trimspace(local.worker_release_pin.commit), "")
+  worker_release_pin_artifact_url  = try(trimspace(local.worker_release_pin.artifact.url), "")
+  worker_release_pin_manifest_url  = try(trimspace(local.worker_release_pin.manifest.url), "")
+  worker_release_pin_artifact_hash = try(trimspace(local.worker_release_pin.artifact.sha256), "")
+  worker_release_pin_manifest_hash = try(trimspace(local.worker_release_pin.manifest.sha256), "")
+  worker_release_pin_artifact_sha256 = startswith(local.worker_release_pin_artifact_hash, "sha256:") ? replace(
+    local.worker_release_pin_artifact_hash,
+    "sha256:",
+    "",
+  ) : local.worker_release_pin_artifact_hash
+  worker_release_pin_manifest_sha256 = startswith(local.worker_release_pin_manifest_hash, "sha256:") ? replace(
+    local.worker_release_pin_manifest_hash,
+    "sha256:",
+    "",
+  ) : local.worker_release_pin_manifest_hash
+  worker_release_pin_is_valid = (
+    try(local.worker_release_lock.kind, "") == "takos.release-artifact-lock@v1" &&
+    try(local.worker_release_lock.app, "") == "takos-office" &&
+    local.worker_release_pin != null &&
+    can(regex("^[a-f0-9]{40}$", local.worker_release_pin_commit)) &&
+    try(local.worker_release_pin.artifact.filename, "") == "worker.js" &&
+    can(regex("^https://[^[:space:]]+$", local.worker_release_pin_artifact_url)) &&
+    can(regex("^https://[^[:space:]]+$", local.worker_release_pin_manifest_url)) &&
+    can(regex("^[a-f0-9]{64}$", local.worker_release_pin_artifact_sha256)) &&
+    can(regex("^[a-f0-9]{64}$", local.worker_release_pin_manifest_sha256))
+  )
+  worker_release_manifest_fetch_enabled = local.worker_bundle_release_tag_mode && local.worker_release_pin_is_valid
+  worker_release_manifest_body          = local.worker_release_manifest_fetch_enabled ? data.http.worker_release_manifest[0].response_body : null
+  worker_release_manifest = local.worker_release_manifest_fetch_enabled ? jsondecode(
+    local.worker_release_manifest_body,
+  ) : null
+  worker_release_manifest_content_sha256 = local.worker_release_manifest_fetch_enabled ? sha256(
+    local.worker_release_manifest_body,
+  ) : null
+
+  worker_bundle_sha256_assertion_hash = trimspace(var.worker_bundle_sha256)
+  worker_bundle_sha256_assertion = startswith(local.worker_bundle_sha256_assertion_hash, "sha256:") ? replace(
+    local.worker_bundle_sha256_assertion_hash,
+    "sha256:",
+    "",
+  ) : local.worker_bundle_sha256_assertion_hash
+  worker_bundle_url = local.worker_bundle_explicit_url_mode ? local.worker_bundle_explicit_url : (
+    local.worker_bundle_release_tag_mode ? local.worker_release_pin_artifact_url : ""
+  )
   worker_bundle_uses_url        = local.cloudflare_worker_enabled && local.worker_bundle_url != ""
-  worker_bundle_sha256_input    = trimspace(var.worker_bundle_sha256) != "" ? trimspace(var.worker_bundle_sha256) : (local.worker_bundle_uses_manifest ? try(local.worker_release_manifest.artifact.sha256, "") : "")
-  worker_bundle_expected_sha256 = startswith(local.worker_bundle_sha256_input, "sha256:") ? replace(local.worker_bundle_sha256_input, "sha256:", "") : local.worker_bundle_sha256_input
+  worker_bundle_expected_sha256 = local.worker_bundle_release_tag_mode ? local.worker_release_pin_artifact_sha256 : local.worker_bundle_sha256_assertion
   worker_bundle_local_path      = startswith(var.worker_bundle_path, "/") ? var.worker_bundle_path : "${path.module}/${var.worker_bundle_path}"
   worker_bundle_body            = local.worker_bundle_uses_url ? data.http.worker_bundle[0].response_body : null
-  worker_bundle_content_sha256  = local.cloudflare_worker_enabled ? (local.worker_bundle_uses_url ? sha256(data.http.worker_bundle[0].response_body) : (local.worker_bundle_uses_manifest ? null : filesha256(local.worker_bundle_local_path))) : null
-  worker_assets_enabled         = local.cloudflare_worker_enabled && var.enable_worker_assets && !local.worker_bundle_uses_url
+  worker_bundle_content_sha256 = local.cloudflare_worker_enabled ? (
+    local.worker_bundle_uses_url ? sha256(data.http.worker_bundle[0].response_body) : (
+      local.worker_bundle_release_tag_mode ? null : filesha256(local.worker_bundle_local_path)
+    )
+  ) : null
+  worker_assets_enabled         = local.cloudflare_worker_enabled && var.enable_worker_assets && !local.worker_bundle_explicit_url_mode && !local.worker_bundle_release_tag_mode
   resource_prefix               = var.project_name
   worker_name                   = trimspace(var.worker_name) != "" ? trimspace(var.worker_name) : local.resource_prefix
   workers_dev_url               = trimspace(var.cloudflare_workers_subdomain) != "" ? "https://${local.worker_name}.${trimspace(var.cloudflare_workers_subdomain)}.workers.dev" : null
@@ -299,8 +348,8 @@ locals {
 }
 
 data "http" "worker_release_manifest" {
-  count              = local.worker_bundle_uses_manifest ? 1 : 0
-  url                = "https://github.com/tako0614/takos-office/releases/download/${local.worker_release_tag}/takosumi-artifact.json"
+  count              = local.worker_release_manifest_fetch_enabled ? 1 : 0
+  url                = local.worker_release_pin_manifest_url
   request_timeout_ms = 30000
 
   request_headers = {
@@ -336,6 +385,13 @@ data "http" "worker_bundle" {
     min_delay_ms = 1000
     max_delay_ms = 10000
   }
+
+  lifecycle {
+    precondition {
+      condition     = !local.worker_bundle_explicit_url_mode || local.worker_bundle_sha256_assertion != ""
+      error_message = "worker_bundle_sha256 must be set before OpenTofu fetches an explicit worker_bundle_url."
+    }
+  }
 }
 
 resource "cloudflare_workers_script" "worker" {
@@ -343,7 +399,7 @@ resource "cloudflare_workers_script" "worker" {
   account_id          = var.cloudflare_account_id
   script_name         = local.worker_name
   content             = local.worker_bundle_uses_url ? sensitive(local.worker_bundle_body) : null
-  content_file        = local.worker_bundle_uses_url ? null : local.worker_bundle_local_path
+  content_file        = local.worker_bundle_explicit_url_mode || local.worker_bundle_release_tag_mode ? null : local.worker_bundle_local_path
   content_sha256      = local.worker_bundle_content_sha256
   main_module         = var.worker_main_module
   compatibility_date  = var.worker_compatibility_date
@@ -447,22 +503,53 @@ resource "cloudflare_workers_script" "worker" {
 
   lifecycle {
     precondition {
-      condition = !local.worker_bundle_uses_manifest || (
+      condition     = !local.worker_bundle_release_tag_mode || local.worker_release_pin_is_valid
+      error_message = "worker_release_tag is not a complete append-only pin in release.lock.json. Add and review the release pin before selecting it."
+    }
+
+    precondition {
+      condition = !local.worker_bundle_release_tag_mode || !local.worker_release_pin_is_valid || (
+        local.worker_release_manifest_content_sha256 == local.worker_release_pin_manifest_sha256 &&
         try(local.worker_release_manifest.kind, "") == "takosumi.worker-artifact@v1" &&
         try(local.worker_release_manifest.app, "") == "takos-office" &&
         try(local.worker_release_manifest.releaseTag, "") == local.worker_release_tag &&
-        local.worker_bundle_uses_url
+        try(local.worker_release_manifest.ref, "") == local.worker_release_tag &&
+        try(local.worker_release_manifest.commit, "") == local.worker_release_pin_commit &&
+        try(local.worker_release_manifest.manifestUrl, "") == local.worker_release_pin_manifest_url &&
+        try(local.worker_release_manifest.artifact.filename, "") == try(local.worker_release_pin.artifact.filename, "") &&
+        try(local.worker_release_manifest.artifact.url, "") == local.worker_release_pin_artifact_url &&
+        try(local.worker_release_manifest.artifact.sha256, "") == local.worker_release_pin_artifact_sha256 &&
+        try(local.worker_release_manifest.artifact.sha256Prefixed, "") == "sha256:${local.worker_release_pin_artifact_sha256}"
       )
-      error_message = "worker_release_tag must resolve to a valid takos-office takosumi.worker-artifact@v1 manifest."
+      error_message = "The pinned release manifest must match its locked digest, identity, commit, tag, manifest URL, and artifact filename/URL/digest."
     }
 
     precondition {
-      condition     = !local.worker_bundle_uses_url || (local.worker_bundle_expected_sha256 != "" && local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256)
-      error_message = "worker_bundle_sha256 is required for worker_bundle_url and must match the downloaded artifact."
+      condition = !local.worker_bundle_release_tag_mode || !local.worker_release_pin_is_valid || (
+        local.worker_bundle_sha256_assertion == "" ||
+        local.worker_bundle_sha256_assertion == local.worker_release_pin_artifact_sha256
+      )
+      error_message = "worker_bundle_sha256 cannot override release.lock.json in release-tag mode; when supplied it must equal the locked artifact digest."
     }
 
     precondition {
-      condition     = local.worker_bundle_uses_url || local.worker_bundle_uses_manifest || local.worker_bundle_expected_sha256 == "" || local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
+      condition = !local.worker_bundle_explicit_url_mode || (
+        local.worker_bundle_sha256_assertion != "" &&
+        local.worker_bundle_sha256_assertion == local.worker_bundle_content_sha256
+      )
+      error_message = "An explicit worker_bundle_url requires an explicit worker_bundle_sha256 matching the downloaded artifact."
+    }
+
+    precondition {
+      condition = !local.worker_bundle_release_tag_mode || !local.worker_release_pin_is_valid || (
+        local.worker_bundle_uses_url &&
+        local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
+      )
+      error_message = "The Worker artifact selected by release.lock.json does not match its locked SHA-256 digest."
+    }
+
+    precondition {
+      condition     = local.worker_bundle_explicit_url_mode || local.worker_bundle_release_tag_mode || local.worker_bundle_expected_sha256 == "" || local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
       error_message = "worker_bundle_sha256 does not match worker_bundle_path."
     }
 

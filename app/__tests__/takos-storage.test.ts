@@ -6,9 +6,18 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-function installObjectStoreFetch(expectedToken = "token") {
+function installObjectStoreFetch(
+  expectedToken = "token",
+  options: { pageSize?: number; holdReads?: boolean } = {},
+) {
   const objects = new Map<string, string>();
+  const etags = new Map<string, string>();
   const urls: string[] = [];
+  const requests: Request[] = [];
+  let revision = 0;
+  let inFlightReads = 0;
+  let maxInFlightReads = 0;
+  const heldReads: Array<() => void> = [];
   globalThis.fetch = (async (
     input: string | URL | Request,
     init?: RequestInit,
@@ -16,16 +25,24 @@ function installObjectStoreFetch(expectedToken = "token") {
     const request = new Request(input, init);
     const url = new URL(request.url);
     urls.push(url.toString());
+    requests.push(request);
     if (request.headers.get("authorization") !== `Bearer ${expectedToken}`) {
       return Response.json({ error: "invalid_token" }, { status: 401 });
     }
     if (url.pathname === "/o" || url.pathname === "/o/") {
       const prefix = url.searchParams.get("prefix") ?? "";
+      const cursor = url.searchParams.get("cursor");
+      const matching = [...objects.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .sort(([a], [b]) => a.localeCompare(b));
+      const offset = cursor ? Number(cursor) : 0;
+      const pageSize = options.pageSize ?? matching.length;
+      const page = matching.slice(offset, offset + pageSize);
+      const nextOffset = offset + page.length;
       return Response.json({
-        objects: [...objects.entries()].flatMap(([key, body]) =>
-          key.startsWith(prefix) ? [{ key, size: body.length }] : [],
-        ),
-        truncated: false,
+        objects: page.map(([key, body]) => ({ key, size: body.length })),
+        truncated: nextOffset < matching.length,
+        ...(nextOffset < matching.length ? { cursor: String(nextOffset) } : {}),
       });
     }
     if (!url.pathname.startsWith("/o/")) {
@@ -33,7 +50,19 @@ function installObjectStoreFetch(expectedToken = "token") {
     }
     const key = decodeURIComponent(url.pathname.slice(3));
     if (request.method === "PUT") {
+      const currentEtag =
+        etags.get(key) ?? (objects.has(key) ? '"seed"' : undefined);
+      const ifMatch = request.headers.get("if-match");
+      const ifNoneMatch = request.headers.get("if-none-match");
+      if (
+        (ifMatch && ifMatch !== currentEtag) ||
+        (ifNoneMatch === "*" && objects.has(key))
+      ) {
+        return Response.json({ error: "precondition_failed" }, { status: 412 });
+      }
       objects.set(key, await request.text());
+      revision += 1;
+      etags.set(key, `"r${revision}"`);
       return Response.json({ ok: true, key }, { status: 201 });
     }
     if (request.method === "DELETE") {
@@ -44,11 +73,27 @@ function installObjectStoreFetch(expectedToken = "token") {
     if (body === undefined) {
       return Response.json({ error: "not_found" }, { status: 404 });
     }
+    inFlightReads += 1;
+    maxInFlightReads = Math.max(maxInFlightReads, inFlightReads);
+    if (options.holdReads) {
+      await new Promise<void>((resolve) => heldReads.push(resolve));
+    }
+    inFlightReads -= 1;
     return new Response(body, {
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        etag: etags.get(key) ?? '"seed"',
+      },
     });
   }) as typeof fetch;
-  return { objects, urls };
+  return {
+    objects,
+    etags,
+    urls,
+    requests,
+    heldReads,
+    maxInFlightReads: () => maxInFlightReads,
+  };
 }
 
 test("Office records round-trip through the storage.object /o API", async () => {
@@ -117,11 +162,11 @@ test("storage client key-encodes fileId so a traversal id cannot escape the spac
     "space-A",
   );
   const maliciousId = "../../space-B/storage/secret";
-  // encodeKeyPart(fileId) = encodeURIComponent with "%" folded to "~": the
-  // malicious "/" separators become "~2F", so the whole id stays ONE key
+  // encodeKeyPart(fileId) leaves encodeURIComponent's percent escapes intact:
+  // the malicious "/" separators become "%2F", so the whole id stays ONE key
   // segment under space-A's records prefix.
   const maliciousKey =
-    "office/v1/records/space-A/..~2F..~2Fspace-B~2Fstorage~2Fsecret.json";
+    "office/v1/records/space-A/..%2F..%2Fspace-B%2Fstorage%2Fsecret.json";
   const now = "2026-04-30T00:00:00.000Z";
   objects.set(
     maliciousKey,
@@ -206,6 +251,161 @@ test("storage client maps a normal UUID id to its space-scoped record key", asyn
   expect(file?.id).toBe(id);
 });
 
+test("storage key encoding is injective for literal escape-like ids", async () => {
+  const { objects } = installObjectStoreFetch();
+  const client = createTakosStorageClient(
+    "https://takos.example",
+    "token",
+    "space-A",
+  );
+  const now = "2026-04-30T00:00:00.000Z";
+  const seed = (id: string, content: string) =>
+    JSON.stringify({
+      schema: "takos.office.object-record.v1",
+      revision: `revision:${id}`,
+      file: {
+        id,
+        name: `${content}.txt`,
+        type: "file",
+        createdAt: now,
+        updatedAt: now,
+      },
+      content,
+    });
+  objects.set("office/v1/records/space-A/%2F.json", seed("/", "slash"));
+  objects.set("office/v1/records/space-A/%252F.json", seed("%2F", "literal"));
+
+  expect(await client.getContent("/")).toBe("slash");
+  expect(await client.getContent("%2F")).toBe("literal");
+  expect(objects.size).toBe(2);
+});
+
+test("listing follows opaque cursors until all Office records are visible", async () => {
+  const store = installObjectStoreFetch("token", { pageSize: 1 });
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+  await client.create("one.txt");
+  await client.create("two.txt");
+  await client.create("three.txt");
+
+  expect((await client.list()).map((file) => file.name).sort()).toEqual([
+    "one.txt",
+    "three.txt",
+    "two.txt",
+  ]);
+  expect(store.urls.some((url) => url.includes("cursor="))).toBe(true);
+});
+
+test("record body reads use bounded concurrency", async () => {
+  const store = installObjectStoreFetch("token", {
+    pageSize: 100,
+    holdReads: true,
+  });
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+  for (let index = 0; index < 20; index += 1) {
+    const now = "2026-04-30T00:00:00.000Z";
+    store.objects.set(
+      `office/v1/records/space-A/file-${index}.json`,
+      JSON.stringify({
+        schema: "takos.office.object-record.v1",
+        revision: `seed-${index}`,
+        file: {
+          id: `file-${index}`,
+          name: `file-${index}.txt`,
+          type: "file",
+          createdAt: now,
+          updatedAt: now,
+        },
+      }),
+    );
+  }
+
+  let done = false;
+  const listing = client.list().finally(() => {
+    done = true;
+  });
+  while (store.heldReads.length === 0) await Promise.resolve();
+  expect(store.maxInFlightReads()).toBeLessThanOrEqual(8);
+  while (!done) {
+    store.heldReads.splice(0).forEach((release) => release());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  await listing;
+  expect(store.maxInFlightReads()).toBe(8);
+});
+
+test("folder creation is deterministic and create-only", async () => {
+  const store = installObjectStoreFetch();
+  const a = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+  const b = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+
+  const [first, second] = await Promise.all([
+    a.createFolder("takos-docs"),
+    b.createFolder("takos-docs"),
+  ]);
+
+  expect(first.id).toBe(second.id);
+  expect(store.objects.size).toBe(1);
+  expect(
+    store.requests
+      .filter((request) => request.method === "PUT")
+      .every((request) => request.headers.get("if-none-match") === "*"),
+  ).toBe(true);
+});
+
+test("content update uses the object ETag as an atomic precondition", async () => {
+  const store = installObjectStoreFetch();
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+  const file = await client.create("report.txt", undefined, {
+    content: "first",
+  });
+  await client.putContent(file.id, "second");
+
+  const update = store.requests
+    .filter((request) => request.method === "PUT")
+    .at(-1);
+  expect(update?.headers.get("if-match")).toMatch(/^"r\d+"$/);
+});
+
+test("delete refuses a stale Office record revision", async () => {
+  const store = installObjectStoreFetch();
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+  );
+  const created = await client.create("report.txt", undefined, {
+    content: "first",
+  });
+  const current = await client.get(created.id);
+  expect(current?.revision).toBeDefined();
+
+  await client.putContent(created.id, "second");
+  await expect(
+    client.delete(created.id, { expectedRevision: current!.revision }),
+  ).rejects.toThrow("modified by another writer");
+  expect(store.objects.size).toBe(1);
+});
+
 test("get hides only a missing object, not authentication failures", async () => {
   installObjectStoreFetch("different-token");
   const client = createTakosStorageClient(
@@ -217,5 +417,58 @@ test("get hides only a missing object, not authentication failures", async () =>
 
   await expect(client.get("missing")).rejects.toThrow(
     "Object storage API error: 401",
+  );
+});
+
+test("record reads reject oversized JSON before parsing it", async () => {
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+    "",
+    {
+      fetchImpl: async () =>
+        new Response("{}", {
+          headers: {
+            "content-length": String(10 * 1024 * 1024),
+            etag: '"r1"',
+          },
+        }),
+    },
+  );
+
+  await expect(client.get("too-large")).rejects.toThrow(
+    "Object storage JSON response exceeded",
+  );
+});
+
+test("record identity must match the object key", async () => {
+  const now = "2026-04-30T00:00:00.000Z";
+  const client = createTakosStorageClient(
+    "https://storage.example",
+    "token",
+    "space-A",
+    "",
+    {
+      fetchImpl: async () =>
+        Response.json(
+          {
+            schema: "takos.office.object-record.v1",
+            revision: "r1",
+            file: {
+              id: "different-file",
+              name: "swapped.txt",
+              type: "file",
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+          { headers: { etag: '"r1"' } },
+        ),
+    },
+  );
+
+  await expect(client.get("expected-file")).rejects.toThrow(
+    "does not match its object key",
   );
 });

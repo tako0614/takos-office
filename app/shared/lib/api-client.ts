@@ -1,4 +1,4 @@
-import { withCurrentSpaceId } from "./space-id.ts";
+import { withCurrentSpaceId, workspaceStorageKey } from "./space-id.ts";
 
 /**
  * Shared frontend storage-API client for the office editors.
@@ -23,6 +23,8 @@ export interface ApiClient {
   apiPath: string;
   /** Drop this editor's localStorage cache entry. */
   clearCache(): void;
+  /** Current Workspace-scoped localStorage cache key. */
+  cacheKey(): string;
   /** Redirect to the login flow, preserving the current location as return_to. */
   redirectToLogin(): void;
   /** Append the active Workspace id (`space_id`) query to a path. */
@@ -37,8 +39,12 @@ export function createApiClient(
 ): ApiClient {
   const apiPath = `${BASE_PATH}${apiPathSuffix}`;
 
+  function cacheKey(): string {
+    return workspaceStorageKey(storageKey);
+  }
+
   function clearCache(): void {
-    localStorage.removeItem(storageKey);
+    localStorage.removeItem(cacheKey());
   }
 
   function redirectToLogin(): void {
@@ -69,6 +75,7 @@ export function createApiClient(
 
   return {
     apiPath,
+    cacheKey,
     clearCache,
     redirectToLogin,
     withCurrentSpaceId,

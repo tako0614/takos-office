@@ -1,11 +1,5 @@
 /**
- * Hono HTTP server for takos-slide with MCP endpoint.
- *
- * Usage:
- *   bun src/server.ts
- *
- * Endpoints:
- *   POST /mcp — MCP Streamable HTTP transport
+ * Slide routes mounted below `/slide` by the single Takos Office worker.
  */
 
 import { Hono } from "hono";
@@ -14,29 +8,26 @@ import {
   createPresentationStore,
   PresentationConflictError,
 } from "./presentation-store.ts";
-import { createSlideMcpServer } from "./mcp.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Presentation } from "./types/index.ts";
+import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
 import {
-  appAuthMisconfigured,
-  registerAuthRoutes,
-  requireAppAuth,
-} from "../../shared/app-auth.ts";
-import { createSlideRuntimeCapabilityManifest } from "./runtime-capabilities.ts";
-import {
-  createMcpRequestHandler,
-  MAX_MCP_REQUEST_BYTES,
-  mcpAuthMisconfigured,
-} from "../../shared/mcp-factory.ts";
-import {
-  envFlagEnabled,
   envValue,
-  nativeRenderingEnabled,
   type RuntimeEnv,
   runtimeEnv,
 } from "../../shared/runtime-env.ts";
-
-export const SLIDE_MAX_MCP_REQUEST_BYTES = MAX_MCP_REQUEST_BYTES;
+import {
+  ifMatchRevision,
+  inputErrorResponse,
+  preconditionRequired,
+  readApiJson,
+  withEntityTag,
+} from "../../shared/http-policy.ts";
+import {
+  presentationCreateSchema,
+  presentationSchema,
+  titlePatchSchema,
+} from "../../shared/office-schema.ts";
 
 export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const apiUrl =
@@ -44,6 +35,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
   const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
   const stores = new Map<string, ReturnType<typeof createPresentationStore>>();
@@ -61,7 +53,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
     }
     return store;
   };
-  const requestSpaceId = (c: Context): string | null =>
+  const selectedSpaceId = (c: Context): string | null =>
     envValue(
       {
         value:
@@ -69,9 +61,19 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
       },
       "value",
     ) ?? null;
+  const requestSpaceId = (c: Context): string | null =>
+    managedWorkspaceId ?? selectedSpaceId(c);
+  const workspaceMismatch = (c: Context): Response | null => {
+    const requested = selectedSpaceId(c);
+    return managedWorkspaceId && requested && requested !== managedWorkspaceId
+      ? c.json({ error: "workspace_owner_mismatch" }, 403)
+      : null;
+  };
   const storeForRequest = (
     c: Context,
   ): ReturnType<typeof createPresentationStore> | Response => {
+    const mismatch = workspaceMismatch(c);
+    if (mismatch) return mismatch;
     const spaceId = requestSpaceId(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
     if (!token) return storageUnavailable(c);
@@ -104,42 +106,38 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.post("/api/presentations", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const body = await c.req.json<Partial<Presentation>>();
-    if (body.id && body.title && body.slides) {
-      return c.json(await store.replace(body as Presentation), 201);
-    }
-    return c.json(
-      await store.create(body.title || "Untitled Presentation"),
-      201,
-    );
+    const body = await readApiJson(c.req.raw, presentationCreateSchema);
+    const created = await store.create(body.title || "Untitled Presentation");
+    return withEntityTag(c.json(created, 201), created.updatedAt);
   });
   app.get("/api/presentations/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
     const presentation = await store.get(c.req.param("id"));
     return presentation
-      ? c.json(presentation)
+      ? withEntityTag(c.json(presentation), presentation.updatedAt)
       : c.json({ error: "Presentation not found" }, 404);
   });
   app.put("/api/presentations/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const body = await c.req.json<Presentation>();
+    const body = await readApiJson(c.req.raw, presentationSchema);
     const id = c.req.param("id");
     const current = await store.get(id);
     // Optimistic concurrency: If-Match carries the version the browser loaded;
     // a stale match means a concurrent (e.g. MCP) write landed, so reject with
     // 409 + the current presentation instead of clobbering it.
-    const expectedUpdatedAt = c.req.header("If-Match") || undefined;
+    const expectedUpdatedAt = ifMatchRevision(c.req.raw);
+    if (current && !expectedUpdatedAt) return preconditionRequired(c);
+    if (!current && c.req.header("if-none-match") !== "*") {
+      return preconditionRequired(c);
+    }
     try {
-      return c.json(
-        await store.replace(
-          { ...body, id: current?.id ?? body.id ?? id },
-          {
-            expectedUpdatedAt,
-          },
-        ),
+      const saved = await store.replace(
+        { ...body, id: current?.id ?? id },
+        current ? { expectedUpdatedAt: expectedUpdatedAt! } : undefined,
       );
+      return withEntityTag(c.json(saved), saved.updatedAt);
     } catch (error) {
       if (error instanceof PresentationConflictError) {
         return c.json({ current: error.current }, 409);
@@ -150,20 +148,50 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.patch("/api/presentations/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    const body = await c.req.json<{ title?: unknown }>();
-    if (typeof body.title !== "string" || !body.title.trim()) {
-      return c.json({ error: "title_required" }, 400);
-    }
+    const current = await store.get(c.req.param("id"));
+    if (!current) return c.json({ error: "Presentation not found" }, 404);
+    const expectedUpdatedAt = ifMatchRevision(c.req.raw);
+    if (!expectedUpdatedAt) return preconditionRequired(c);
+    const body = await readApiJson(c.req.raw, titlePatchSchema);
     try {
-      return c.json(await store.setTitle(c.req.param("id"), body.title.trim()));
-    } catch {
+      const saved = await store.replace(
+        {
+          ...current,
+          title: body.title.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+        { expectedUpdatedAt },
+      );
+      return withEntityTag(c.json(saved), saved.updatedAt);
+    } catch (error) {
+      if (error instanceof PresentationConflictError) {
+        return c.json({ error: "conflict", current: error.current }, 409);
+      }
       return c.json({ error: "Presentation not found" }, 404);
     }
   });
   app.delete("/api/presentations/:id", async (c) => {
     const store = storeForRequest(c);
     if (store instanceof Response) return store;
-    return c.json({ deleted: await store.delete(c.req.param("id")) });
+    const current = await store.get(c.req.param("id"));
+    if (!current) return c.json({ deleted: false });
+    const expectedUpdatedAt = ifMatchRevision(c.req.raw);
+    if (!expectedUpdatedAt) return preconditionRequired(c);
+    if (current.updatedAt !== expectedUpdatedAt) {
+      return c.json({ error: "conflict", current }, 409);
+    }
+    try {
+      return c.json({
+        deleted: await store.delete(c.req.param("id"), {
+          expectedUpdatedAt,
+        }),
+      });
+    } catch (error) {
+      if (error instanceof PresentationConflictError) {
+        return c.json({ error: "conflict", current: error.current }, 409);
+      }
+      throw error;
+    }
   });
 
   app.get("/files/:id", (c) => {
@@ -172,36 +200,11 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
     return c.redirect(`${url.pathname}${url.search}`, 302);
   });
 
-  app.all("/mcp", (c) => {
-    const store = storeForRequest(c);
-    if (store instanceof Response) return store;
-    const handler = createMcpRequestHandler(
-      () =>
-        createSlideMcpServer(store, {
-          runtimeCapabilities: createSlideRuntimeCapabilityManifest({
-            nativeRendering: nativeRenderingEnabled(env),
-          }),
-        }),
-      {
-        authToken: envValue(env, "MCP_AUTH_TOKEN"),
-        allowUnauthenticated: envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
-      },
-    );
-    return handler(c.req.raw);
+  app.onError((error, c) => {
+    const input = inputErrorResponse(error, c);
+    if (input) return input;
+    return c.json({ error: "internal_error" }, 500);
   });
-
-  const health = (c: Context) => {
-    const authError = appAuthMisconfigured(env);
-    if (authError) return authError;
-    const mcpAuthError = mcpAuthMisconfigured(
-      envValue(env, "MCP_AUTH_TOKEN"),
-      envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
-    );
-    if (mcpAuthError) return mcpAuthError;
-    return c.json({ status: "ok" });
-  };
-  app.get("/health", health);
-  app.get("/healthz", health);
 
   return app;
 }

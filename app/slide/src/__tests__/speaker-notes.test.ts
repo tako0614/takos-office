@@ -31,11 +31,14 @@ function createMemoryStorage() {
   };
 
   const client: TakosStorageClient = {
+    ready() {
+      return Promise.resolve();
+    },
     list(prefix?: string) {
       const all = [...files.values()];
       if (!prefix) return Promise.resolve(all);
-      const folder = all.find((file) =>
-        file.type === "folder" && file.name === prefix
+      const folder = all.find(
+        (file) => file.type === "folder" && file.name === prefix,
       );
       return Promise.resolve(
         folder ? all.filter((file) => file.parentId === folder.id) : [],

@@ -11,11 +11,14 @@
     "build:spa": "bun run build:docs && bun run build:slide && bun run build:sheet",
     "build:worker": "bun run app/build-worker.ts",
     "build": "bun run build:spa && bun run build:worker",
+    "check:dist": "bun run scripts/check-worker-size.ts",
+    "fmt:check": "git diff --check \"$(git hash-object -t tree /dev/null)\" -- . && tofu fmt -check -recursive",
+    "typecheck": "tsc --noEmit",
     "start": "bun run app/server.ts",
     "mcp": "bun run app/server.ts",
     "smoke:post-deploy": "bun run scripts/post-deploy-smoke.ts",
     "test": "bun test app/__tests__ app/docs/src/__tests__ app/slide/src/__tests__ app/sheet/src/__tests__",
-    "check": "tsc --noEmit"
+    "check": "bun run fmt:check && bun run typecheck && bun run test && bun run build && bun run check:dist"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",

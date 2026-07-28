@@ -5,7 +5,10 @@ import {
   PresentationConflictError,
   sanitizeElementUpdateProperties,
 } from "../presentation-store.ts";
-import type { StorageFile, TakosStorageClient } from "../../../shared/lib/takos-storage.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../../shared/lib/takos-storage.ts";
 import type { Presentation } from "../types/index.ts";
 
 function makePresentation(overrides: Partial<Presentation> = {}): Presentation {
@@ -13,11 +16,13 @@ function makePresentation(overrides: Partial<Presentation> = {}): Presentation {
   return {
     id: overrides.id ?? "presentation-1",
     title: overrides.title ?? "Deck",
-    slides: overrides.slides ?? [{
-      id: "slide-1",
-      elements: [],
-      background: "#ffffff",
-    }],
+    slides: overrides.slides ?? [
+      {
+        id: "slide-1",
+        elements: [],
+        background: "#ffffff",
+      },
+    ],
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
   };
@@ -48,11 +53,14 @@ function createMemoryStorage() {
   };
 
   const client: TakosStorageClient = {
+    ready() {
+      return Promise.resolve();
+    },
     list(prefix?: string) {
       const all = [...files.values()];
       if (!prefix) return Promise.resolve(all);
-      const folder = all.find((file) =>
-        file.type === "folder" && file.name === prefix
+      const folder = all.find(
+        (file) => file.type === "folder" && file.name === prefix,
       );
       return Promise.resolve(
         folder ? all.filter((file) => file.parentId === folder.id) : [],
@@ -169,11 +177,7 @@ test("PresentationStore ignores legacy .json files", async () => {
     folder.id,
     "application/vnd.takos.slide+json",
   );
-  const currentFile = storage.makeFile(
-    "current.takosslide",
-    "file",
-    folder.id,
-  );
+  const currentFile = storage.makeFile("current.takosslide", "file", folder.id);
   storage.content.set(legacyFile.id, JSON.stringify(legacyPresentation));
   storage.content.set(currentFile.id, JSON.stringify(currentPresentation));
 
@@ -190,8 +194,8 @@ test("PresentationStore creates only .takosslide files", async () => {
   const store = createPresentationStore(storage.client);
 
   const presentation = await store.create("Deck");
-  const createdFile = [...storage.files.values()].find((file) =>
-    file.type === "file"
+  const createdFile = [...storage.files.values()].find(
+    (file) => file.type === "file",
   );
 
   expect(createdFile?.name).toEqual(`${presentation.id}.takosslide`);
@@ -203,8 +207,8 @@ test("PresentationStore creates template presentations as .takosslide files", as
   const store = createPresentationStore(storage.client);
 
   const presentation = await store.createFromTemplate("Deck", "blank");
-  const createdFile = [...storage.files.values()].find((file) =>
-    file.type === "file"
+  const createdFile = [...storage.files.values()].find(
+    (file) => file.type === "file",
   );
 
   expect(createdFile?.name).toEqual(`${presentation.id}.takosslide`);
@@ -331,7 +335,9 @@ test("PresentationStore reflects external writes on re-read (no stale cache)", a
   );
 
   expect((await store.get("p1"))?.title).toEqual("Updated elsewhere");
-  expect((await store.list()).map((p) => p.title)).toEqual(["Updated elsewhere"]);
+  expect((await store.list()).map((p) => p.title)).toEqual([
+    "Updated elsewhere",
+  ]);
 
   // A mutation must build on the externally-updated state, not a stale copy.
   await store.setTitle("p1", "Renamed");
@@ -399,7 +405,11 @@ test("replace with a stale expectedUpdatedAt throws a conflict", async () => {
   let conflict: unknown;
   try {
     await store.replace(
-      makePresentation({ id: "p1", title: "Browser snapshot", updatedAt: "v0" }),
+      makePresentation({
+        id: "p1",
+        title: "Browser snapshot",
+        updatedAt: "v0",
+      }),
       { expectedUpdatedAt: "v0" },
     );
   } catch (e) {

@@ -1,0 +1,19 @@
+{
+  "kind": "takos.release-artifact-lock@v1",
+  "app": "takos-office",
+  "releases": {
+    "v0.3.0": {
+      "commit": "a36990f4e461e5a8d5523d181fa3f04c7dc312e9",
+      "artifact": {
+        "filename": "worker.js",
+        "url": "https://github.com/tako0614/takos-office/releases/download/v0.3.0/worker.js",
+        "sha256": "sha256:7ebf45f1905841589a6bc119fdd1284f7a7aeb808097ff0b63914a85e9763df9"
+      },
+      "manifest": {
+        "url": "https://github.com/tako0614/takos-office/releases/download/v0.3.0/takosumi-artifact.json",
+        "sha256": "sha256:2c20244c0a8dd4b90c6134a41c019ecc7c461fbc75c1c5724f6bac088e94ed62"
+      },
+      "seededFrom": "read-only GET of the published GitHub Release assets on 2026-07-28; reconciled against manifest kind, app, releaseTag, artifact URL, artifact SHA-256, source commit, and both downloaded digests"
+    }
+  }
+}

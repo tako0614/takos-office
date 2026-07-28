@@ -1,0 +1,41 @@
+import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+
+const moduleUrl = new URL("../../deploy/takoform/", import.meta.url);
+const [main, outputs] = await Promise.all([
+  readFile(new URL("main.tf", moduleUrl), "utf8"),
+  readFile(new URL("outputs.tf", moduleUrl), "utf8"),
+]);
+
+describe("Takos Office Takoform Capsule", () => {
+  test("owns one portable EdgeWorker and no storage backend", () => {
+    expect(main).toContain('resource "takoform_edge_worker" "worker"');
+    expect(main).not.toContain("takoform_object_bucket");
+    expect(main).toContain(
+      'source  = "registry.opentofu.org/tako0614/takoform"',
+    );
+  });
+
+  test("never uses Cloudflare compatibility as managed desired state", () => {
+    expect(main).not.toContain("cloudflare/cloudflare");
+    expect(main).not.toContain('resource "cloudflare_');
+    expect(main).not.toContain("/compat/cloudflare/");
+  });
+
+  test("preserves all ordinary Office runtime outputs", () => {
+    for (const name of [
+      "launch_url",
+      "mcp_url",
+      "docs_url",
+      "slide_url",
+      "sheet_url",
+      "docs_file_open_url",
+      "slide_file_open_url",
+      "sheet_file_open_url",
+    ]) {
+      expect(outputs).toContain(`output "${name}"`);
+    }
+    expect(outputs).not.toContain("app_deployment");
+    expect(outputs).not.toContain("service_exports");
+  });
+});

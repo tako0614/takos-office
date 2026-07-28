@@ -7,12 +7,24 @@
  * space id (or no `location`, e.g. under bun test / SSR).
  */
 export function withCurrentSpaceId(path: string): string {
-  const query = globalThis.location
-    ? new URLSearchParams(globalThis.location.search)
-    : null;
-  const spaceId = query?.get("space_id") ?? query?.get("spaceId");
+  const spaceId = currentWorkspaceId();
   if (!spaceId) return path;
   const url = new URL(path, globalThis.location.origin);
   url.searchParams.set("space_id", spaceId);
   return `${url.pathname}${url.search}`;
+}
+
+export function currentWorkspaceId(): string | null {
+  const query = globalThis.location
+    ? new URLSearchParams(globalThis.location.search)
+    : null;
+  const value = query?.get("space_id") ?? query?.get("spaceId");
+  return value && value.trim() ? value : null;
+}
+
+export function workspaceStorageKey(baseKey: string): string {
+  const workspaceId = currentWorkspaceId();
+  return workspaceId
+    ? `${baseKey}:workspace:${encodeURIComponent(workspaceId)}`
+    : baseKey;
 }

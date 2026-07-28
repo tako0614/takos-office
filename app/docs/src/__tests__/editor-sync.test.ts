@@ -18,10 +18,12 @@ test("load binds the freshly loaded document", () => {
   expect(nextBoundDoc(null, { kind: "load", doc: loaded })).toBe(loaded);
 });
 
-test("conflict adopts the server's current document", () => {
+test("conflict keeps the rejected local draft visible", () => {
   const current = makeDoc({ content: "local" });
   const server = makeDoc({ content: "theirs", updatedAt: "later" });
-  expect(nextBoundDoc(current, { kind: "conflict", doc: server })).toBe(server);
+  expect(nextBoundDoc(current, { kind: "conflict", doc: server })).toBe(
+    current,
+  );
 });
 
 test("a save echo never resets the bound document (no mid-typing revert)", () => {

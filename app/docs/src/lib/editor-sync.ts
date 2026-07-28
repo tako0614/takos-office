@@ -5,10 +5,10 @@ import type { Document } from "../types/index.ts";
  *
  * The TipTap editor is bound reactively to the `doc` signal's content, so any
  * change to the bound document re-applies into the live editor (resetting its
- * content and cursor). That must only happen for an EXTERNAL source of truth:
- *   - `load`     — opening a document or switching ids
- *   - `conflict` — adopting the server's version after a 409 optimistic-
- *                  concurrency rejection
+ * content and cursor). That must only happen when opening a document or
+ * switching ids. A conflict rebases the writer's precondition, but the rejected
+ * local draft stays queued and visible; replacing the bound document with the
+ * server copy would hide that retained draft and lose it on the next edit.
  *
  * A *successful* autosave echoes back the exact content the client just sent.
  * Feeding that echo back into the bound document would reset the editor
@@ -33,8 +33,8 @@ export function nextBoundDoc(
 ): Document | null {
   switch (event.kind) {
     case "load":
-    case "conflict":
       return event.doc;
+    case "conflict":
     case "saveEcho":
       return current;
   }

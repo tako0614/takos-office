@@ -18,6 +18,8 @@ import type {
   StorageFile,
   TakosStorageClient,
 } from "../../shared/lib/takos-storage.ts";
+import { ObjectStorageConflictError } from "../../shared/lib/takos-storage.ts";
+import { nextEntityRevision } from "../../shared/lib/entity-revision.ts";
 
 const FOLDER_NAME = "takos-docs";
 const FILE_EXTENSION = ".takosdoc";
@@ -52,7 +54,7 @@ export interface DocumentStore {
     data: Partial<Pick<Document, "title" | "content">>,
     opts?: WriteOptions,
   ): Promise<Document | null>;
-  delete(id: string): Promise<boolean>;
+  delete(id: string, opts?: WriteOptions): Promise<boolean>;
   search(query: string): Promise<Document[]>;
 }
 
@@ -65,6 +67,7 @@ export class TakosDocumentStore implements DocumentStore {
    * re-read content from storage.
    */
   private fileIds = new Map<string, string>();
+  private recordRevisions = new Map<string, string>();
   private folderId: string | null = null;
 
   constructor(client: TakosStorageClient) {
@@ -84,18 +87,23 @@ export class TakosDocumentStore implements DocumentStore {
     return undefined;
   }
 
-  private async loadFile(fileId: string, known?: StorageFile): Promise<
-    { doc: Document; fileId: string } | null
-  > {
+  private async loadFile(
+    fileId: string,
+    known?: StorageFile,
+  ): Promise<{ doc: Document; fileId: string } | null> {
     // When the caller already holds the StorageFile metadata (e.g. from a
     // folder listing) skip the redundant per-file get() round-trip.
-    const file = known ?? await this.client.get(fileId);
+    const file = known ?? (await this.client.get(fileId));
     if (!file || file.type !== "file" || !this.isSupportedFile(file)) {
       return null;
     }
     const raw = await this.client.getContent(file.id);
     const doc = JSON.parse(raw) as Document;
     this.fileIds.set(doc.id, file.id);
+    if (file.revision) {
+      this.recordRevisions.set(doc.id, file.revision);
+      this.recordRevisions.set(file.id, file.revision);
+    }
     return { doc, fileId: file.id };
   }
 
@@ -131,8 +139,8 @@ export class TakosDocumentStore implements DocumentStore {
   private async ensureFolder(): Promise<void> {
     if (this.folderId) return;
     const files = await this.client.list();
-    const folder = files.find((f) =>
-      f.type === "folder" && f.name === FOLDER_NAME
+    const folder = files.find(
+      (f) => f.type === "folder" && f.name === FOLDER_NAME,
     );
     if (folder) {
       this.folderId = folder.id;
@@ -147,8 +155,8 @@ export class TakosDocumentStore implements DocumentStore {
       // path and rejects the loser). Adopt the winner instead of surfacing a
       // spurious 500.
       const retry = await this.client.list();
-      const existing = retry.find((f) =>
-        f.type === "folder" && f.name === FOLDER_NAME
+      const existing = retry.find(
+        (f) => f.type === "folder" && f.name === FOLDER_NAME,
       );
       if (!existing) throw error;
       this.folderId = existing.id;
@@ -179,8 +187,9 @@ export class TakosDocumentStore implements DocumentStore {
 
   async list(): Promise<Document[]> {
     const docs = await this.loadAll();
-    return docs.sort((a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    return docs.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
   }
 
@@ -232,24 +241,43 @@ export class TakosDocumentStore implements DocumentStore {
     if (fileId) {
       // Best-effort optimistic concurrency: re-read just before writing and
       // refuse to overwrite a doc that changed since the caller loaded it.
+      const latest = await this.loadFile(fileId);
       if (opts?.expectedUpdatedAt !== undefined) {
-        const latest = await this.loadFile(fileId);
         if (latest && latest.doc.updatedAt !== opts.expectedUpdatedAt) {
           throw new DocumentConflictError(latest.doc);
         }
       }
-      await this.client.putContent(fileId, JSON.stringify(doc), MIME_TYPE);
-      this.fileIds.set(doc.id, fileId);
-      return doc;
+      const next = {
+        ...doc,
+        id: latest?.doc.id ?? doc.id,
+        createdAt: latest?.doc.createdAt ?? doc.createdAt,
+        updatedAt: nextEntityRevision(latest?.doc.updatedAt),
+      };
+      try {
+        await this.client.putContent(fileId, JSON.stringify(next), MIME_TYPE, {
+          expectedRevision: latest
+            ? this.recordRevisions.get(latest.doc.id)
+            : undefined,
+        });
+      } catch (error) {
+        if (error instanceof ObjectStorageConflictError) {
+          const current = await this.loadFile(fileId);
+          if (current) throw new DocumentConflictError(current.doc);
+        }
+        throw error;
+      }
+      this.fileIds.set(next.id, fileId);
+      return next;
     }
 
+    const next = { ...doc, updatedAt: nextEntityRevision() };
     const file = await this.client.create(
-      `${doc.id}${FILE_EXTENSION}`,
+      `${next.id}${FILE_EXTENSION}`,
       this.folderId ?? undefined,
-      { content: JSON.stringify(doc), mimeType: MIME_TYPE },
+      { content: JSON.stringify(next), mimeType: MIME_TYPE },
     );
-    this.fileIds.set(doc.id, file.id);
-    return doc;
+    this.fileIds.set(next.id, file.id);
+    return next;
   }
 
   async update(
@@ -281,14 +309,24 @@ export class TakosDocumentStore implements DocumentStore {
     const updated: Document = {
       ...current,
       ...data,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nextEntityRevision(current.updatedAt),
     };
 
-    await this.client.putContent(fileId, JSON.stringify(updated), MIME_TYPE);
+    try {
+      await this.client.putContent(fileId, JSON.stringify(updated), MIME_TYPE, {
+        expectedRevision: this.recordRevisions.get(current.id),
+      });
+    } catch (error) {
+      if (error instanceof ObjectStorageConflictError) {
+        const latest = await this.loadFile(fileId);
+        if (latest) throw new DocumentConflictError(latest.doc);
+      }
+      throw error;
+    }
     return updated;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, opts?: WriteOptions): Promise<boolean> {
     await this.ensureFolder();
 
     // Resolve from folder metadata so a fresh isolate can delete docs it never
@@ -296,7 +334,25 @@ export class TakosDocumentStore implements DocumentStore {
     const fileId = await this.resolveFileId(id);
     if (!fileId) return false;
 
-    await this.client.delete(fileId);
+    const current = await this.loadFile(fileId);
+    if (!current) return false;
+    if (
+      opts?.expectedUpdatedAt !== undefined &&
+      current.doc.updatedAt !== opts.expectedUpdatedAt
+    ) {
+      throw new DocumentConflictError(current.doc);
+    }
+    try {
+      await this.client.delete(fileId, {
+        expectedRevision: this.recordRevisions.get(current.doc.id),
+      });
+    } catch (error) {
+      if (error instanceof ObjectStorageConflictError) {
+        const latest = await this.loadFile(fileId);
+        if (latest) throw new DocumentConflictError(latest.doc);
+      }
+      throw error;
+    }
     this.fileIds.delete(id);
     return true;
   }

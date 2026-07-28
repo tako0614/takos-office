@@ -1,17 +1,17 @@
 import { expect, test } from "bun:test";
 
-import {
-  createSlideAppFromEnv,
-  SLIDE_MAX_MCP_REQUEST_BYTES,
-} from "../server.ts";
+import { createSlideAppFromEnv } from "../server.ts";
 
+// Sign-in is required by default, so the shared fixture takes the explicit
+// public opt-in and the auth tests drop it again.
 const env = {
   OBJECT_STORAGE_API_URL: "http://localhost:8787",
   OBJECT_STORAGE_ACCESS_TOKEN: "token",
   TAKOS_SPACE_ID: "space-1",
   TAKOS_NATIVE_RENDERING: "0",
   MCP_AUTH_TOKEN: "secret",
-};
+  ALLOW_UNAUTHENTICATED_ACCESS: "1",
+} as Record<string, string | undefined>;
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -26,7 +26,11 @@ async function makeSessionCookie(
   secret: string,
   payload: { sub: string; name?: string; spaceIds: string[]; exp: number },
 ): Promise<string> {
-  const data = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const data = base64Url(
+    new TextEncoder().encode(
+      JSON.stringify({ ...payload, accessToken: "test-access-token" }),
+    ),
+  );
   // Mirror app-auth seal(): the MAC is bound to the "session" purpose.
   const signed = `session.${data}`;
   const key = await crypto.subtle.importKey(
@@ -108,7 +112,14 @@ function installObjectStorageMock(records: Map<string, OfficeRecord>) {
         Response.json({ error: "object_not_found" }, { status: 404 }),
       );
     }
-    return Promise.resolve(Response.json(record));
+    return Promise.resolve(
+      new Response(JSON.stringify(record), {
+        headers: {
+          "content-type": "application/json",
+          etag: `"${record.file.updatedAt}"`,
+        },
+      }),
+    );
   }) as typeof fetch;
   return {
     calls,
@@ -158,18 +169,26 @@ function seedPresentationRecords(
   ]);
 }
 
-test("health endpoint returns ok", async () => {
+test("slide sub-app exposes no MCP or health control surface", async () => {
   const app = createSlideAppFromEnv(env);
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
+  expect((await app.request("/health")).status).toEqual(404);
+  expect((await app.request("/healthz")).status).toEqual(404);
+  expect(
+    (
+      await app.request(
+        new Request("http://localhost/mcp", {
+          method: "POST",
+          body: "{}",
+        }),
+      )
+    ).status,
+  ).toEqual(404);
 });
 
 test("presentation collection writes require app auth when enabled", async () => {
   const app = createSlideAppFromEnv({
     ...env,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -185,80 +204,6 @@ test("presentation collection writes require app auth when enabled", async () =>
 
   expect(res.status).toEqual(401);
   expect(await res.json()).toEqual({ error: "Unauthorized" });
-});
-
-test("mcp endpoint rejects oversized request bodies", async () => {
-  const app = createSlideAppFromEnv(env);
-  const res = await app.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer secret",
-        "content-type": "application/json",
-        "content-length": String(SLIDE_MAX_MCP_REQUEST_BYTES + 1),
-      },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(413);
-  expect(await res.json()).toEqual({ error: "Request body too large" });
-});
-
-test("mcp endpoint enforces optional bearer auth before handling body", async () => {
-  const app = createSlideAppFromEnv(env);
-  const res = await app.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(401);
-  expect(await res.json()).toEqual({ error: "Unauthorized" });
-});
-
-test("mcp endpoint fails closed when token is missing", async () => {
-  const app = createSlideAppFromEnv({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-  });
-  const res = await app.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
-test("health endpoint allows explicit unauthenticated access when configured", async () => {
-  const app = createSlideAppFromEnv({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-    MCP_ALLOW_UNAUTHENTICATED: "true",
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
-});
-
-test("startup does not require TAKOS_SPACE_ID", async () => {
-  const app = createSlideAppFromEnv({
-    ...env,
-    TAKOS_SPACE_ID: undefined,
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok" });
 });
 
 test("file handler route redirects to presentation editor route", async () => {
@@ -297,13 +242,21 @@ test("presentation API opens and saves advertised file by storage id in request 
         "http://localhost/api/presentations/file-1?space_id=space-q",
         {
           method: "PUT",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "if-match": now,
+          },
           body: JSON.stringify({ ...presentation, title: "Updated" }),
         },
       ),
     );
     expect(putRes.status).toEqual(200);
-    expect((await putRes.json()).id).toEqual("pres-1");
+    const savedPresentation = await putRes.json();
+    expect(savedPresentation.id).toEqual("pres-1");
+    expect(savedPresentation.updatedAt).not.toEqual(now);
+    expect(putRes.headers.get("etag")).toEqual(
+      `"${savedPresentation.updatedAt}"`,
+    );
 
     // The save must land on file-1's record key in the request space.
     const savedKey = recordKey("space-q", "file-1");
@@ -316,6 +269,9 @@ test("presentation API opens and saves advertised file by storage id in request 
     const saved = records.get(savedKey);
     expect(saved?.file.mimeType).toEqual("application/vnd.takos.slide+json");
     expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Updated");
+    expect(JSON.parse(saved?.content ?? "{}").updatedAt).toEqual(
+      savedPresentation.updatedAt,
+    );
   } finally {
     mock.restore();
   }
@@ -343,7 +299,10 @@ test("presentation API renames a presentation via PATCH and persists the new tit
         "http://localhost/api/presentations/pres-1?space_id=space-q",
         {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "if-match": now,
+          },
           body: JSON.stringify({ title: "New name" }),
         },
       ),
@@ -384,7 +343,10 @@ test("presentation API PATCH rejects empty or missing titles and unknown ids", a
           `http://localhost/api/presentations/${id}?space_id=space-q`,
           {
             method: "PATCH",
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "if-match": now,
+            },
             body: JSON.stringify(body),
           },
         ),
@@ -392,11 +354,11 @@ test("presentation API PATCH rejects empty or missing titles and unknown ids", a
 
     const emptyTitle = await patch("pres-1", { title: "" });
     expect(emptyTitle.status).toEqual(400);
-    expect(await emptyTitle.json()).toEqual({ error: "title_required" });
+    expect(await emptyTitle.json()).toEqual({ error: "invalid_request" });
 
     const missingTitle = await patch("pres-1", {});
     expect(missingTitle.status).toEqual(400);
-    expect(await missingTitle.json()).toEqual({ error: "title_required" });
+    expect(await missingTitle.json()).toEqual({ error: "invalid_request" });
 
     const unknownId = await patch("nope", { title: "New name" });
     expect(unknownId.status).toEqual(404);
@@ -412,25 +374,12 @@ test("presentation API PATCH rejects empty or missing titles and unknown ids", a
   }
 });
 
-test("health endpoint fails when token is missing", async () => {
-  const app = createSlideAppFromEnv({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
 test("presentation API rejects spaces outside the subject's membership", async () => {
   const sessionSecret = "session-secret";
   const app = createSlideAppFromEnv({
     ...env,
     TAKOS_SPACE_ID: undefined,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -457,7 +406,7 @@ test("presentation API allows spaces in the subject's membership", async () => {
   const app = createSlideAppFromEnv({
     ...env,
     TAKOS_SPACE_ID: undefined,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",

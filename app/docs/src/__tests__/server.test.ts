@@ -2,13 +2,16 @@ import { expect, test } from "bun:test";
 
 import { createDocsApp } from "../server.ts";
 
+// Sign-in is required by default, so the shared fixture takes the explicit
+// public opt-in and the auth tests drop it again.
 const env = {
   OBJECT_STORAGE_API_URL: "http://localhost:8787",
   OBJECT_STORAGE_ACCESS_TOKEN: "token",
   TAKOS_SPACE_ID: "space-1",
   TAKOS_NATIVE_RENDERING: "0",
   MCP_AUTH_TOKEN: "secret",
-};
+  ALLOW_UNAUTHENTICATED_ACCESS: "1",
+} as Record<string, string | undefined>;
 
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -23,7 +26,11 @@ async function makeSessionCookie(
   secret: string,
   payload: { sub: string; name?: string; spaceIds: string[]; exp: number },
 ): Promise<string> {
-  const data = base64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const data = base64Url(
+    new TextEncoder().encode(
+      JSON.stringify({ ...payload, accessToken: "test-access-token" }),
+    ),
+  );
   // Mirror app-auth seal(): the MAC is bound to the "session" purpose.
   const signed = `session.${data}`;
   const key = await crypto.subtle.importKey(
@@ -105,7 +112,14 @@ function installObjectStorageMock(records: Map<string, OfficeRecord>) {
         Response.json({ error: "object_not_found" }, { status: 404 }),
       );
     }
-    return Promise.resolve(Response.json(record));
+    return Promise.resolve(
+      new Response(JSON.stringify(record), {
+        headers: {
+          "content-type": "application/json",
+          etag: `"${record.file.updatedAt}"`,
+        },
+      }),
+    );
   }) as typeof fetch;
   return {
     calls,
@@ -115,10 +129,27 @@ function installObjectStorageMock(records: Map<string, OfficeRecord>) {
   };
 }
 
+test("an install with no Accounts wiring fails closed with 503", async () => {
+  // Authentication is the default, so a worker deployed without the Accounts
+  // variables must name what is missing rather than serve documents to
+  // anonymous callers.
+  const { app } = createDocsApp({
+    ...env,
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
+  });
+  const res = await app.request("http://localhost/api/documents");
+
+  expect(res.status).toEqual(503);
+  expect(await res.json()).toEqual({
+    error: "App auth is not configured",
+    missing: ["OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "APP_SESSION_SECRET"],
+  });
+});
+
 test("document collection writes require app auth when enabled", async () => {
   const { app } = createDocsApp({
     ...env,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -136,60 +167,18 @@ test("document collection writes require app auth when enabled", async () => {
   expect(await res.json()).toEqual({ error: "Unauthorized" });
 });
 
-test("mcp endpoint enforces optional bearer auth before handling body", async () => {
+test("document sub-app exposes no MCP or health control surface", async () => {
   const { app } = createDocsApp(env);
-  const res = await app.request(
+  const mcp = await app.request(
     new Request("http://localhost/mcp", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}",
     }),
   );
-
-  expect(res.status).toEqual(401);
-  expect(await res.json()).toEqual({ error: "Unauthorized" });
-});
-
-test("mcp endpoint fails closed when token is missing", async () => {
-  const { app } = createDocsApp({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-  });
-  const res = await app.request(
-    new Request("http://localhost/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    }),
-  );
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
-test("health endpoint allows explicit unauthenticated access when configured", async () => {
-  const { app } = createDocsApp({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-    MCP_ALLOW_UNAUTHENTICATED: "true",
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok", service: "takos-docs" });
-});
-
-test("startup does not require TAKOS_SPACE_ID", async () => {
-  const { app } = createDocsApp({
-    ...env,
-    TAKOS_SPACE_ID: undefined,
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(200);
-  expect(await res.json()).toEqual({ status: "ok", service: "takos-docs" });
+  expect(mcp.status).toEqual(404);
+  expect((await app.request("/health")).status).toEqual(404);
+  expect((await app.request("/healthz")).status).toEqual(404);
 });
 
 test("file handler route redirects to document editor route", async () => {
@@ -251,17 +240,36 @@ test("document API opens and saves advertised file by storage id in request spac
     });
     const getRes = await app.request("/api/documents/file-1?space_id=space-q");
     expect(getRes.status).toEqual(200);
+    expect(getRes.headers.get("etag")).toEqual(`"${now}"`);
     expect(await getRes.json()).toEqual(doc);
+
+    const missingPrecondition = await app.request(
+      new Request("http://localhost/api/documents/file-1?space_id=space-q", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...doc, title: "Unsafe" }),
+      }),
+    );
+    expect(missingPrecondition.status).toEqual(428);
+    expect(await missingPrecondition.json()).toEqual({
+      error: "precondition_required",
+    });
 
     const putRes = await app.request(
       new Request("http://localhost/api/documents/file-1?space_id=space-q", {
         method: "PUT",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "if-match": now,
+        },
         body: JSON.stringify({ ...doc, title: "Updated" }),
       }),
     );
     expect(putRes.status).toEqual(200);
-    expect((await putRes.json()).id).toEqual("doc-1");
+    const savedDocument = await putRes.json();
+    expect(savedDocument.id).toEqual("doc-1");
+    expect(savedDocument.updatedAt).not.toEqual(now);
+    expect(putRes.headers.get("etag")).toEqual(`"${savedDocument.updatedAt}"`);
 
     // The save must land on file-1's record key in the request space.
     const savedKey = recordKey("space-q", "file-1");
@@ -274,6 +282,9 @@ test("document API opens and saves advertised file by storage id in request spac
     const saved = records.get(savedKey);
     expect(saved?.file.mimeType).toEqual("application/vnd.takos.docs+json");
     expect(JSON.parse(saved?.content ?? "{}").title).toEqual("Updated");
+    expect(JSON.parse(saved?.content ?? "{}").updatedAt).toEqual(
+      savedDocument.updatedAt,
+    );
   } finally {
     mock.restore();
   }
@@ -331,7 +342,10 @@ test("document API renames a document via PATCH and persists the new title", asy
     const res = await app.request(
       new Request("http://localhost/api/documents/doc-1?space_id=space-q", {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "if-match": now,
+        },
         body: JSON.stringify({ title: "New name" }),
       }),
     );
@@ -347,7 +361,10 @@ test("document API renames a document via PATCH and persists the new title", asy
     const missing = await app.request(
       new Request("http://localhost/api/documents/nope?space_id=space-q", {
         method: "PATCH",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "if-match": now,
+        },
         body: JSON.stringify({ title: "New name" }),
       }),
     );
@@ -358,25 +375,12 @@ test("document API renames a document via PATCH and persists the new title", asy
   }
 });
 
-test("health endpoint fails when token is missing", async () => {
-  const { app } = createDocsApp({
-    ...env,
-    MCP_AUTH_TOKEN: undefined,
-  });
-  const res = await app.request("/health");
-
-  expect(res.status).toEqual(503);
-  expect(await res.json()).toEqual({
-    error: "MCP bearer authentication is not configured",
-  });
-});
-
 test("document API rejects spaces outside the subject's membership", async () => {
   const sessionSecret = "session-secret";
   const authEnv = {
     ...env,
     TAKOS_SPACE_ID: undefined,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -404,7 +408,7 @@ test("document API allows spaces in the subject's membership", async () => {
   const authEnv = {
     ...env,
     TAKOS_SPACE_ID: undefined,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -430,6 +434,100 @@ test("document API allows spaces in the subject's membership", async () => {
   expect(await allowed.json()).toEqual({ authenticated: true });
 });
 
+test("session-cookie mutations require a same-origin browser request", async () => {
+  const sessionSecret = "session-secret";
+  const authEnv = {
+    ...env,
+    TAKOS_SPACE_ID: undefined,
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
+    OAUTH_ISSUER_URL: "https://takos.example",
+    OAUTH_CLIENT_ID: "client",
+    APP_SESSION_SECRET: sessionSecret,
+  };
+  const { app } = createDocsApp(authEnv);
+  const cookie = await makeSessionCookie(sessionSecret, {
+    sub: "alice",
+    spaceIds: ["space-allowed"],
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+
+  const response = await app.request(
+    new Request("http://localhost/api/documents?space_id=space-allowed", {
+      method: "POST",
+      headers: {
+        Cookie: `takos_app_session=${cookie}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "Blocked CSRF" }),
+    }),
+  );
+  expect(response.status).toEqual(403);
+  expect(await response.json()).toEqual({ error: "csrf_check_failed" });
+});
+
+test("a revoked Workspace membership stops working on the next request", async () => {
+  const sessionSecret = "session-secret";
+  const authEnv = {
+    ...env,
+    TAKOS_SPACE_ID: undefined,
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
+    OAUTH_ISSUER_URL: "https://takos.example",
+    OAUTH_CLIENT_ID: "client",
+    APP_SESSION_SECRET: sessionSecret,
+  };
+  const { app } = createDocsApp(authEnv);
+  const cookie = await makeSessionCookie(sessionSecret, {
+    sub: "alice",
+    spaceIds: ["space-revoked"],
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    Response.json({
+      sub: "alice",
+      workspace_memberships: [],
+    })) as unknown as typeof fetch;
+  try {
+    const response = await app.request(
+      new Request("http://localhost/api/documents?space_id=space-revoked", {
+        headers: { Cookie: `takos_app_session=${cookie}` },
+      }),
+    );
+    expect(response.status).toEqual(403);
+    expect(await response.json()).toEqual({
+      error: "space_membership_required",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("document JSON input is bounded and schema-checked", async () => {
+  const { app } = createDocsApp(env);
+  const oversized = await app.request(
+    new Request("http://localhost/api/documents?space_id=space-1", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(8 * 1024 * 1024 + 1),
+      },
+      body: "{}",
+    }),
+  );
+  expect(oversized.status).toEqual(413);
+  expect(await oversized.json()).toEqual({ error: "request_too_large" });
+
+  const invalid = await app.request(
+    new Request("http://localhost/api/documents?space_id=space-1", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "valid", unexpected: true }),
+    }),
+  );
+  expect(invalid.status).toEqual(400);
+  expect(await invalid.json()).toEqual({ error: "invalid_request" });
+});
+
 test("an OAuth state cookie cannot be replayed as a session cookie", async () => {
   // Token-purpose binding: /api/auth/login mints a state cookie sealed with the
   // same secret. Replaying it as the session cookie must NOT authenticate (the
@@ -437,7 +535,7 @@ test("an OAuth state cookie cannot be replayed as a session cookie", async () =>
   const sessionSecret = "session-secret";
   const authEnv = {
     ...env,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -466,7 +564,7 @@ test("a session with an empty subject is rejected", async () => {
   const sessionSecret = "session-secret";
   const authEnv = {
     ...env,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -492,7 +590,7 @@ test("a tampered session cookie signature is rejected", async () => {
   const sessionSecret = "session-secret";
   const authEnv = {
     ...env,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -516,16 +614,16 @@ test("a tampered session cookie signature is rejected", async () => {
   expect(res.status).toEqual(401);
 });
 
-test("OAuth callback folds takosumi.space_id into the session when no space_memberships claim is present", async () => {
+test("OAuth callback folds takosumi.workspace_id into the session when no workspace_memberships claim is present", async () => {
   // Regression guard: Takosumi Accounts userinfo historically emits only the
-  // nested `takosumi.space_id` claim and no flat `space_memberships`. The
+  // nested `takosumi.workspace_id` claim and no flat `workspace_memberships`. The
   // callback must still grant membership to that single space. This drives the
   // real login -> callback -> userinfo path (not a pre-baked session cookie).
   const sessionSecret = "session-secret";
   const authEnv = {
     ...env,
     TAKOS_SPACE_ID: undefined,
-    APP_AUTH_REQUIRED: "1",
+    ALLOW_UNAUTHENTICATED_ACCESS: undefined,
     OAUTH_ISSUER_URL: "https://takos.example",
     OAUTH_CLIENT_ID: "client",
     OAUTH_CLIENT_SECRET: "secret",
@@ -555,14 +653,14 @@ test("OAuth callback folds takosumi.space_id into the session when no space_memb
       return Promise.resolve(Response.json({ access_token: "access-1" }));
     }
     if (url.endsWith("/oauth/userinfo")) {
-      // Note: NO space_memberships / spaceMemberships claim here on purpose.
+      // Note: NO workspace_memberships / workspaceMemberships claim here on purpose.
       return Promise.resolve(
         Response.json({
           sub: "alice",
           name: "Alice",
           takosumi: {
             installation_id: "inst-1",
-            space_id: "space-nested",
+            workspace_id: "space-nested",
             role: "member",
           },
         }),
