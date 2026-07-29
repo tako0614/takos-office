@@ -1,5 +1,5 @@
 locals {
-  launch_url = try(takoform_edge_worker.worker.outputs["url"], null)
+  launch_url = try(takoform_http_service.worker.outputs["url"], null)
 }
 
 output "worker_name" {
@@ -43,5 +43,5 @@ output "sheet_file_open_url" {
 
 output "takoform_resource_ids" {
   description = "Canonical portable Resource identities for this instance."
-  value       = { worker = takoform_edge_worker.worker.id }
+  value       = { worker = takoform_http_service.worker.id }
 }

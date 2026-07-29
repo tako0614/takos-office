@@ -8,8 +8,22 @@ const [main, outputs] = await Promise.all([
 ]);
 
 describe("Takos Office Takoform Capsule", () => {
-  test("owns one portable EdgeWorker and no storage backend", () => {
-    expect(main).toContain('resource "takoform_edge_worker" "worker"');
+  test("owns one portable HTTP service and its app-authored Interfaces", () => {
+    expect(main).toContain('resource "takoform_http_service" "worker"');
+    expect(main).toContain('resource "takoform_interface" "surface"');
+    for (const name of [
+      "takos-office.mcp",
+      "takos-office.docs",
+      "takos-office.slide",
+      "takos-office.sheet",
+      "takos-office.docs-file",
+      "takos-office.slide-file",
+      "takos-office.sheet-file",
+    ]) {
+      expect(main).toContain(`name = "${name}"`);
+    }
+    expect(main).toContain('resource_kind = "HttpService"');
+    expect(main).toContain('originInput = "origin"');
     expect(main).not.toContain("takoform_object_bucket");
     expect(main).toContain(
       'source  = "registry.opentofu.org/tako0614/takoform"',
@@ -20,6 +34,8 @@ describe("Takos Office Takoform Capsule", () => {
     expect(main).not.toContain("cloudflare/cloudflare");
     expect(main).not.toContain('resource "cloudflare_');
     expect(main).not.toContain("/compat/cloudflare/");
+    expect(main).not.toContain("compatibility_date");
+    expect(main).not.toContain("compatibility_flags");
   });
 
   test("preserves all ordinary Office runtime outputs", () => {

@@ -4,7 +4,7 @@ terraform {
   required_providers {
     takoform = {
       source  = "registry.opentofu.org/tako0614/takoform"
-      version = "= 0.1.2"
+      version = "= 0.2.0"
     }
   }
 }
@@ -48,32 +48,88 @@ variable "worker_bundle_sha256" {
   }
 }
 
-variable "worker_compatibility_date" {
-  description = "Portable edge runtime compatibility date requested by Takos Office."
-  type        = string
-  default     = "2026-04-01"
-}
-
-variable "worker_compatibility_flags" {
-  description = "Portable edge runtime compatibility flags requested by Takos Office."
-  type        = set(string)
-  default     = ["nodejs_compat", "global_fetch_strictly_public"]
-}
-
 locals {
   artifact_url            = trimspace(var.worker_bundle_url)
   artifact_sha256         = trimspace(var.worker_bundle_sha256)
   artifact_sha256_checked = startswith(local.artifact_sha256, "sha256:") ? local.artifact_sha256 : "sha256:${local.artifact_sha256}"
   release_tag             = trimspace(var.worker_release_tag)
+  interface_declarations = {
+    mcp = {
+      name = "takos-office.mcp"
+      document = {
+        transport = "streamable-http"
+        display   = { title = "Takos Office" }
+        endpoint  = { originInput = "origin", path = "/mcp" }
+      }
+    }
+    docs = {
+      name = "takos-office.docs"
+      document = {
+        launcher = true
+        display = {
+          title = "Takos Docs"
+          icon  = "/docs/icons/docs.svg"
+        }
+        endpoint = { originInput = "origin", path = "/docs" }
+      }
+    }
+    slide = {
+      name = "takos-office.slide"
+      document = {
+        launcher = true
+        display = {
+          title = "Takos Slide"
+          icon  = "/slide/icons/slide.svg"
+        }
+        endpoint = { originInput = "origin", path = "/slide" }
+      }
+    }
+    sheet = {
+      name = "takos-office.sheet"
+      document = {
+        launcher = true
+        display = {
+          title = "Takos Sheet"
+          icon  = "/sheet/icons/excel.svg"
+        }
+        endpoint = { originInput = "origin", path = "/sheet" }
+      }
+    }
+    docs_file = {
+      name = "takos-office.docs-file"
+      document = {
+        display    = { title = "Takos Docs" }
+        mimeTypes  = ["application/vnd.takos.docs+json"]
+        extensions = [".takosdoc"]
+        endpoint   = { originInput = "origin", pathPrefix = "/docs/files/" }
+      }
+    }
+    slide_file = {
+      name = "takos-office.slide-file"
+      document = {
+        display    = { title = "Takos Slide" }
+        mimeTypes  = ["application/vnd.takos.slide+json"]
+        extensions = [".takosslide"]
+        endpoint   = { originInput = "origin", pathPrefix = "/slide/files/" }
+      }
+    }
+    sheet_file = {
+      name = "takos-office.sheet-file"
+      document = {
+        display    = { title = "Takos Sheet" }
+        mimeTypes  = ["application/vnd.takos.excel+json"]
+        extensions = [".takossheet"]
+        endpoint   = { originInput = "origin", pathPrefix = "/sheet/files/" }
+      }
+    }
+  }
 }
 
-resource "takoform_edge_worker" "worker" {
-  name                = var.project_name
-  artifact_url        = local.artifact_url
-  artifact_sha256     = local.artifact_sha256_checked
-  compatibility_date  = var.worker_compatibility_date
-  compatibility_flags = var.worker_compatibility_flags
-  profiles            = ["workers_bindings"]
+resource "takoform_http_service" "worker" {
+  name            = var.project_name
+  artifact_url    = local.artifact_url
+  artifact_sha256 = local.artifact_sha256_checked
+  runtime         = "javascript"
 
   lifecycle {
     precondition {
@@ -81,4 +137,21 @@ resource "takoform_edge_worker" "worker" {
       error_message = "worker_bundle_url must select the exact worker_release_tag."
     }
   }
+}
+
+resource "takoform_interface" "surface" {
+  for_each = local.interface_declarations
+
+  name          = each.value.name
+  version       = "1"
+  resource_kind = "HttpService"
+  resource_name = takoform_http_service.worker.name
+  document_json = jsonencode(each.value.document)
+  inputs_json = jsonencode([
+    {
+      name    = "origin"
+      source  = "output"
+      pointer = "/url"
+    }
+  ])
 }
