@@ -110,10 +110,14 @@ Takosumi installs should pass `worker_bundle_url` + `worker_bundle_sha256` from
 a Git release or CI artifact. Do not commit the built worker or SPA output to
 the repository.
 
-[`install-options.json`](install-options.json) is an optional `CapsuleSourceOptions` presentation document for choosing
-the currently executable Cloudflare OpenTofu module. It is not a Takosumi-specific manifest and is not required for a
-direct Git URL + module-path install. The document becomes usable with the next ordinary stable tag that contains it.
-Another cloud is listed only after this repository ships a real module for it.
+[`install-options.json`](install-options.json) is the optional source chooser.
+The separate general
+[`.well-known/takosumi.json`](.well-known/takosumi.json) `Repository` manifest
+proposes input names and presentation projections for the root direct module and
+`deploy/takoform` from the same Git commit. Neither document carries secrets,
+provider credentials, Cloudflare account authority, Interface grants, or
+execution authority. Takosumi validates the proposal and compiles it into a
+DB-owned InstallConfig before the ordinary Plan and Apply lifecycle.
 
 ## Boundary
 
