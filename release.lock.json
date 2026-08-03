@@ -14,6 +14,19 @@
         "sha256": "sha256:2c20244c0a8dd4b90c6134a41c019ecc7c461fbc75c1c5724f6bac088e94ed62"
       },
       "seededFrom": "read-only GET of the published GitHub Release assets on 2026-07-28; reconciled against manifest kind, app, releaseTag, artifact URL, artifact SHA-256, source commit, and both downloaded digests"
+    },
+    "v0.3.1": {
+      "artifact": {
+        "filename": "worker.js",
+        "url": "https://github.com/tako0614/takos-office/releases/download/v0.3.1/worker.js",
+        "sha256": "sha256:557823be60f4e5fc309b79aa9f439194cd3da95052eba0e34f9992e208d1afe9"
+      },
+      "manifest": {
+        "url": "https://github.com/tako0614/takos-office/releases/download/v0.3.1/takosumi-artifact.json",
+        "sha256": "sha256:fc5713bc5ce49a51914683ce1ca4fdf2341e31b866e2164d8e6e9cd131f1d881"
+      },
+      "commit": "a918894dfb0f64f02ea5f58a96456a3e4182398b",
+      "seededFrom": "read-only GET of the published GitHub Release assets on 2026-08-03; reconciled against manifest kind, app, releaseTag, artifact filename, artifact SHA-256, source commit, and both downloaded digests"
     }
   }
 }

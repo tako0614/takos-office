@@ -5,18 +5,23 @@ const [
   packageSource,
   moduleSource,
   takoformModuleSource,
+  releaseLockSource,
   mcpSource,
   sheetMcpSource,
 ] = await Promise.all([
   readFile(new URL("../../package.json", import.meta.url), "utf8"),
   readFile(new URL("../../main.tf", import.meta.url), "utf8"),
   readFile(new URL("../../deploy/takoform/main.tf", import.meta.url), "utf8"),
+  readFile(new URL("../../release.lock.json", import.meta.url), "utf8"),
   readFile(new URL("../mcp.ts", import.meta.url), "utf8"),
   readFile(new URL("../sheet/src/mcp.ts", import.meta.url), "utf8"),
 ]);
 
 const packageVersion = (JSON.parse(packageSource) as { version: string })
   .version;
+const expectedReleaseTag = `v${packageVersion}`;
+const releaseLock = JSON.parse(releaseLockSource) as ReleaseLock;
+const currentRelease = releaseLock.releases[expectedReleaseTag];
 
 describe("release version", () => {
   test("keeps the OpenTofu artifact and MCP servers aligned", () => {
@@ -35,6 +40,32 @@ describe("release version", () => {
     expect(sheetMcpSource).toContain(`version: "${packageVersion}"`);
   });
 
+  test("covers the current deploy defaults with an append-only release pin", () => {
+    expect(releaseLock.kind).toBe("takos.release-artifact-lock@v1");
+    expect(releaseLock.app).toBe("takos-office");
+    expect(currentRelease).toBeDefined();
+    if (!currentRelease) return;
+
+    expect(currentRelease.commit).toMatch(/^[a-f0-9]{40}$/);
+    expect(currentRelease.artifact.filename).toBe("worker.js");
+    expect(currentRelease.artifact.url).toBe(
+      `https://github.com/tako0614/takos-office/releases/download/${expectedReleaseTag}/worker.js`,
+    );
+    expect(currentRelease.artifact.sha256).toMatch(
+      /^sha256:[a-f0-9]{64}$/,
+    );
+    expect(currentRelease.manifest.url).toBe(
+      `https://github.com/tako0614/takos-office/releases/download/${expectedReleaseTag}/takosumi-artifact.json`,
+    );
+    expect(currentRelease.manifest.sha256).toMatch(
+      /^sha256:[a-f0-9]{64}$/,
+    );
+    expect(takoformModuleSource).toContain(currentRelease.artifact.url);
+    expect(takoformModuleSource).toContain(
+      `default     = "${currentRelease.artifact.sha256}"`,
+    );
+  });
+
   test("matches the Git tag when the release workflow runs", () => {
     const gitRef = process.env.GITHUB_REF_NAME;
     if (!gitRef?.startsWith("v")) return;
@@ -42,3 +73,22 @@ describe("release version", () => {
     expect(gitRef).toBe(`v${packageVersion}`);
   });
 });
+
+interface ReleaseLock {
+  kind: string;
+  app: string;
+  releases: Record<string, ReleasePin>;
+}
+
+interface ReleasePin {
+  commit: string;
+  artifact: {
+    filename: string;
+    url: string;
+    sha256: string;
+  };
+  manifest: {
+    url: string;
+    sha256: string;
+  };
+}
