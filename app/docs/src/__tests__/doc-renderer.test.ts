@@ -31,12 +31,18 @@ const PNG_MAGIC = new Uint8Array([
   0x0a,
 ]);
 
-test("renderDocumentToBuffer returns a valid PNG for simple text", () => {
-  const buf = renderDocumentToBuffer("Title", "<p>Hello world</p>");
-  expect(buf.length > PNG_MAGIC.length).toBeTruthy();
-  const header = new Uint8Array(buf.buffer, buf.byteOffset, 8);
-  expect([...header]).toEqual([...PNG_MAGIC]);
-});
+test(
+  "renderDocumentToBuffer returns a valid PNG for simple text",
+  () => {
+    const buf = renderDocumentToBuffer("Title", "<p>Hello world</p>");
+    expect(buf.length > PNG_MAGIC.length).toBeTruthy();
+    const header = new Uint8Array(buf.buffer, buf.byteOffset, 8);
+    expect([...header]).toEqual([...PNG_MAGIC]);
+  },
+  // The first node-canvas render initializes the native font stack. Keep that
+  // cold-start work bounded without raising the timeout for the rest of the suite.
+  30_000,
+);
 
 test("renderDocumentToBuffer handles empty HTML content", () => {
   const buf = renderDocumentToBuffer("Empty", "");
