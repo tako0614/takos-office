@@ -110,14 +110,20 @@ Takosumi installs should pass `worker_bundle_url` + `worker_bundle_sha256` from
 a Git release or CI artifact. Do not commit the built worker or SPA output to
 the repository.
 
-[`install-options.json`](install-options.json) is the optional source chooser.
-The separate general
-[`.well-known/takosumi.json`](.well-known/takosumi.json) `Repository` manifest
-proposes input names and presentation projections for the root direct module and
-`deploy/takoform` from the same Git commit. Neither document carries secrets,
-provider credentials, Cloudflare account authority, Interface grants, or
-execution authority. Takosumi validates the proposal and compiles it into a
-DB-owned InstallConfig before the ordinary Plan and Apply lifecycle.
+### Install on Takosumi
+
+Pass the Git repository URL to Takosumi's New app or `/install` screen:
+
+```text
+https://app.takosumi.com/install?git=https%3A%2F%2Fgithub.com%2Ftako0614%2Ftakos-office.git
+```
+
+Takosumi scans the OpenTofu tree at one Git revision and reads
+[`.well-known/takosumi.json`](.well-known/takosumi.json) for input UI hints and
+host service declarations. Set the ref, module path, or service name in the
+screen when you need an override. There is no separate source-options document;
+the selected module's `.tf`, `.tofu`, `.tf.json`, and `.tofu.json` files are
+composed as one OpenTofu tree before compatibility is checked.
 
 ## Boundary
 
