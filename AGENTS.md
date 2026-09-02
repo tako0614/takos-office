@@ -12,9 +12,9 @@
 
 ## Ownership
 
-- Owns: One Worker and Capsule containing docs, slide, and sheet surfaces / Single namespaced office MCP and file handlers / office.takos.jp marketing surface
+- Owns: One Worker and Capsule containing docs, slide, and sheet surfaces / Single namespaced office MCP and standard Office file exchange / office.takos.jp marketing surface
 - Does not own: Takos core privilege or platform runtime / Object storage, which is consumed through storage.object / Operator secrets or deployment authority
-- Hazards: Docs, slide, and sheet are one install and uninstall unit. / Official site publication fails closed until a runnable adapter exists. / Stale takos-apps topology wording must not be reintroduced.
+- Hazards: Docs, slide, and sheet are one install and uninstall unit. / Public site publication fails closed until a runnable adapter exists. / Stale takos-apps topology wording must not be reintroduced.
 
 ## Required workflow
 
