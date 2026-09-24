@@ -7,6 +7,28 @@ apps, which are now folded into this one app.
 
 It is the self-hosted, AI-operable alternative to Google Workspace / Microsoft 365 that you own.
 
+## What you can do
+
+- write documents, slides, and spreadsheets in three editors served from one Worker
+- import and download normal Microsoft Office files: `.docx`, `.pptx`, and `.xlsx`
+- let an agent operate all three editors through a single MCP endpoint at `/mcp`
+- keep every file in your own object storage — the app consumes `storage.object`, it does not host your data
+- install it as one Capsule, or run it yourself with `bun run start`
+
+## Getting started
+
+```sh
+bun install
+bun run build      # 3 vite builds + unified worker -> dist/worker.js
+bun run start      # run it locally
+```
+
+Standalone HTTP storage needs `OBJECT_STORAGE_API_URL`,
+`OBJECT_STORAGE_ACCESS_TOKEN`, and a Workspace (`TAKOS_SPACE_ID`). A Takosumi
+host binding supplies short-lived `storage.object` authority instead of a
+standing storage token. See [Build](#build) for the full check and MCP
+authentication options.
+
 ## Layout
 
 ```
@@ -34,7 +56,6 @@ values.
 | --------- | ---------------------------------------------------------------------------------------------- |
 | publish   | `mcp.server` at `/mcp`                                                                         |
 | publish   | `interface.ui.surface` for `/docs`, `/slide`, `/sheet`                                         |
-| publish   | `interface.file.handler` for `.takosdoc`, `.takosslide`, `.takossheet`                         |
 | consume   | `storage.object` via `OBJECT_STORAGE_API_URL`; bearer comes from `OBJECT_STORAGE_ACCESS_TOKEN` |
 
 ## How it serves
@@ -43,11 +64,11 @@ One Cloudflare Worker, one Capsule install unit, three editor surfaces:
 
 | URL                          | Surface                                                         |
 | ---------------------------- | --------------------------------------------------------------- |
-| `/`                          | Office shell (cross-editor nav, recent items, cross-app search) |
-| `/docs`                      | document editor (`.takosdoc`)                                   |
-| `/slide`                     | presentation editor (`.takosslide`)                             |
-| `/sheet`                     | spreadsheet editor (`.takossheet`)                              |
-| `/api/office/{items,search}` | cross-app recent / search feeding the shell                     |
+| `/`                          | redirects directly to the Docs library                          |
+| `/docs`                      | document editor with `.docx` import/download                    |
+| `/slide`                     | presentation editor with `.pptx` import/download                |
+| `/sheet`                     | spreadsheet editor with `.xlsx` import/download                 |
+| `/api/office/{items,search}` | cross-app recent / search for host integrations                 |
 | `/mcp`                       | unified MCP (≈80 `docs_*`/`slide_*`/`sheet_*` tools)            |
 | `/healthz`                   | readiness probe                                                 |
 
@@ -55,9 +76,29 @@ Each editor SPA is built with its own vite `base` (`/docs/`, `/slide/`, `/sheet/
 base, so assets and routes resolve under the subpath. Storage stays the object-storage HTTP API
 (folders `/takos-docs/`, `/takos-slide/`, `/takos-excel/`), unchanged.
 
+### Office file compatibility
+
+The standard Office formats are exchange formats; the private JSON model remains
+the lossless editing state used for autosave, collaboration fencing, and MCP.
+
+| Editor | Import / download | Preserved common content |
+| ------ | ----------------- | ------------------------ |
+| Docs   | `.docx`           | paragraphs, headings, lists, tables, links, common inline formatting, and embedded raster images |
+| Slides | `.pptx`           | slide order and size, text, common shapes, embedded raster images, backgrounds, and speaker notes |
+| Sheets | `.xlsx`           | worksheets, values, formulas with cached results, common cell formatting, and row/column sizes |
+
+Import is deliberately bounded to 25 MiB compressed, 100 MiB expanded, and
+10,000 ZIP entries; converted editing state must fit 7 MiB. Slides retains at
+most 5 MiB of embedded raster image bytes per imported deck. Sheets additionally
+accepts at most 1,000 rows, 100 columns, and 10,000 populated cells. Macros,
+charts, SmartArt, animations, grouped slide
+objects, and other advanced Office constructs are not claimed as pixel-perfect;
+unsupported content is omitted or reduced to a safe fallback rather than
+silently being treated as lossless.
+
 ### OpenTofu outputs and first apply
 
-The seven Interface source URLs are ordinary root-module outputs:
+The four Interface source URLs are ordinary root-module outputs:
 
 | Output                | Runtime surface                      |
 | --------------------- | ------------------------------------ |
@@ -65,9 +106,11 @@ The seven Interface source URLs are ordinary root-module outputs:
 | `docs_url`            | Docs UI                              |
 | `slide_url`           | Slide UI                             |
 | `sheet_url`           | Sheet UI                             |
-| `docs_file_open_url`  | `.takosdoc` open base URL            |
-| `slide_file_open_url` | `.takosslide` open base URL          |
-| `sheet_file_open_url` | `.takossheet` open base URL          |
+
+Takos Office keeps a private JSON model in Takos Storage as its lossless
+editing state. The native `.takosdoc`, `.takosslide`, and `.takossheet` record
+names are storage implementation details and recovery compatibility, not
+end-user formats or published file-handler Interfaces.
 
 `launch_url` / `url` / `public_url` remain normal deployment convenience outputs. `app_deployment` and
 `service_exports` are retired and are not runtime registries.
@@ -96,8 +139,9 @@ creates no standing MCP credential, and no credential is exposed through an Outp
 ```sh
 bun install
 bun run build      # 3 vite builds (build:spa) + unified worker (build:worker) → dist/worker.js
-bun run check      # tsc --noEmit
-bun test           # editor tests under app/*/src/__tests__
+bun run check      # format/type/tests/3 SPA builds/worker build + artifact-size gate
+bun run audit      # high/critical dependency advisory gate
+bun test           # editor and worker tests under app/**/__tests__
 ```
 
 Run locally with `bun run start`. Storage needs `OBJECT_STORAGE_API_URL`, `OBJECT_STORAGE_ACCESS_TOKEN`, and a
