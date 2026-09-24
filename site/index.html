@@ -379,9 +379,9 @@
     <section class="apps" id="apps">
       <div class="container">
         <div class="section-head reveal">
-          <span class="eyebrow">3つのアプリ</span>
+          <span class="eyebrow">3つのエディタ</span>
           <h2>使い慣れた道具が、<br>自分の手の中で。</h2>
-          <p>Google Workspace や Microsoft 365 でやっていたことを、自分の Workspace の中で。すべて 1st-party の Capsule app として動く。</p>
+          <p>Google Workspace や Microsoft 365 で行う日常の文書・プレゼン・表計算を、自分の Workspace の中で。Docs・Slide・Sheet は、ひとつの <code>takos-office</code> Capsule にまとまり、必要なときに明示的に install できる。</p>
         </div>
         <div class="app-grid">
 
@@ -419,7 +419,7 @@
             </div>
             <div class="app-body">
               <h3>Slide <span class="app-tag">slides</span></h3>
-              <p>プレゼンテーション作成。Keynote / Google Slides の代替を、自分の space の中で。Canvas ベースで自由に組める。</p>
+              <p>プレゼンテーション作成。Keynote / Google Slides で行う日常の編集を、自分の space の中で。Canvas ベースで自由に組める。</p>
             </div>
           </article>
 
@@ -468,7 +468,7 @@
           <span class="princ-n">03</span>
           <div>
             <h3>サブスクではなく、Capsule。</h3>
-            <p>席数ライセンスも、月額もない。OpenTofu Capsule として自分のインフラに install するだけ。使わなくなったアプリは、いつでも uninstall できる。</p>
+            <p>席数ライセンスも、月額もない。OpenTofu Capsule として自分のインフラに install するだけ。使わなくなったら、<code>takos-office</code> Capsule ごといつでも uninstall できる。</p>
           </div>
         </div>
       </div>
@@ -497,15 +497,11 @@
           <div class="codeblock reveal">
             <div class="code-bar"><i></i><i></i><i></i><span>agent → takos-office /mcp</span></div>
             <div class="code-body"><span class="c"># エージェントが MCP ツールを呼ぶ</span>
-<span class="k">tool</span>: <span class="p">slide.create_deck</span>
+<span class="k">tool</span>: <span class="p">slide_create</span>
 <span class="k">args</span>:
   <span class="p">title</span>: <span class="s">"Q3 提案書"</span>
-  <span class="p">from</span>:  <span class="s">"docs://notes/last-week"</span>
-  <span class="p">slides</span>: <span class="p">8</span>
 
-<span class="c"># → あなたの Workspace の中で</span>
-<span class="c"># → スライドが組み上がる</span>
-<span class="k">result</span>: <span class="s">"deck_3f9a"</span> <span class="p">created</span> ✓</div>
+<span class="c"># → 1枚の空スライドを持つプレゼンテーションを作成</span></div>
           </div>
         </div>
       </div>
@@ -519,7 +515,7 @@
         <div class="section-head reveal">
           <span class="eyebrow">ロードマップ</span>
           <h2>オフィスは、これから広がる。</h2>
-          <p>核となる3つのアプリを起点に、Workspace の中で完結する道具を増やしていく。どれも独立した Capsule で、好きなものだけ入れられる。</p>
+          <p>核となる3つのエディタをひとつの Capsule にまとめ、Workspace の中で完結する道具を増やしていく。将来の道具はそれぞれ独立した Capsule として、好きなものだけ入れられる。</p>
         </div>
 
         <div class="road-group reveal">
@@ -557,10 +553,11 @@
       </div>
       <div class="container cta-in">
         <h2>オフィスを、<br>自分のインフラに。</h2>
-        <p>Takos の新しい Workspace を作れば、Docs・Slide・Sheet が最初から入っている。必要なものだけ残して、自分のオフィスにする。</p>
+        <p>Takos Workspace の Apps から <code>takos-office</code> Capsule を明示的に追加する。Docs・Slide・Sheet をひとつの Capsule で、自分のオフィスにする。</p>
         <div class="cta-act">
-          <a href="https://takos.jp" class="btn-primary">Takos をはじめる <span>→</span></a>
-          <a href="https://github.com/tako0614" class="link" rel="noopener">GitHub</a>
+          <a href="https://github.com/tako0614/takos-office" class="btn-primary" rel="noopener">Capsule を追加する <span>→</span></a>
+          <a href="https://takos.jp" class="link">Takos をはじめる</a>
+          <a href="https://github.com/tako0614/takos-office" class="link" rel="noopener">takos-office</a>
         </div>
       </div>
     </section>
