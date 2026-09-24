@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>document.documentElement.classList.add('js')</script>
     <title>Takos Office — オフィスごと、自分のものに。</title>
     <meta
       name="description"
@@ -12,7 +13,12 @@
     <meta property="og:description" content="自分の Workspace で動く、エージェントネイティブなオフィススイート。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://office.takos.jp" />
+    <meta property="og:image" content="https://office.takos.jp/og-image.svg" />
+    <meta property="og:image:alt" content="Takos Office" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://office.takos.jp/" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -28,7 +34,7 @@
         --bg-subtle: #1a1a1a;
         --fg:        #fafafa;
         --fg-muted:  #a3a3a3;
-        --fg-subtle: #6b6b6b;
+        --fg-subtle: #8f8f8f;
         --line:      #262626;
         --line-strong: #3f3f3f;
         --accent:      #ef4444;
@@ -270,8 +276,8 @@
       .road-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
       .road-card { border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; background: var(--bg-elev); }
       .road-card.planned { background: transparent; border-style: dashed; }
-      .road-card h4 { font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
-      .road-card h4 code { font-family: var(--mono); font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
+      .road-card h3 { font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
+      .road-card h3 code { font-family: var(--mono); font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
       .road-card p { color: var(--fg-muted); font-size: 0.85rem; }
       .pill { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.12rem 0.45rem; border-radius: 999px; flex-shrink: 0; }
       .pill.ok { color: var(--ink-blue); border: 1px solid var(--ink-blue-deep); }
@@ -291,8 +297,8 @@
       .foot-copy { font-family: var(--mono); font-size: 0.72rem; color: var(--fg-subtle); }
 
       /* ---- Reveal ---- */
-      .reveal { opacity: 0; transform: translateY(14px); }
-      .reveal.in {
+      .js .reveal { opacity: 0; transform: translateY(14px); }
+      .js .reveal.in {
         opacity: 1; transform: none;
         transition: opacity 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
       }
@@ -308,7 +314,7 @@
         .princ-row { grid-template-columns: 2.5rem 1fr; gap: 1rem; }
       }
       @media (prefers-reduced-motion: reduce) {
-        .reveal { opacity: 1; transform: none; transition: none; }
+        .js .reveal { opacity: 1; transform: none; transition: none; }
         html { scroll-behavior: auto; }
         .arrow span, .btn-primary span { transition: none; }
       }
@@ -519,19 +525,19 @@
         <div class="road-group reveal">
           <div class="road-label">Available — 今すぐ使える</div>
           <div class="road-items">
-            <div class="road-card"><h4>Docs <code>/docs</code></h4><p>文書 / ノート</p></div>
-            <div class="road-card"><h4>Slide <code>/slide</code></h4><p>プレゼンテーション</p></div>
-            <div class="road-card"><h4>Sheet <code>/sheet</code></h4><p>スプレッドシート / 表計算</p></div>
+            <div class="road-card"><h3>Docs <code>/docs</code></h3><p>文書 / ノート</p></div>
+            <div class="road-card"><h3>Slide <code>/slide</code></h3><p>プレゼンテーション</p></div>
+            <div class="road-card"><h3>Sheet <code>/sheet</code></h3><p>スプレッドシート / 表計算</p></div>
           </div>
         </div>
 
         <div class="road-group reveal">
           <div class="road-label">Planned — 計画中</div>
           <div class="road-items">
-            <div class="road-card planned"><h4>Calendar <span class="pill soon">Planned</span></h4><p>スケジュール / イベント管理</p></div>
-            <div class="road-card planned"><h4>Mail <span class="pill soon">Planned</span></h4><p>自分のメールボックスの上で動くクライアント</p></div>
-            <div class="road-card planned"><h4>Form <span class="pill soon">Planned</span></h4><p>フォーム / アンケート、結果はシートへ</p></div>
-            <div class="road-card planned"><h4>Base <span class="pill soon">Exploring</span></h4><p>軽量データベース / 構造化テーブル</p></div>
+            <div class="road-card planned"><h3>Calendar <span class="pill soon">Planned</span></h3><p>スケジュール / イベント管理</p></div>
+            <div class="road-card planned"><h3>Mail <span class="pill soon">Planned</span></h3><p>自分のメールボックスの上で動くクライアント</p></div>
+            <div class="road-card planned"><h3>Form <span class="pill soon">Planned</span></h3><p>フォーム / アンケート、結果はシートへ</p></div>
+            <div class="road-card planned"><h3>Base <span class="pill soon">Exploring</span></h3><p>軽量データベース / 構造化テーブル</p></div>
           </div>
         </div>
       </div>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fafafa"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0a0a0a"/>
+  <rect x="56" y="56" width="1088" height="518" rx="24" fill="none" stroke="#262626" stroke-width="2"/>
+  <path d="M176 150c-28 50-72 91-72 136 0 40 32 68 72 68s72-28 72-68c0-45-44-86-72-136Z" fill="url(#ink)"/>
+  <path d="M207 286a31 31 0 1 1-52-15 21 21 0 1 1 35 7" fill="none" stroke="#0a0a0a" stroke-width="10" stroke-linecap="round"/>
+  <text x="300" y="270" fill="#fafafa" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700">Takos Office</text>
+  <text x="300" y="350" fill="#8f8f8f" font-family="Arial, 'Noto Sans JP', sans-serif" font-size="34">オフィスごと、自分のものに。</text>
+  <rect x="300" y="410" width="92" height="6" rx="3" fill="#ef4444"/>
+</svg>
