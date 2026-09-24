@@ -31,6 +31,6 @@ the first production deploy.)
 ## Design
 
 The site mirrors the ecosystem design language
-([`docs/reference/design-language.md`](../../../docs/reference/design-language.md)): dark-only,
+([`docs/reference/design-language.md`](../../takos-control/docs/reference/design-language.md)): dark-only,
 朱赤 (`#ef4444`) functional accent, decorative blue/red ink splatters, Bricolage Grotesque +
 JetBrains Mono. As a Takos product the primary brand mark is the **inkdrop**.
