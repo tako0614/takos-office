@@ -53,6 +53,6 @@ discovers the tools through `tools/list` rather than assuming them.
 
 ## Conformance
 
-`app/__tests__/interface-mcp-auth.test.ts` drives the real Office app through
-the authority clauses above, and its `mcp.tools@1 declared contract` cases pin
-the published declaration against them.
+`app/__tests__/interface-mcp-auth.test.ts` exercises Interface OAuth claim and
+evidence validation plus the managed and standalone `/mcp` authentication
+paths, including workspace mismatch and fail-closed behavior.
