@@ -189,7 +189,7 @@
       .app-card:hover { border-color: var(--line-strong); transform: translateY(-3px); }
       .app-mock {
         height: 168px; border-bottom: 1px solid var(--line);
-        background: var(--bg-subtle); padding: 0.9rem; overflow: hidden;
+        background: var(--bg-subtle); overflow: hidden;
       }
       .app-body { padding: 1.25rem 1.35rem 1.5rem; }
       .app-body h3 {
@@ -204,36 +204,114 @@
       }
       .app-body p { color: var(--fg-muted); font-size: 0.9rem; line-height: 1.7; }
 
-      /* -- Docs mockup -- */
-      .mk-doc-tb { display: flex; gap: 0.3rem; margin-bottom: 0.7rem; }
-      .mk-doc-tb i { width: 1.1rem; height: 1.1rem; border-radius: 4px; background: var(--line-strong); display: block; }
-      .mk-doc-tb i:first-child { background: var(--accent); }
-      .mk-doc-title { height: 0.8rem; width: 60%; border-radius: 3px; background: var(--fg); opacity: 0.85; margin-bottom: 0.6rem; }
-      .mk-line { height: 0.45rem; border-radius: 3px; background: var(--line-strong); margin-bottom: 0.4rem; }
-      .mk-line.w90 { width: 90%; } .mk-line.w75 { width: 75%; } .mk-line.w80 { width: 80%; } .mk-line.w60 { width: 60%; }
-
-      /* -- Slide mockup -- */
-      .mk-slide-canvas {
-        height: 104px; border-radius: 6px; border: 1px solid var(--line-strong);
-        background: linear-gradient(135deg, #15171c, #0e0f12);
-        padding: 0.7rem 0.8rem; display: flex; flex-direction: column; justify-content: center; gap: 0.5rem;
-        margin-bottom: 0.55rem;
+      /* -- Editor mockups: simplified renderings of the real app UIs in
+            app/{docs,slide,sheet} — same light theme, same layout regions,
+            same UI vocabulary (OfficeNav, toolbars, formula bar, panels). -- */
+      .mk-ui {
+        --ui-bg: #ffffff; --ui-bg-sub: #f9fafb; --ui-canvas: #f3f4f6;
+        --ui-line: #e5e7eb; --ui-line-strong: #d1d5db;
+        --ui-fg: #374151; --ui-fg-muted: #6b7280; --ui-fg-subtle: #9ca3af;
+        --ui-blue: var(--ink-blue-deep); --ui-blue-soft: #eff6ff;
+        --ui-shape: #4f87e0;
+        height: 100%; display: flex; flex-direction: column;
+        background: var(--ui-bg); color: var(--ui-fg);
+        font-size: 7.5px; line-height: 1.45; text-align: left;
       }
-      .mk-slide-title { height: 0.7rem; width: 55%; border-radius: 3px; background: var(--fg); opacity: 0.9; }
-      .mk-slide-bullet { height: 0.4rem; width: 75%; border-radius: 3px; background: var(--fg-subtle); }
-      .mk-slide-bullet.short { width: 50%; }
-      .mk-slide-accent { width: 1.6rem; height: 0.35rem; border-radius: 3px; background: var(--accent); }
-      .mk-slide-strip { display: flex; gap: 0.35rem; }
-      .mk-slide-thumb { flex: 1; height: 1.3rem; border-radius: 3px; border: 1px solid var(--line-strong); background: var(--bg-elev); }
-      .mk-slide-thumb.active { border-color: var(--accent); }
+      /* OfficeNav — the shared suite header mounted in all three apps */
+      .mk-nav {
+        flex: none; display: flex; align-items: center; gap: 3px;
+        height: 17px; padding: 0 7px;
+        background: var(--ui-bg); border-bottom: 1px solid var(--ui-line);
+      }
+      .mk-nav-logo { width: 10px; height: 10px; border-radius: 2.5px; background: var(--ui-blue); flex: none; position: relative; }
+      .mk-nav-logo::after { content: ""; position: absolute; }
+      .mk-nav-logo.doc::after {
+        inset: 2px 3px; border-radius: 0.5px; background-color: #fff;
+        background-image: repeating-linear-gradient(180deg, transparent 0 1.4px, var(--ui-blue) 1.4px 2.1px);
+      }
+      .mk-nav-logo.sl::after { inset: 3px 1.5px; border-radius: 0.5px; background: #fff; }
+      .mk-nav-logo.sh::after {
+        inset: 2px; background-color: #fff;
+        background-image:
+          linear-gradient(var(--ui-blue) 0.8px, transparent 0.8px),
+          linear-gradient(90deg, var(--ui-blue) 0.8px, transparent 0.8px);
+        background-size: 2.4px 2.4px; background-position: center;
+      }
+      .mk-nav-app { padding: 1px 4px; border-radius: 3px; color: var(--ui-fg-muted); }
+      .mk-nav-app.on { background: var(--ui-blue-soft); color: var(--ui-blue); font-weight: 600; }
 
-      /* -- Sheet mockup -- */
-      .mk-grid { display: grid; grid-template-columns: 1.4rem repeat(4, 1fr); grid-auto-rows: 1.5rem; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
-      .mk-grid div { background: var(--bg-elev); display: flex; align-items: center; padding: 0 0.35rem; font-size: 0.55rem; color: var(--fg-subtle); font-family: var(--mono); }
-      .mk-grid .hd { background: var(--bg-subtle); color: var(--fg-muted); justify-content: center; font-weight: 500; }
-      .mk-grid .rh { background: var(--bg-subtle); color: var(--fg-muted); justify-content: center; }
-      .mk-grid .val { color: var(--fg); }
-      .mk-grid .sel { color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent); }
+      /* Shared toolbar atoms */
+      .mk-tb {
+        flex: none; display: flex; align-items: center; gap: 2px;
+        height: 20px; padding: 0 6px; overflow: hidden;
+        background: var(--ui-bg-sub); border-bottom: 1px solid var(--ui-line);
+      }
+      .mk-tb-btn { flex: none; display: flex; align-items: center; justify-content: center; min-width: 11px; height: 13px; padding: 0 2px; border-radius: 2px; color: var(--ui-fg-muted); }
+      .mk-tb-btn.b { font-weight: 800; } .mk-tb-btn.i { font-style: italic; }
+      .mk-tb-btn.u { text-decoration: underline; } .mk-tb-btn.s { text-decoration: line-through; }
+      .mk-tb-sep { flex: none; width: 1px; height: 9px; background: var(--ui-line-strong); margin: 0 2px; }
+      .mk-tb-sel { flex: none; display: flex; align-items: center; gap: 2px; height: 13px; padding: 0 3px; border: 1px solid var(--ui-line-strong); border-radius: 2px; background: var(--ui-bg); color: var(--ui-fg-muted); }
+      .mk-ic { width: 8px; height: 8px; }
+
+      /* Docs: outline rail + white paper on gray canvas + word count */
+      .mk-doc-body { flex: 1; display: flex; min-height: 0; }
+      .mk-doc-rail { flex: none; width: 52px; border-right: 1px solid var(--ui-line); background: var(--ui-bg); padding: 5px 6px; overflow: hidden; }
+      .mk-doc-rail-t { color: var(--ui-fg-subtle); font-size: 6.5px; margin-bottom: 4px; }
+      .mk-doc-rail-h { color: var(--ui-fg-muted); margin-bottom: 3px; white-space: nowrap; }
+      .mk-doc-rail-h.l2 { padding-left: 5px; color: var(--ui-fg-subtle); }
+      .mk-doc-canvas { flex: 1; min-width: 0; background: var(--ui-canvas); padding: 7px 9px; }
+      .mk-doc-paper { height: 100%; background: var(--ui-bg); border: 1px solid var(--ui-line); box-shadow: 0 1px 2px rgba(0,0,0,.05); padding: 7px 9px; overflow: hidden; }
+      .mk-doc-h { font-size: 9px; font-weight: 600; color: var(--ui-fg); margin-bottom: 4px; }
+      .mk-doc-p { color: var(--ui-fg-muted); margin-bottom: 3px; white-space: nowrap; }
+      .mk-doc-p b { color: var(--ui-fg); font-weight: 600; }
+      .mk-doc-foot { flex: none; display: flex; align-items: center; justify-content: flex-end; height: 14px; padding: 0 8px; background: var(--ui-bg-sub); border-top: 1px solid var(--ui-line); color: var(--ui-fg-subtle); font-size: 6.5px; }
+
+      /* Slide: thumbnails + canvas + property panel + status bar */
+      .mk-sl-title { flex: none; display: flex; align-items: center; height: 13px; width: 58px; padding: 0 3px; border-radius: 2px; color: var(--ui-fg); font-weight: 600; }
+      .mk-sl-ins { flex: none; color: var(--ui-fg-subtle); margin: 0 1px 0 3px; }
+      .mk-sl-tool { flex: none; display: flex; align-items: center; height: 13px; padding: 0 4px; border: 1px solid var(--ui-line-strong); border-radius: 2px; background: var(--ui-bg); color: var(--ui-fg-muted); }
+      .mk-sl-present { flex: none; margin-left: auto; display: flex; align-items: center; height: 13px; padding: 0 6px; border-radius: 2px; background: var(--ui-blue); color: #fff; font-weight: 600; }
+      .mk-sl-body { flex: 1; display: flex; min-height: 0; }
+      .mk-sl-thumbs { flex: none; width: 46px; border-right: 1px solid var(--ui-line); background: var(--ui-bg-sub); padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+      .mk-sl-thumb { display: flex; align-items: flex-start; gap: 2px; }
+      .mk-sl-thumb-n { width: 6px; text-align: right; color: var(--ui-fg-subtle); font-size: 6px; padding-top: 1px; }
+      .mk-sl-thumb-c { flex: 1; aspect-ratio: 16/9; border: 1px solid var(--ui-line-strong); border-radius: 1px; background: var(--ui-bg); position: relative; overflow: hidden; }
+      .mk-sl-thumb.on .mk-sl-thumb-c { border-color: var(--ui-blue); box-shadow: 0 0 0 1px var(--ui-blue); }
+      .mk-sl-thumb-c i { position: absolute; left: 12%; top: 22%; width: 55%; height: 12%; background: var(--ui-line-strong); border-radius: 1px; }
+      .mk-sl-thumb-c i + i { top: 46%; width: 70%; height: 8%; }
+      .mk-sl-add { flex: none; text-align: center; color: var(--ui-fg-subtle); border: 1px dashed var(--ui-line-strong); border-radius: 2px; font-size: 7px; line-height: 1.3; }
+      .mk-sl-stage { flex: 1; min-width: 0; background: var(--ui-canvas); display: flex; align-items: center; justify-content: center; padding: 6px; }
+      .mk-sl-canvas { position: relative; width: 100%; max-width: 150px; aspect-ratio: 16/9; background: var(--ui-bg); border: 1px solid var(--ui-line-strong); }
+      .mk-sl-el { position: absolute; }
+      .mk-sl-el.t { left: 8%; top: 12%; font-size: 8px; font-weight: 700; color: var(--ui-fg); white-space: nowrap; }
+      .mk-sl-el.b { left: 8%; top: 36%; font-size: 6.5px; color: var(--ui-fg-muted); white-space: nowrap; }
+      .mk-sl-el.e { left: 12%; bottom: 12%; width: 14%; aspect-ratio: 1; border-radius: 50%; background: var(--ui-shape); border: 1px solid var(--ui-blue); }
+      .mk-sl-sel { position: absolute; right: 9%; top: 28%; width: 26%; height: 44%; outline: 1px solid var(--ui-blue); outline-offset: 1px; }
+      .mk-sl-sel .r { width: 100%; height: 100%; border-radius: 2px; background: var(--ui-shape); border: 1px solid var(--ui-blue); }
+      .mk-sl-hd { position: absolute; width: 3px; height: 3px; background: var(--ui-bg); border: 1px solid var(--ui-blue); border-radius: 0.5px; }
+      .mk-sl-hd:nth-of-type(1) { left: -2px; top: -2px; } .mk-sl-hd:nth-of-type(2) { right: -2px; top: -2px; }
+      .mk-sl-hd:nth-of-type(3) { left: -2px; bottom: -2px; } .mk-sl-hd:nth-of-type(4) { right: -2px; bottom: -2px; }
+      .mk-sl-props { flex: none; width: 54px; border-left: 1px solid var(--ui-line); background: var(--ui-bg); padding: 4px 5px; overflow: hidden; }
+      .mk-sl-props-t { color: var(--ui-fg-muted); font-size: 6.5px; font-weight: 600; margin-bottom: 3px; }
+      .mk-sl-props-r { display: flex; align-items: center; justify-content: space-between; color: var(--ui-fg-subtle); font-size: 6px; margin-bottom: 3px; }
+      .mk-sl-props-r.col { flex-direction: column; align-items: flex-start; gap: 0; }
+      .mk-sl-sw { width: 7px; height: 7px; border-radius: 1px; border: 1px solid var(--ui-line-strong); flex: none; }
+      .mk-sl-status { flex: none; display: flex; align-items: center; gap: 5px; height: 14px; padding: 0 8px; background: var(--ui-bg); border-top: 1px solid var(--ui-line); color: var(--ui-fg-subtle); font-size: 6.5px; }
+
+      /* Sheet: formula bar + grid + sheet tabs */
+      .mk-sh-fx { flex: none; display: flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; background: var(--ui-bg-sub); border-bottom: 1px solid var(--ui-line); }
+      .mk-sh-addr { display: flex; align-items: center; justify-content: center; height: 12px; min-width: 18px; padding: 0 3px; border: 1px solid var(--ui-line-strong); border-radius: 2px; background: var(--ui-bg); color: var(--ui-fg-muted); font-weight: 500; }
+      .mk-sh-fxl { font-style: italic; color: var(--ui-fg-subtle); }
+      .mk-sh-formula { flex: 1; display: flex; align-items: center; height: 12px; padding: 0 4px; border: 1px solid var(--ui-line-strong); border-radius: 2px; background: var(--ui-bg); color: var(--ui-fg); font-family: var(--mono); font-size: 6.5px; }
+      .mk-sh-grid { flex: 1; display: grid; grid-template-columns: 14px repeat(4, 1fr); grid-auto-rows: 1fr; gap: 1px; background: var(--ui-line); border-bottom: 1px solid var(--ui-line); min-height: 0; }
+      .mk-sh-grid div { background: var(--ui-bg); display: flex; align-items: center; padding: 0 4px; color: var(--ui-fg); min-width: 0; overflow: hidden; white-space: nowrap; }
+      .mk-sh-grid .hd, .mk-sh-grid .rh { background: var(--ui-bg-sub); color: var(--ui-fg-muted); justify-content: center; font-weight: 500; }
+      .mk-sh-grid .n { justify-content: flex-end; }
+      .mk-sh-grid .sel { box-shadow: inset 0 0 0 1.5px var(--ui-blue); }
+      .mk-sh-tabs { flex: none; display: flex; align-items: center; gap: 2px; height: 16px; padding: 0 4px; background: var(--ui-bg-sub); }
+      .mk-sh-tab { display: flex; align-items: center; height: 11px; padding: 0 6px; border-radius: 2px; color: var(--ui-fg-muted); }
+      .mk-sh-tab.on { background: var(--ui-bg); color: var(--ui-fg); box-shadow: 0 0 0 1px var(--ui-line); }
+      .mk-sh-add { color: var(--ui-fg-subtle); padding: 0 3px; }
 
       /* ---- Principles ---- */
       .why { padding: 5rem 0; }
@@ -388,12 +466,53 @@
           <!-- Docs -->
           <article class="app-card reveal">
             <div class="app-mock">
-              <div class="mk-doc-tb"><i></i><i></i><i></i><i></i></div>
-              <div class="mk-doc-title"></div>
-              <div class="mk-line w90"></div>
-              <div class="mk-line w75"></div>
-              <div class="mk-line w80"></div>
-              <div class="mk-line w60"></div>
+              <div class="mk-ui" aria-hidden="true">
+                <div class="mk-nav">
+                  <span class="mk-nav-logo doc"></span>
+                  <span class="mk-nav-app on">ドキュメント</span>
+                  <span class="mk-nav-app">スライド</span>
+                  <span class="mk-nav-app">シート</span>
+                </div>
+                <div class="mk-tb">
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg></span>
+                  <span class="mk-tb-sep"></span>
+                  <span class="mk-tb-sel">Arial ▾</span>
+                  <span class="mk-tb-sel">12 ▾</span>
+                  <span class="mk-tb-sep"></span>
+                  <span class="mk-tb-btn b">B</span>
+                  <span class="mk-tb-btn i">I</span>
+                  <span class="mk-tb-btn u">U</span>
+                  <span class="mk-tb-btn s">S</span>
+                  <span class="mk-tb-sep"></span>
+                  <span class="mk-tb-btn">H1</span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><line x1="13" y1="6" x2="21" y2="6"/><line x1="13" y1="18" x2="21" y2="18"/></svg></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/></svg></span>
+                  <span class="mk-tb-sep"></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg></span>
+                  <span class="mk-tb-btn"><svg class="mk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></span>
+                </div>
+                <div class="mk-doc-body">
+                  <div class="mk-doc-rail">
+                    <div class="mk-doc-rail-t">アウトライン</div>
+                    <div class="mk-doc-rail-h">はじめに</div>
+                    <div class="mk-doc-rail-h">今週の進捗</div>
+                    <div class="mk-doc-rail-h">来週の予定</div>
+                  </div>
+                  <div class="mk-doc-canvas">
+                    <div class="mk-doc-paper">
+                      <div class="mk-doc-h">週次レポート</div>
+                      <div class="mk-doc-p"><b>今週の進捗</b></div>
+                      <div class="mk-doc-p">・デザイン案のレビュー</div>
+                      <div class="mk-doc-p"><b>来週の予定</b></div>
+                      <div class="mk-doc-p">・リリース手順の確認</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mk-doc-foot">128 語</div>
+              </div>
             </div>
             <div class="app-body">
               <h3>Docs <span class="app-tag">docs</span></h3>
@@ -404,17 +523,51 @@
           <!-- Slide -->
           <article class="app-card reveal">
             <div class="app-mock">
-              <div class="mk-slide-canvas">
-                <div class="mk-slide-accent"></div>
-                <div class="mk-slide-title"></div>
-                <div class="mk-slide-bullet"></div>
-                <div class="mk-slide-bullet short"></div>
-              </div>
-              <div class="mk-slide-strip">
-                <div class="mk-slide-thumb active"></div>
-                <div class="mk-slide-thumb"></div>
-                <div class="mk-slide-thumb"></div>
-                <div class="mk-slide-thumb"></div>
+              <div class="mk-ui" aria-hidden="true">
+                <div class="mk-nav">
+                  <span class="mk-nav-logo sl"></span>
+                  <span class="mk-nav-app">ドキュメント</span>
+                  <span class="mk-nav-app on">スライド</span>
+                  <span class="mk-nav-app">シート</span>
+                </div>
+                <div class="mk-tb">
+                  <span class="mk-sl-title">Q3 レビュー</span>
+                  <span class="mk-tb-sep"></span>
+                  <span class="mk-sl-ins">挿入:</span>
+                  <span class="mk-sl-tool">テキスト</span>
+                  <span class="mk-sl-tool">四角形</span>
+                  <span class="mk-sl-tool">楕円</span>
+                  <span class="mk-sl-tool">矢印</span>
+                  <span class="mk-sl-present">発表</span>
+                </div>
+                <div class="mk-sl-body">
+                  <div class="mk-sl-thumbs">
+                    <div class="mk-sl-thumb on"><span class="mk-sl-thumb-n">1</span><span class="mk-sl-thumb-c"><i></i><i></i></span></div>
+                    <div class="mk-sl-thumb"><span class="mk-sl-thumb-n">2</span><span class="mk-sl-thumb-c"><i></i><i></i></span></div>
+                    <div class="mk-sl-thumb"><span class="mk-sl-thumb-n">3</span><span class="mk-sl-thumb-c"><i></i><i></i></span></div>
+                    <div class="mk-sl-add">+</div>
+                  </div>
+                  <div class="mk-sl-stage">
+                    <div class="mk-sl-canvas">
+                      <div class="mk-sl-el t">Q3 レビュー</div>
+                      <div class="mk-sl-el b">・売上サマリと来期計画</div>
+                      <div class="mk-sl-el e"></div>
+                      <div class="mk-sl-sel">
+                        <div class="r"></div>
+                        <i class="mk-sl-hd"></i><i class="mk-sl-hd"></i><i class="mk-sl-hd"></i><i class="mk-sl-hd"></i>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mk-sl-props">
+                    <div class="mk-sl-props-t">プロパティ</div>
+                    <div class="mk-sl-props-r"><span>塗り</span><span class="mk-sl-sw" style="background:var(--ui-shape)"></span></div>
+                    <div class="mk-sl-props-r"><span>線</span><span class="mk-sl-sw" style="background:var(--ui-blue)"></span></div>
+                    <div class="mk-sl-props-r col"><span>位置</span><span>620 · 160</span></div>
+                    <div class="mk-sl-props-r col"><span>サイズ</span><span>250 · 240</span></div>
+                    <div class="mk-sl-props-r"><span>背景</span><span class="mk-sl-sw" style="background:#ffffff"></span></div>
+                  </div>
+                </div>
+                <div class="mk-sl-status"><span>スライド 1 / 3</span><span>|</span><span>一覧に戻る</span></div>
               </div>
             </div>
             <div class="app-body">
@@ -426,12 +579,30 @@
           <!-- Sheet -->
           <article class="app-card reveal">
             <div class="app-mock">
-              <div class="mk-grid">
-                <div class="hd"></div><div class="hd">A</div><div class="hd">B</div><div class="hd">C</div><div class="hd">D</div>
-                <div class="rh">1</div><div class="val">売上</div><div>Q1</div><div>Q2</div><div>Q3</div>
-                <div class="rh">2</div><div>東京</div><div>120</div><div>148</div><div class="sel">163</div>
-                <div class="rh">3</div><div>大阪</div><div>98</div><div>110</div><div>125</div>
-                <div class="rh">4</div><div class="val">合計</div><div>218</div><div>258</div><div>288</div>
+              <div class="mk-ui" aria-hidden="true">
+                <div class="mk-nav">
+                  <span class="mk-nav-logo sh"></span>
+                  <span class="mk-nav-app">ドキュメント</span>
+                  <span class="mk-nav-app">スライド</span>
+                  <span class="mk-nav-app on">シート</span>
+                </div>
+                <div class="mk-sh-fx">
+                  <span class="mk-sh-addr">B4</span>
+                  <span class="mk-sh-fxl">fx</span>
+                  <span class="mk-sh-formula">=SUM(B2:B3)</span>
+                </div>
+                <div class="mk-sh-grid">
+                  <div class="hd"></div><div class="hd">A</div><div class="hd">B</div><div class="hd">C</div><div class="hd">D</div>
+                  <div class="rh">1</div><div>売上</div><div>Q1</div><div>Q2</div><div>Q3</div>
+                  <div class="rh">2</div><div>東京</div><div class="n">120</div><div class="n">148</div><div class="n">163</div>
+                  <div class="rh">3</div><div>大阪</div><div class="n">98</div><div class="n">110</div><div class="n">125</div>
+                  <div class="rh">4</div><div>合計</div><div class="n sel">218</div><div class="n">258</div><div class="n">288</div>
+                </div>
+                <div class="mk-sh-tabs">
+                  <span class="mk-sh-tab on">Sheet1</span>
+                  <span class="mk-sh-tab">シート2</span>
+                  <span class="mk-sh-add">+</span>
+                </div>
               </div>
             </div>
             <div class="app-body">
