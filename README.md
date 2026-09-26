@@ -172,7 +172,7 @@ three editors are no longer independently installable — they are surfaces of
 this app. It remains substitutable: being "office" grants no
 architectural privilege over Takos core. See [`AGENTS.md`](AGENTS.md), [`docs/roadmap.md`](docs/roadmap.md),
 [`design.md`](design.md), the [`mcp.tools` interface spec](docs/interfaces/mcp-tools-v1.md),
-and the ecosystem [`AGENTS.md`](../../AGENTS.md).
+and the ecosystem [`AGENTS.md`](../takos-control/AGENTS.md).
 
 The former standalone repos (`takos-apps/takos-docs`, `takos-apps/takos-slide`, `takos-apps/takos-excel`)
 are retired; their history lives in their own git remotes.
