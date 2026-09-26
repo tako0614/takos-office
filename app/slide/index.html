@@ -1,9 +1,42 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Takos Slide</title>
+    <meta
+      name="description"
+      content="Takos Slide — the presentation editor in the Takos Office suite."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <script>
+      /* Pre-hydration init: mirrors shared/i18n.ts + shared/lib/theme.ts so
+         <html lang> and data-theme are correct before the bundle runs. The
+         app re-syncs both after mount. */
+      (function () {
+        try {
+          var lang = localStorage.getItem("takos-lang");
+          if (lang !== "ja" && lang !== "en") {
+            lang = (navigator.language || "").toLowerCase().startsWith("ja")
+              ? "ja"
+              : "en";
+          }
+          document.documentElement.lang = lang;
+        } catch {
+          /* localStorage may be unavailable; the app will apply both. */
+        }
+      })();
+    </script>
+    <style>
+      /* Pre-hydration flash guard — must match the app background / text
+         colors so there is no color jump when the stylesheet loads. */
+      html,
+      body {
+        margin: 0;
+        background: #111827;
+        color: #f3f4f6;
+      }
+    </style>
   </head>
   <body class="bg-gray-900 text-gray-100">
     <div id="root"></div>

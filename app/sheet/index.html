@@ -3,7 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Takos Sheets</title>
+    <title>Takos Sheet</title>
+    <meta
+      name="description"
+      content="Takos Sheet — the spreadsheet editor in the Takos Office suite."
+    />
+    <meta name="robots" content="noindex, nofollow" />
+    <script>
+      /* Pre-hydration init: mirrors shared/i18n.ts + shared/lib/theme.ts so
+         <html lang> and data-theme are correct before the bundle runs. The
+         app re-syncs both after mount. */
+      (function () {
+        try {
+          var lang = localStorage.getItem("takos-lang");
+          if (lang !== "ja" && lang !== "en") {
+            lang = (navigator.language || "").toLowerCase().startsWith("ja")
+              ? "ja"
+              : "en";
+          }
+          document.documentElement.lang = lang;
+          var theme = localStorage.getItem("takos-theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme = matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          }
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch {
+          /* localStorage may be unavailable; the app will apply both. */
+        }
+      })();
+    </script>
+    <style>
+      /* Pre-hydration flash guard — must match the app background / text
+         colors so there is no color jump when the stylesheet loads. */
+      html,
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #1f2937;
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background: #171717;
+        color: #e5e5e5;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
