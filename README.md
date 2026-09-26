@@ -140,7 +140,7 @@ creates no standing MCP credential, and no credential is exposed through an Outp
 bun install
 bun run build      # 3 vite builds (build:spa) + unified worker (build:worker) → dist/worker.js
 bun run check      # format/type/tests/3 SPA builds/worker build + artifact-size gate
-bun run audit      # high/critical dependency advisory gate
+bun audit           # high/critical dependency advisory gate
 bun test           # editor and worker tests under app/**/__tests__
 ```
 
