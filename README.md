@@ -42,7 +42,8 @@ takos-office/
     mcp.ts           unified MCP server (docs + slide + sheet tools on one endpoint)
     build-worker.ts  bundles the three SPA builds + the worker into dist/worker.js
   site/        standalone marketing site (office.takos.jp)
-  docs/        roadmap
+  docs/        roadmap and the mcp.tools interface spec
+  design.md    locked design system for the editors — tokens.css is its runnable export
   outputs.tf   ordinary runtime URLs consumed by service-side Interface blueprints
 ```
 
@@ -170,6 +171,7 @@ added explicitly from a Store or Git install link and removed as a whole. The
 three editors are no longer independently installable — they are surfaces of
 this app. It remains substitutable: being "office" grants no
 architectural privilege over Takos core. See [`AGENTS.md`](AGENTS.md), [`docs/roadmap.md`](docs/roadmap.md),
+[`design.md`](design.md), the [`mcp.tools` interface spec](docs/interfaces/mcp-tools-v1.md),
 and the ecosystem [`AGENTS.md`](../../AGENTS.md).
 
 The former standalone repos (`takos-apps/takos-docs`, `takos-apps/takos-slide`, `takos-apps/takos-excel`)
