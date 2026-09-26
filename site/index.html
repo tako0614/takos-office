@@ -402,6 +402,21 @@
         html { scroll-behavior: auto; }
         .arrow span, .btn-primary span { transition: none; }
       }
+
+      .skip {
+        position: absolute;
+        left: -9999px;
+        top: 0;
+        z-index: 1000;
+        padding: 0.5rem 0.9rem;
+        background: var(--accent);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 0 0 8px 0;
+      }
+      .skip:focus {
+        left: 0;
+      }
     </style>
     <script type="application/ld+json">
       {
@@ -420,6 +435,7 @@
   <body>
 
     <!-- Nav -->
+    <a class="skip" href="#main">Skip to content</a>
     <nav class="nav" id="nav">
       <div class="nav-in">
         <a href="/" class="wordmark" aria-label="Takos Office">
@@ -445,7 +461,7 @@
     </nav>
 
     <!-- Hero -->
-    <main>
+    <main id="main">
     <header class="hero">
       <div class="ink" style="top:-4rem; right:-3rem; width:30rem; height:30rem;" aria-hidden="true">
         <svg viewBox="0 0 600 600" fill="none">
