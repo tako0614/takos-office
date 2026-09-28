@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>document.documentElement.classList.add('js')</script>
-    <title>Takos Office | agent-native docs, slides &amp; sheets</title>
+    <title>Takos Office</title>
     <meta
       name="description"
-      content="Takos Office は、自分の Workspace の中で動くセルフホスト型のオフィススイート。文書・プレゼン・表計算が、サブスクなしで、AI エージェントが操作できる形で、あなたのインフラ上に。"
+      content="Takos Office は、自分の Workspace の中で動くセルフホスト型のオフィススイート。Docs・Slide・Sheet を1つの takos-office Capsule として install でき、各アプリは MCP 経由で AI エージェントに操作できる。GPL-3.0-only。"
     />
-    <meta property="og:title" content="Takos Office | agent-native docs, slides &amp; sheets" />
-    <meta property="og:description" content="自分の Workspace で動く、エージェントネイティブなオフィススイート。" />
+    <meta property="og:title" content="Takos Office" />
+    <meta property="og:description" content="自分の Workspace で動く office suite — Docs・Slide・Sheet。各アプリは MCP 経由でエージェントに操作できる。" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Takos Office" />
     <meta property="og:locale" content="ja_JP" />
@@ -37,23 +37,12 @@
       :root {
         --bg:        #0a0a0a;
         --bg-elev:   #141414;
-        --bg-subtle: #1a1a1a;
         --fg:        #fafafa;
         --fg-muted:  #a3a3a3;
         --fg-subtle: #8f8f8f;
         --line:      #262626;
-        --line-strong: #3f3f3f;
         --accent:      #ef4444;
-        --accent-hover:#f87171;
         --accent-text: #fca5a5;
-        --accent-soft: #2a0a0a;
-        --ink-blue:      #3b82f6;
-        --ink-blue-deep: #2563eb;
-        --ink-red:       #ff3b3b;
-        --ink-red-deep:  #dc2626;
-        --grad-from: #fafafa;
-        --grad-mid:  #ef4444;
-        --grad-to:   #dc2626;
         --container: 1120px;
         --nav-h: 64px;
         --sans: "Bricolage Grotesque", "Noto Sans JP", -apple-system, BlinkMacSystemFont,
@@ -71,11 +60,13 @@
         font-size: 16px;
         font-feature-settings: 'ss01', 'ss02';
         -webkit-font-smoothing: antialiased;
-        overflow-x: hidden;
       }
 
-      a { color: inherit; text-decoration: none; }
+      a { color: inherit; text-decoration: none; transition: color 0.12s; }
+      a:hover { color: var(--accent); }
       ::selection { background: var(--accent); color: var(--bg); }
+      code { font-family: var(--mono); font-size: 0.92em; }
+      img { display: block; max-width: 100%; }
 
       .container {
         width: 100%;
@@ -84,43 +75,11 @@
         padding: 0 clamp(1.25rem, 5vw, 2.5rem);
       }
 
-      .eyebrow {
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--fg-subtle);
-      }
-
-      .accent-text {
-        color: var(--accent);
-      }
-
-      .arrow {
-        color: var(--fg);
-        border-bottom: 1px solid var(--line-strong);
-        padding-bottom: 2px;
-        transition: border-color 0.14s, color 0.14s;
-      }
-      .arrow:hover { border-color: var(--accent); color: var(--accent-text); }
-      .arrow span { display: inline-block; transition: transform 0.14s; }
-      .arrow:hover span { transform: translateX(3px); }
-
+      /* Text links — the only action style on this page. */
+      .link-go { font-weight: 600; font-size: 0.88rem; color: var(--fg); }
+      .link-go:hover { color: var(--accent); }
       .link { color: var(--fg-muted); transition: color 0.14s; }
       .link:hover { color: var(--fg); }
-
-      .btn-primary {
-        display: inline-flex; align-items: center; gap: 0.5rem;
-        padding: 0.7rem 1.3rem; border-radius: 999px;
-        background: var(--accent); color: var(--accent-fg, var(--bg));
-        font-weight: 700; font-size: 0.92rem;
-        transition: background 0.14s, transform 0.14s;
-      }
-      .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
-      .btn-primary span { transition: transform 0.14s; }
-      .btn-primary:hover span { transform: translateX(3px); }
-
-      .hairline { width: 100%; height: 1px; background: var(--line); }
 
       /* ---- Nav ---- */
       .nav {
@@ -142,128 +101,83 @@
       }
       .wordmark svg { width: 1.5rem; height: 1.5rem; }
       .nav-links { display: flex; gap: 1.6rem; font-size: 0.88rem; align-items: center; }
-      .nav-links .show-sm { display: none; }
 
-      /* ---- Hero ---- */
-      .hero { position: relative; padding: 11rem 0 6rem; overflow: hidden; }
-      .hero-in { position: relative; z-index: 1; }
-      .hero .eyebrow { margin-bottom: 1.75rem; display: block; }
-      .hero h1 {
-        font-size: clamp(2.8rem, 7vw, 5rem);
-        font-weight: 800; line-height: 1.08;
-        letter-spacing: -0.035em; max-width: 16ch;
+      /* ---- Document head ---- */
+      .doc-head { padding: calc(var(--nav-h) + 4rem) 0 4rem; }
+      .doc-title {
+        font-size: clamp(2.2rem, 4.6vw, 3.4rem);
+        font-weight: 800; line-height: 1;
+        letter-spacing: -0.03em;
       }
-      .hero .lede {
-        color: var(--fg-muted); margin-top: 1.75rem;
-        font-size: clamp(1.02rem, 1.6vw, 1.2rem);
-        max-width: 34rem; line-height: 1.85;
-      }
-      .hero-act { margin-top: 2.5rem; display: flex; align-items: center; gap: 1.75rem; font-size: 0.95rem; flex-wrap: wrap; }
-      .hero-fig { margin-top: 3.5rem; }
-      .hero-fig img {
-        display: block; width: 100%; height: auto;
-        border: 1px solid var(--line); border-radius: 12px;
-        aspect-ratio: 16 / 10; object-fit: cover; object-position: top;
-      }
-      .hero-fig figcaption {
-        padding-top: 0.6rem; font-family: var(--mono); font-size: 0.72rem;
-        color: var(--fg-subtle);
-      }
+      .doc-tagline { font-size: 1.13rem; font-weight: 500; margin-top: 0.75rem; }
+      .doc-lede { color: var(--fg-muted); margin-top: 1.5rem; max-width: 60ch; }
+      .intro-links { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 1rem; }
+      .doc-head .viz { margin-top: 3rem; }
 
-      /* ---- Apps grid ---- */
-      .apps { padding: 5rem 0; position: relative; overflow: hidden; }
-      .section-head { margin-bottom: 3rem; }
-      .section-head .eyebrow { display: block; margin-bottom: 1rem; }
-      .section-head h2 {
-        font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700;
-        letter-spacing: -0.025em; line-height: 1.15; max-width: 20ch;
+      /* ---- Sections — clause number in the margin ---- */
+      .docsec { padding: 4rem 0; border-top: 1px solid var(--line); }
+      .doc-grid { display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 2rem; }
+      .doc-index {
+        font-family: var(--mono); font-size: 0.78rem; color: var(--fg-subtle);
+        letter-spacing: 0.08em; padding-top: 0.5em;
       }
-      .section-head p { color: var(--fg-muted); margin-top: 1rem; max-width: 40rem; }
+      .doc-body { min-width: 0; }
+      .doc-body h2 {
+        font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em;
+        line-height: 1.2; margin-bottom: 0.6rem;
+      }
+      .doc-body > .lede { color: var(--fg-muted); max-width: 64ch; margin-bottom: 1.5rem; }
 
-      .app-grid {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+      /* ---- Term/definition rows — spec list and fact rows ---- */
+      .spec-list, .def-list { margin-top: 1.5rem; border-top: 1px solid var(--line); }
+      .spec-row, .def-row {
+        display: grid; grid-template-columns: 180px minmax(0, 1fr);
+        gap: 0.5rem 1.5rem; align-items: baseline;
+        padding: 0.7rem 0; border-bottom: 1px solid var(--line);
       }
-      .app-card {
-        position: relative; z-index: 1;
-        border: 1px solid var(--line); border-radius: 16px;
-        background: var(--bg-elev); overflow: hidden;
-        display: flex; flex-direction: column;
-        transition: border-color 0.14s;
+      .spec-row dt, .def-row dt {
+        font-family: var(--mono); font-size: 0.78rem; color: var(--fg-subtle);
+        letter-spacing: 0.04em; font-weight: 500;
       }
-      .app-card:hover { border-color: var(--line-strong); }
-      .app-mock {
-        border-bottom: 1px solid var(--line);
-        background: var(--bg-subtle); overflow: hidden;
-        aspect-ratio: 16 / 10;
-      }
-      .app-mock img {
-        display: block; width: 100%; height: 100%;
-        object-fit: cover; object-position: top center;
-      }
-      .app-body { padding: 1.25rem 1.35rem 1.5rem; }
-      .app-body h3 {
-        font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em;
-        display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
-      }
-      .app-tag {
-        font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.1em;
-        text-transform: uppercase; color: var(--accent-text);
-        border: 1px solid var(--accent-soft); background: var(--accent-soft);
-        padding: 0.1rem 0.45rem; border-radius: 999px;
-      }
-      .app-body p { color: var(--fg-muted); font-size: 0.9rem; line-height: 1.7; }
+      .spec-row dd, .def-row dd { font-size: 0.88rem; color: var(--fg); }
 
-      /* ---- Principles ---- */
-      .why { padding: 5rem 0; }
-      .princ-row {
-        padding: 2.25rem 0; border-top: 1px solid var(--line);
-      }
-      .princ-row:last-child { border-bottom: 1px solid var(--line); }
-      .princ-row h3 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 0.5rem; }
-      .princ-row p { color: var(--fg-muted); max-width: 40rem; font-size: 0.97rem; }
+      /* ---- Figures — real UI, hairline rule, honest caption ---- */
+      .viz { margin: 0; }
+      .viz img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; }
+      .viz figcaption { padding: 0.5rem 2px 0; font-size: 0.78rem; color: var(--fg-subtle); }
 
-      /* ---- Agent-native section ---- */
-      .agent { padding: 5rem 0; position: relative; overflow: hidden; }
-      .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5rem; align-items: center; }
-      .agent-text h2 { font-size: clamp(1.7rem, 3.5vw, 2.5rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 1rem; }
-      .agent-text p { color: var(--fg-muted); max-width: 32rem; margin-bottom: 1rem; }
-      .agent-text .mono-note { font-family: var(--mono); font-size: 0.8rem; color: var(--fg-subtle); margin-top: 1.5rem; }
+      /* ---- App rows — note left, real screen right ---- */
+      .app-rows { list-style: none; margin-top: 1.5rem; border-top: 1px solid var(--line); }
+      .app-row {
+        display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+        gap: 1rem 2rem; align-items: start;
+        padding: 1.5rem 0; border-bottom: 1px solid var(--line);
+      }
+      .app-row h3 { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+      .app-tag { font-family: var(--mono); font-size: 0.78rem; color: var(--fg-subtle); font-weight: 400; margin-left: 0.5rem; }
+      .app-row p { color: var(--fg-muted); font-size: 0.88rem; margin-top: 0.4rem; max-width: 46ch; }
+
+      /* ---- Agent — real tool names, flat code block ---- */
+      .agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start; margin-top: 1.5rem; }
+      .agent-grid p { color: var(--fg-muted); max-width: 34rem; }
+      .mono-note { font-family: var(--mono); font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1.25rem; }
       .codeblock {
-        position: relative; z-index: 1;
-        border: 1px solid var(--line); border-radius: 12px;
-        background: var(--bg-elev); overflow: hidden;
+        border: 1px solid var(--line); border-radius: 6px;
+        background: var(--bg-elev); padding: 1rem 1.1rem;
+        font-family: var(--mono); font-size: 0.78rem; line-height: 1.85;
+        overflow-x: auto; white-space: pre;
       }
-      .code-bar {
-        padding: 0.55rem 0.9rem;
-        border-bottom: 1px solid var(--line); background: var(--bg-subtle);
-        font-family: var(--mono); font-size: 0.68rem; color: var(--fg-subtle);
+      .codeblock .k { color: var(--fg-subtle); font-weight: 600; }
+      .codeblock .s { color: var(--accent-text); }
+      .codeblock .c { color: var(--fg-subtle); }
+      .codeblock .p { color: var(--fg-muted); }
+
+      /* ---- Roadmap — flat rows, no cards or pills ---- */
+      .road-label {
+        font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em;
+        color: var(--fg-subtle); margin: 2rem 0 0.25rem;
       }
-      .code-body { padding: 1rem 1.1rem; font-family: var(--mono); font-size: 0.78rem; line-height: 1.85; overflow-x: auto; }
-      .code-body .k { color: var(--ink-blue); }
-      .code-body .s { color: var(--accent-text); }
-      .code-body .c { color: var(--fg-subtle); }
-      .code-body .p { color: var(--fg-muted); }
-
-      /* ---- Roadmap ---- */
-      .roadmap { padding: 5rem 0; }
-      .road-group { margin-top: 2.5rem; }
-      .road-label { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-subtle); margin-bottom: 1rem; }
-      .road-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
-      .road-card { border: 1px solid var(--line); border-radius: 12px; padding: 1.1rem 1.2rem; background: var(--bg-elev); }
-      .road-card.planned { background: transparent; border-style: dashed; }
-      .road-card h3 { font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.35rem; }
-      .road-card h3 code { font-family: var(--mono); font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
-      .road-card p { color: var(--fg-muted); font-size: 0.85rem; }
-      .pill { font-family: var(--mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.12rem 0.45rem; border-radius: 999px; flex-shrink: 0; }
-      .pill.ok { color: var(--ink-blue); border: 1px solid var(--ink-blue-deep); }
-      .pill.soon { color: var(--fg-subtle); border: 1px solid var(--line-strong); }
-
-      /* ---- CTA ---- */
-      .cta { padding: 7rem 0; position: relative; overflow: hidden; }
-      .cta-in { position: relative; z-index: 1; }
-      .cta h2 { font-size: clamp(2rem, 5vw, 3.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; max-width: 18ch; }
-      .cta p { color: var(--fg-muted); margin-top: 1.25rem; max-width: 34rem; }
-      .cta-act { margin-top: 2.25rem; display: flex; gap: 1.75rem; align-items: center; flex-wrap: wrap; }
+      .road-label:first-of-type { margin-top: 1.5rem; }
 
       /* ---- Footer ---- */
       footer { border-top: 1px solid var(--line); padding: 2.5rem 0; }
@@ -273,16 +187,17 @@
 
       /* ---- Responsive ---- */
       @media (max-width: 880px) {
-        .app-grid { grid-template-columns: 1fr; }
-        .agent-grid { grid-template-columns: 1fr; gap: 2rem; }
+        .doc-grid { grid-template-columns: minmax(0, 1fr); }
+        .doc-index { padding: 0 0 0.25rem; }
+        .app-row { grid-template-columns: minmax(0, 1fr); }
+        .agent-grid { grid-template-columns: 1fr; gap: 1.5rem; }
         .nav-links .hide-sm { display: none; }
       }
-      @media (max-width: 560px) {
-        .hero { padding: 8rem 0 4rem; }
+      @media (max-width: 720px) {
+        .spec-row, .def-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
       }
       @media (prefers-reduced-motion: reduce) {
         html { scroll-behavior: auto; }
-        .arrow span, .btn-primary span { transition: none; }
       }
 
       .skip {
@@ -308,7 +223,7 @@
         "url": "https://office.takos.jp/",
         "applicationCategory": "OfficeApplication",
         "operatingSystem": "Cross-platform",
-        "description": "自分の Workspace で動く、エージェントネイティブなオフィススイート。",
+        "description": "自分の Workspace で動く office suite — Docs・Slide・Sheet。各アプリは MCP 経由でエージェントに操作できる。",
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "sameAs": ["https://github.com/tako0614/takos-office"]
       }
@@ -334,122 +249,94 @@
         </a>
         <div class="nav-links">
           <a href="#apps" class="link hide-sm">アプリ</a>
-          <a href="#why" class="link hide-sm">考え方</a>
-          <a href="#roadmap" class="link hide-sm">ロードマップ</a>
-          <a href="https://github.com/tako0614" class="link">GitHub</a>
-          <a href="#start" class="arrow">はじめる <span>→</span></a>
+          <a href="#agent" class="link hide-sm">Agent</a>
+          <a href="#roadmap" class="link hide-sm">Roadmap</a>
+          <a href="https://github.com/tako0614/takos-office" class="link" rel="noopener">GitHub</a>
+          <a href="#start" class="link-go">導入 →</a>
         </div>
       </div>
     </nav>
 
-    <!-- Hero -->
     <main id="main">
-    <header class="hero">
-      <div class="container hero-in">
-        <span class="eyebrow">Self-hosted · Agent-native office suite</span>
-        <h1>オフィスごと、<br><span class="accent-text">自分のものに。</span></h1>
-        <p class="lede">文書・プレゼン・表計算が、あなたの Workspace の中で動く。サブスクも、誰かのサーバーもいらない。AI エージェントが、あなたの代わりに書く。</p>
-        <div class="hero-act">
-          <a href="#start" class="btn-primary">はじめる <span>→</span></a>
-          <a href="#apps" class="link">アプリを見る</a>
-        </div>
-        <figure class="hero-fig">
+
+    <!-- Document head -->
+    <section class="doc-head">
+      <div class="container">
+        <h1 class="doc-title">Takos Office</h1>
+        <p class="doc-tagline">Self-hosted, agent-native office suite.</p>
+        <p class="doc-lede">Docs・Slide・Sheet を、自分の Workspace の中で動かすオフィススイート。各アプリは MCP を話し、AI エージェントが文書・スライド・シートを直接読み書きできる。</p>
+        <p class="intro-links">
+          <a class="link-go" href="https://app.takosumi.com/install?git=https%3A%2F%2Fgithub.com%2Ftako0614%2Ftakos-office.git&amp;name=takos-office" rel="noopener">Capsule を追加 →</a>
+          <a class="link-go" href="https://github.com/tako0614/takos-office" rel="noopener">GitHub →</a>
+          <a class="link-go" href="https://takos.jp/" rel="noopener">Takos →</a>
+        </p>
+        <dl class="spec-list">
+          <div class="spec-row"><dt>license</dt><dd>GPL-3.0-only</dd></div>
+          <div class="spec-row"><dt>upstream</dt><dd>github.com/tako0614/takos-office</dd></div>
+          <div class="spec-row"><dt>apps</dt><dd>docs · slide · sheet</dd></div>
+          <div class="spec-row"><dt>agent</dt><dd>MCP — ひとつの /mcp endpoint</dd></div>
+          <div class="spec-row"><dt>install</dt><dd>takos-office Capsule — OpenTofu module</dd></div>
+        </dl>
+        <figure class="viz">
           <img src="assets/shots/docs.webp" alt="Docs エディタの実画面 — Markdown の週次レポートを編集中" fetchpriority="high" />
-          <figcaption>docs エディタの実画面</figcaption>
+          <figcaption>docs — エディタの実画面</figcaption>
         </figure>
       </div>
-    </header>
+    </section>
 
-    <!-- Apps -->
-    <section class="apps" id="apps">
-      <div class="container">
-        <div class="section-head>
-          <span class="eyebrow">3つのエディタ</span>
-          <h2>使い慣れた道具が、<br>自分の手の中で。</h2>
-          <p>Google Workspace や Microsoft 365 で行う日常の文書・プレゼン・表計算を、自分の Workspace の中で。Docs・Slide・Sheet は、ひとつの <code>takos-office</code> Capsule にまとまり、必要なときに明示的に install できる。</p>
-        </div>
-        <div class="app-grid">
-
-          <!-- Docs -->
-          <article class="app-card>
-            <div class="app-mock">
-              <img src="assets/shots/docs.webp" alt="Docs エディタの実画面 — Markdown の週次レポートを編集中" loading="lazy" />
-            </div>
-            <div class="app-body">
-              <h3>Docs <span class="app-tag">docs</span></h3>
-              <p>Tiptap ベースのリッチテキストエディタ。ノートも長文も、自分の space の中で書く。エージェントからの編集にも対応。</p>
-            </div>
-          </article>
-
-          <!-- Slide -->
-          <article class="app-card>
-            <div class="app-mock">
-              <img src="assets/shots/slide.webp" alt="Slide エディタの実画面 — リリース案内のスライドとサムネイル一覧" loading="lazy" />
-            </div>
-            <div class="app-body">
-              <h3>Slide <span class="app-tag">slides</span></h3>
-              <p>プレゼンテーション作成。Keynote / Google Slides で行う日常の編集を、自分の space の中で。Canvas ベースで自由に組める。</p>
-            </div>
-          </article>
-
-          <!-- Sheet -->
-          <article class="app-card>
-            <div class="app-mock">
-              <img src="assets/shots/sheet.webp" alt="Sheet の実画面 — サービス別デプロイ数を集計するスプレッドシート" loading="lazy" />
-            </div>
-            <div class="app-body">
-              <h3>Sheet <span class="app-tag">sheets</span></h3>
-              <p>スプレッドシート / 表計算。HyperFormula で 400 以上の Excel 互換関数。バーチャルスクロールで大きな表も軽快に。</p>
-            </div>
-          </article>
-
+    <!-- 01 Apps -->
+    <section class="docsec" id="apps">
+      <div class="container doc-grid">
+        <span class="doc-index" aria-hidden="true">01</span>
+        <div class="doc-body">
+          <h2>Apps</h2>
+          <p class="lede">文書・プレゼン・表計算を、ひとつの <code>takos-office</code> Capsule に。Google Workspace や Microsoft 365 で行う日常の編集を、自分の Workspace の中で行う。</p>
+          <ul class="app-rows">
+            <li class="app-row">
+              <div>
+                <h3>Docs<span class="app-tag">docs</span></h3>
+                <p>Tiptap ベースのリッチテキストエディタ。ノートも長文も、自分の space の中で書く。</p>
+              </div>
+              <figure class="viz">
+                <img src="assets/shots/docs.webp" alt="Docs エディタの実画面 — Markdown の週次レポートを編集中" loading="lazy" />
+              </figure>
+            </li>
+            <li class="app-row">
+              <div>
+                <h3>Slide<span class="app-tag">slide</span></h3>
+                <p>Canvas ベースのプレゼンテーションエディタ。Keynote / Google Slides で行う編集を、自分の space の中で。</p>
+              </div>
+              <figure class="viz">
+                <img src="assets/shots/slide.webp" alt="Slide エディタの実画面 — リリース案内のスライドとサムネイル一覧" loading="lazy" />
+              </figure>
+            </li>
+            <li class="app-row">
+              <div>
+                <h3>Sheet<span class="app-tag">sheet</span></h3>
+                <p>スプレッドシート / 表計算。HyperFormula で 400 以上の Excel 互換関数。バーチャルスクロールで大きな表も扱える。</p>
+              </div>
+              <figure class="viz">
+                <img src="assets/shots/sheet.webp" alt="Sheet の実画面 — サービス別デプロイ数を集計するスプレッドシート" loading="lazy" />
+              </figure>
+            </li>
+          </ul>
         </div>
       </div>
     </section>
 
-    <div class="container"><div class="hairline"></div></div>
-
-    <!-- Why / Principles -->
-    <section class="why" id="why">
-      <div class="container">
-        <div class="section-head><span class="eyebrow">考え方</span></div>
-        <div class="princ-row">
-          <div>
-            <h3>自分の Workspace で動く。</h3>
-            <p>ドキュメントもデータも、あなたのインフラの中。誰かのクラウドに預けるのではなく、自分の space の中で生まれて、自分の space の中に残る。</p>
-          </div>
-        </div>
-        <div class="princ-row">
-          <div>
-            <h3>エージェントが、書く。</h3>
-            <p>すべてのアプリが MCP を話す。AI エージェントがあなたの文書・スライド・シートを直接読み書きできる。「議事録をまとめて」「この表をグラフ用に整えて」が、そのまま動く。</p>
-          </div>
-        </div>
-        <div class="princ-row">
-          <div>
-            <h3>サブスクではなく、Capsule。</h3>
-            <p>席数ライセンスも、月額もない。OpenTofu Capsule として自分のインフラに install するだけ。使わなくなったら、<code>takos-office</code> Capsule ごといつでも uninstall できる。</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="container"><div class="hairline"></div></div>
-
-    <!-- Agent-native -->
-    <section class="agent">
-      <div class="container">
-        <div class="agent-grid">
-          <div class="agent-text>
-            <span class="eyebrow" style="display:block; margin-bottom:1rem;">Agent-native</span>
-            <h2>あなたの代わりに、<br>道具を動かす。</h2>
-            <p>Takos Office の各アプリは MCP サーバーを公開している。Claude のような MCP 対応エージェントが、あなたのドキュメントを直接編集できる。</p>
-            <p>「先週のメモから提案書のスライドを作って」と頼めば、エージェントが slide を開いて組み立てる。コピペも、アプリの切り替えもいらない。</p>
-            <p class="mono-note">docs · slide · sheet — ひとつの /mcp endpoint</p>
-          </div>
-          <div class="codeblock>
-            <div class="code-bar">agent → takos-office /mcp</div>
-            <div class="code-body"><span class="c"># エージェントが MCP ツールを呼ぶ</span>
+    <!-- 02 Agent -->
+    <section class="docsec" id="agent">
+      <div class="container doc-grid">
+        <span class="doc-index" aria-hidden="true">02</span>
+        <div class="doc-body">
+          <h2>Agent</h2>
+          <div class="agent-grid">
+            <div>
+              <p>各アプリは MCP サーバーを公開している。MCP 対応エージェントが、あなたの文書・スライド・シートを直接読み書きできる。</p>
+              <p style="margin-top:0.75rem;">「先週のメモから提案書のスライドを作って」と頼めば、エージェントが slide を開いて組み立てる。コピペも、アプリの切り替えもいらない。</p>
+              <p class="mono-note">docs_* · slide_* · sheet_* — ひとつの /mcp endpoint</p>
+            </div>
+            <div class="codeblock"><span class="c"># エージェントが MCP ツールを呼ぶ</span>
 <span class="k">tool</span>: <span class="p">slide_create</span>
 <span class="k">args</span>:
   <span class="p">title</span>: <span class="s">"Q3 提案書"</span>
@@ -460,54 +347,62 @@
       </div>
     </section>
 
-    <div class="container"><div class="hairline"></div></div>
-
-    <!-- Roadmap -->
-    <section class="roadmap" id="roadmap">
-      <div class="container">
-        <div class="section-head>
-          <span class="eyebrow">ロードマップ</span>
-          <h2>オフィスは、これから広がる。</h2>
-          <p>核となる3つのエディタをひとつの Capsule にまとめ、Workspace の中で完結する道具を増やしていく。将来の道具はそれぞれ独立した Capsule として、好きなものだけ入れられる。</p>
-        </div>
-
-        <div class="road-group>
-          <div class="road-label">Available — 今すぐ使える</div>
-          <div class="road-items">
-            <div class="road-card"><h3>Docs <code>/docs</code></h3><p>文書 / ノート</p></div>
-            <div class="road-card"><h3>Slide <code>/slide</code></h3><p>プレゼンテーション</p></div>
-            <div class="road-card"><h3>Sheet <code>/sheet</code></h3><p>スプレッドシート / 表計算</p></div>
-          </div>
-        </div>
-
-        <div class="road-group>
-          <div class="road-label">Planned — 計画中</div>
-          <div class="road-items">
-            <div class="road-card planned"><h3>Calendar <span class="pill soon">Planned</span></h3><p>スケジュール / イベント管理</p></div>
-            <div class="road-card planned"><h3>Mail <span class="pill soon">Planned</span></h3><p>自分のメールボックスの上で動くクライアント</p></div>
-            <div class="road-card planned"><h3>Form <span class="pill soon">Planned</span></h3><p>フォーム / アンケート、結果はシートへ</p></div>
-            <div class="road-card planned"><h3>Base <span class="pill soon">Exploring</span></h3><p>軽量データベース / 構造化テーブル</p></div>
-          </div>
+    <!-- 03 Roadmap -->
+    <section class="docsec" id="roadmap">
+      <div class="container doc-grid">
+        <span class="doc-index" aria-hidden="true">03</span>
+        <div class="doc-body">
+          <h2>Roadmap</h2>
+          <p class="lede">核となる3つのエディタをひとつの Capsule にまとめ、Workspace の中で完結する道具を増やしていく。将来の道具はそれぞれ独立した Capsule として、好きなものだけ入れられる。</p>
+          <p class="road-label">Available</p>
+          <dl class="def-list">
+            <div class="def-row"><dt>Docs</dt><dd>文書 / ノート — <code>/docs</code></dd></div>
+            <div class="def-row"><dt>Slide</dt><dd>プレゼンテーション — <code>/slide</code></dd></div>
+            <div class="def-row"><dt>Sheet</dt><dd>スプレッドシート / 表計算 — <code>/sheet</code></dd></div>
+          </dl>
+          <p class="road-label">Planned</p>
+          <dl class="def-list">
+            <div class="def-row"><dt>Calendar</dt><dd>スケジュール / イベント管理</dd></div>
+            <div class="def-row"><dt>Mail</dt><dd>自分のメールボックスの上で動くクライアント</dd></div>
+            <div class="def-row"><dt>Form</dt><dd>フォーム / アンケート、結果はシートへ</dd></div>
+            <div class="def-row"><dt>Base</dt><dd>軽量データベース / 構造化テーブル</dd></div>
+          </dl>
         </div>
       </div>
     </section>
 
-    <div class="container"><div class="hairline"></div></div>
-
-    <!-- CTA -->
-    <section class="cta" id="start">
-      <div class="container cta-in">
-        <h2>オフィスを、<br>自分のインフラに。</h2>
-        <p>Takos Workspace の Apps から <code>takos-office</code> Capsule を明示的に追加する。Docs・Slide・Sheet をひとつの Capsule で、自分のオフィスにする。</p>
-        <div class="cta-act">
-          <a href="https://github.com/tako0614/takos-office" class="btn-primary" rel="noopener">Capsule を追加する <span>→</span></a>
-          <a href="https://takos.jp" class="link">Takos をはじめる</a>
-          <a href="https://github.com/tako0614/takos-office" class="link" rel="noopener">takos-office</a>
+    <!-- 04 Data & operation -->
+    <section class="docsec" id="data">
+      <div class="container doc-grid">
+        <span class="doc-index" aria-hidden="true">04</span>
+        <div class="doc-body">
+          <h2>データと運用</h2>
+          <dl class="def-list">
+            <div class="def-row"><dt>data</dt><dd>ドキュメントも編集履歴も、自分の Workspace の space 内に保存される</dd></div>
+            <div class="def-row"><dt>install</dt><dd><code>takos-office</code> Capsule を明示的に追加する。uninstall もいつでもできる</dd></div>
+            <div class="def-row"><dt>cost</dt><dd>席数ライセンス・月額なし — 自分のインフラ費のみ</dd></div>
+            <div class="def-row"><dt>license</dt><dd>GPL-3.0-only</dd></div>
+          </dl>
         </div>
       </div>
     </section>
 
-    <!-- Footer -->
+    <!-- 05 Install -->
+    <section class="docsec" id="start">
+      <div class="container doc-grid">
+        <span class="doc-index" aria-hidden="true">05</span>
+        <div class="doc-body">
+          <h2>導入</h2>
+          <p class="lede">Takos Workspace の Apps から <code>takos-office</code> Capsule を明示的に追加する。Docs・Slide・Sheet がひとつの Capsule で入る。</p>
+          <p class="intro-links">
+            <a class="link-go" href="https://app.takosumi.com/install?git=https%3A%2F%2Fgithub.com%2Ftako0614%2Ftakos-office.git&amp;name=takos-office" rel="noopener">Capsule を追加 →</a>
+            <a class="link-go" href="https://takos.jp/" rel="noopener">Takos をはじめる →</a>
+            <a class="link-go" href="https://github.com/tako0614/takos-office" rel="noopener">リポジトリ →</a>
+          </p>
+        </div>
+      </div>
+    </section>
+
     </main>
 
     <footer>
@@ -521,7 +416,7 @@
         </a>
         <div class="foot-links">
           <a href="#apps" class="link">アプリ</a>
-          <a href="#roadmap" class="link">ロードマップ</a>
+          <a href="#roadmap" class="link">Roadmap</a>
           <a href="https://takos.jp" class="link">Takos</a>
           <a href="https://github.com/tako0614" class="link">GitHub</a>
         </div>
