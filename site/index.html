@@ -114,9 +114,15 @@
         color: var(--bg);
         font-weight: 600;
         font-size: 0.88rem;
-        padding: 0.55em 1.1em;
-        border-radius: 6px;
+        padding: 0.65em 1.3em;
+        border-radius: 5px 12px 12px 12px;
       }
+
+      /* ---- Takos Office design language: the ink drop, made structural.
+           The mark is a droplet — point at the top, round belly below.
+           Surfaces take the same silhouette: a small pointed top-left
+           corner over generous rounding. Section markers and bullets are
+           the droplet itself, and the page ends by sinking into red ink. */
       .btn:hover {
         filter: brightness(1.15);
         color: var(--bg);
@@ -177,16 +183,28 @@
       /* ---- Page head ---- */
       .page-head {
         padding: calc(var(--nav-h) + 4rem) 0 3rem;
+        overflow: hidden;
+      }
+      .head-brand {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+      }
+      .head-mark {
+        width: 104px;
+        height: 104px;
+        flex: none;
       }
       .page-title {
-        font-size: clamp(2rem, 4vw, 2.6rem);
+        font-size: clamp(2.8rem, 6.5vw, 4.8rem);
         font-weight: 800;
-        line-height: 1.1;
+        line-height: 1;
         letter-spacing: -0.03em;
       }
       .page-desc {
-        margin-top: 1.5rem;
+        margin-top: 1.75rem;
         max-width: 62ch;
+        font-size: 1.13rem;
       }
       .page-facts {
         font-family: var(--mono);
@@ -199,8 +217,26 @@
         gap: 1.5rem;
         flex-wrap: wrap;
         align-items: center;
-        margin-top: 1.5rem;
+        margin-top: 1.75rem;
         font-size: 0.9rem;
+      }
+
+      /* The product itself is the hero: the real editor starts at the text
+         column's left edge and runs off the right viewport edge. */
+      .head-shot {
+        margin-top: 3rem;
+        padding-left: max(
+          clamp(1.25rem, 5vw, 2.5rem),
+          calc((100vw - var(--container)) / 2 + clamp(1.25rem, 5vw, 2.5rem))
+        );
+      }
+      .head-shot .shot {
+        margin-top: 0;
+        max-height: 76vh;
+        object-fit: cover;
+        object-position: top left;
+        border-radius: 8px 20px 20px 0;
+        border-right: none;
       }
 
       /* ---- Sections ---- */
@@ -209,11 +245,22 @@
         border-top: 1px solid var(--line);
       }
       .sec h2 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        letter-spacing: -0.015em;
+        font-size: clamp(1.6rem, 2.8vw, 2.2rem);
+        font-weight: 800;
+        letter-spacing: -0.02em;
         line-height: 1.2;
         margin-bottom: 0.6rem;
+      }
+      /* Section marker — the droplet itself. */
+      .sec h2::before {
+        content: "";
+        display: inline-block;
+        width: 15px;
+        height: 15px;
+        margin-right: 0.7rem;
+        vertical-align: -2px;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 4 C18 16, 8 22, 8 31 C8 39, 15 44, 24 44 C33 44, 40 39, 40 31 C40 22, 30 16, 24 4 Z' fill='%23ef4444'/%3E%3C/svg%3E")
+          no-repeat center / contain;
       }
       .sec .intro {
         color: var(--fg-muted);
@@ -231,6 +278,15 @@
         letter-spacing: -0.01em;
         margin-bottom: 0.4rem;
       }
+      .step h3::before {
+        content: "";
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        margin-right: 0.55rem;
+        background: var(--accent);
+        border-radius: 1px 8px 8px 8px;
+      }
       .step p {
         color: var(--fg-muted);
         font-size: 0.92rem;
@@ -243,21 +299,31 @@
         width: 100%;
         height: auto;
         border: 1px solid var(--line);
-        border-radius: 6px;
+        border-radius: 8px 20px 20px 20px;
         margin-top: 1.25rem;
       }
 
       /* ---- Plain fact list ---- */
       .fact-list {
         margin: 1.25rem 0 0;
-        padding-left: 1.4em;
+        padding: 0;
+        list-style: none;
       }
       .fact-list li {
+        position: relative;
+        padding-left: 1.4rem;
         margin: 0.6rem 0;
         color: var(--fg-muted);
       }
-      .fact-list li::marker {
-        color: var(--fg-subtle);
+      .fact-list li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.55em;
+        width: 10px;
+        height: 10px;
+        background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 4 C18 16, 8 22, 8 31 C8 39, 15 44, 24 44 C33 44, 40 39, 40 31 C40 22, 30 16, 24 4 Z' fill='%23ef4444'/%3E%3C/svg%3E")
+          no-repeat center / contain;
       }
 
       /* ---- Agent — real tool names, flat code block ---- */
@@ -270,7 +336,7 @@
       }
       .codeblock {
         border: 1px solid var(--line);
-        border-radius: 6px;
+        border-radius: 8px 20px 20px 20px;
         background: var(--bg-elev);
         padding: 1rem 1.1rem;
         font-family: var(--mono);
@@ -301,9 +367,27 @@
       }
 
       /* ---- Footer ---- */
+      /* The page ends by sinking into ink — a fade into the drop's red,
+         then the field itself with dark type. */
+      .ink-fade {
+        height: 96px;
+        background: linear-gradient(180deg, transparent, var(--accent));
+      }
       footer {
-        border-top: 1px solid var(--line);
+        background: var(--accent);
+        color: #0a0a0a;
         padding: 2.5rem 0;
+      }
+      footer .link {
+        color: rgba(10, 10, 10, 0.75);
+      }
+      footer .link:hover {
+        color: #0a0a0a;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      footer .wordmark {
+        color: #0a0a0a;
       }
       .foot {
         display: flex;
@@ -321,13 +405,20 @@
       .foot-copy {
         font-family: var(--mono);
         font-size: 0.72rem;
-        color: var(--fg-subtle);
+        color: rgba(10, 10, 10, 0.65);
       }
 
       /* ---- Responsive ---- */
       @media (max-width: 880px) {
         .nav-links .hide-sm {
           display: none;
+        }
+        .head-mark {
+          width: 72px;
+          height: 72px;
+        }
+        .head-shot .shot {
+          max-height: 60vh;
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -418,7 +509,10 @@
       <!-- Page head -->
       <section class="page-head">
         <div class="container">
-          <h1 class="page-title">Takos Office</h1>
+          <div class="head-brand">
+            <img class="head-mark" src="favicon.svg" alt="" />
+            <h1 class="page-title">Takos Office</h1>
+          </div>
           <p class="page-desc">
             Docs・Slide・Sheet を、自分の Workspace の中で動かす office
             suite。各アプリは MCP を話し、AI
@@ -443,6 +537,8 @@
             >
             <a class="link" href="https://takos.jp/" rel="noopener">Takos</a>
           </div>
+        </div>
+        <div class="head-shot">
           <img
             class="shot"
             src="assets/shots/docs.webp"
@@ -602,6 +698,7 @@
       </section>
     </main>
 
+    <div class="ink-fade" aria-hidden="true"></div>
     <footer>
       <div class="container foot">
         <a href="/" class="wordmark" aria-label="Takos Office">
