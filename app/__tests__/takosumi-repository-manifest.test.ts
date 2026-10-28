@@ -59,7 +59,25 @@ test("the advertised root delivers all four public OIDC registration fields", ()
   }
 });
 
-test("declared modules reference real variables and no secret or host authority", () => {
+test("the Cloudflare root exposes deployment opt-ins for reviewed user choice", () => {
+  const module = manifest.install.modules["."]!;
+  for (const name of [
+    "enable_cloudflare_resources",
+    "enable_cloudflare_worker_script",
+  ]) {
+    expect(module.inputs).toContainEqual(expect.objectContaining({
+      name,
+      source: { kind: "user" },
+      type: "boolean",
+      advanced: true,
+    }));
+    expect(variableBlock(moduleSources["."]!, name)).toMatch(
+      /\n\s+default\s+=\s+false\b/,
+    );
+  }
+});
+
+test("declared modules reference real variables without credential or identity selectors", () => {
   for (const [path, module] of Object.entries(manifest.install.modules)) {
     const source = moduleSources[path];
     expect(source).toBeDefined();
@@ -81,8 +99,6 @@ test("declared modules reference real variables and no secret or host authority"
   }
   for (const forbidden of [
     "cloudflare_account_id",
-    "enable_cloudflare_resources",
-    "enable_cloudflare_worker_script",
     "object_storage_access_token",
     "mcp_auth_token",
     "object_storage_workspace_id",
@@ -123,6 +139,8 @@ interface RepositoryModule {
   inputs: Array<{
     name: string;
     source: { kind: string };
+    type?: string;
+    advanced?: boolean;
     secret?: boolean;
   }>;
   requires?: Array<{
