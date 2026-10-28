@@ -31,10 +31,11 @@ test("Takos Office publishes a closed Repository manifest", () => {
     "install",
     "kind",
   ]);
-  expect(manifest.apiVersion).toBe("takosumi.com/v2.1");
+  expect(manifest.apiVersion).toBe("takosumi.com/v2.5");
   expect(manifest.kind).toBe("Repository");
-  expect(Object.keys(manifest.install)).toEqual(["defaultModule", "modules"]);
-  expect(manifest.install.defaultModule).toBe(".");
+  expect(Object.keys(manifest.install)).toEqual(["modules"]);
+  expect(manifest.install.defaultModule).toBeUndefined();
+  expect(options.options.some((option) => option.source.path === ".")).toBe(true);
   expect(Object.keys(manifest.install.modules)).toEqual([
     ".",
     "deploy/takoform",
@@ -42,6 +43,29 @@ test("Takos Office publishes a closed Repository manifest", () => {
   for (const option of options.options) {
     expect(manifest.install.modules[option.source.path]).toBeDefined();
   }
+});
+
+test("root context IDs are explicit noneditable data declarations for existing strings", () => {
+  const rootModule = manifest.install.modules["."]!;
+  const derived = rootModule.inputs.filter((input) =>
+    input.source.kind === "workspace_id" || input.source.kind === "capsule_id"
+  );
+  expect(derived.map((input) => [input.name, input.source.kind, input.type])).toEqual([
+    ["object_storage_workspace_id", "workspace_id", "string"],
+    ["app_capsule_id", "capsule_id", "string"],
+  ]);
+  for (const input of derived) {
+    expect(Object.keys(input).sort()).toEqual(["label", "name", "source", "type"]);
+    expect(Object.keys(input.source)).toEqual(["kind"]);
+    expect(variableBlock(moduleSources["."]!, input.name)).toMatch(/\n\s+type\s+=\s+string\b/);
+  }
+  expect(rootModule.inputs.filter((input) => input.source.kind === "user").map((input) => input.name))
+    .not.toContain("object_storage_workspace_id");
+  expect(rootModule.inputs.filter((input) => input.source.kind === "user").map((input) => input.name))
+    .not.toContain("app_capsule_id");
+  expect(manifest.install.modules["deploy/takoform"]!.inputs.filter((input) =>
+    input.source.kind === "workspace_id" || input.source.kind === "capsule_id"
+  )).toEqual([]);
 });
 
 test("the advertised root delivers all four public OIDC registration fields", () => {
@@ -130,7 +154,7 @@ test("Interface requests resolve ordinary outputs from their selected module", (
   }
 });
 
-test("declared modules reference real variables without credential or identity selectors", () => {
+test("declared modules reference real variables without credentials or editable identity selectors", () => {
   for (const [path, module] of Object.entries(manifest.install.modules)) {
     const source = moduleSources[path];
     expect(source).toBeDefined();
@@ -154,8 +178,6 @@ test("declared modules reference real variables without credential or identity s
     "cloudflare_account_id",
     "object_storage_access_token",
     "mcp_auth_token",
-    "object_storage_workspace_id",
-    "app_capsule_id",
     '"env"',
     "credential",
   ]) {
@@ -183,7 +205,7 @@ interface RepositoryManifest {
   apiVersion: string;
   kind: string;
   install: {
-    defaultModule: string;
+    defaultModule?: string;
     modules: Record<string, RepositoryModule>;
   };
 }

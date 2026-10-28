@@ -1,8 +1,7 @@
 {
-  "apiVersion": "takosumi.com/v2.1",
+  "apiVersion": "takosumi.com/v2.5",
   "kind": "Repository",
   "install": {
-    "defaultModule": ".",
     "modules": {
       ".": {
         "inputs": [
@@ -156,6 +155,28 @@
               "en": "Deploy the Office Worker. Also enable Create Cloudflare resources."
             },
             "advanced": true
+          },
+          {
+            "name": "object_storage_workspace_id",
+            "source": {
+              "kind": "workspace_id"
+            },
+            "type": "string",
+            "label": {
+              "ja": "現在のWorkspace",
+              "en": "Current Workspace"
+            }
+          },
+          {
+            "name": "app_capsule_id",
+            "source": {
+              "kind": "capsule_id"
+            },
+            "type": "string",
+            "label": {
+              "ja": "現在のアプリ",
+              "en": "Current app"
+            }
           }
         ],
         "requires": [
