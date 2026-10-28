@@ -121,6 +121,23 @@ variable "mcp_auth_token" {
   sensitive   = true
 }
 
+variable "takosumi_accounts_url" {
+  description = "Public Accounts URL delivered by the installer's reviewed OIDC registration."
+  type        = string
+  default     = ""
+}
+
+variable "takosumi_accounts_redirect_uri" {
+  description = "Exact registered browser callback for the canonical Office public URL."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.takosumi_accounts_redirect_uri == "" || can(regex("^https://[^/?#@[:space:]]+/api/auth/callback$", var.takosumi_accounts_redirect_uri))
+    error_message = "takosumi_accounts_redirect_uri must be empty or the registered HTTPS /api/auth/callback URI."
+  }
+}
+
 variable "takosumi_accounts_issuer_url" {
   description = "Optional bare-origin Takosumi Accounts OIDC issuer URL used for app OIDC and current Interface OAuth authority."
   type        = string
@@ -551,6 +568,11 @@ resource "cloudflare_workers_script" "worker" {
     precondition {
       condition     = local.worker_bundle_explicit_url_mode || local.worker_bundle_release_tag_mode || local.worker_bundle_expected_sha256 == "" || local.worker_bundle_expected_sha256 == local.worker_bundle_content_sha256
       error_message = "worker_bundle_sha256 does not match worker_bundle_path."
+    }
+
+    precondition {
+      condition     = var.takosumi_accounts_redirect_uri == "" || var.takosumi_accounts_redirect_uri == "${trimsuffix(local.launch_url != null ? local.launch_url : "", "/")}/api/auth/callback"
+      error_message = "The registered Accounts callback must match the canonical Office public URL."
     }
 
     precondition {
