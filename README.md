@@ -44,19 +44,21 @@ takos-office/
   site/        standalone marketing site (office.takos.jp)
   docs/        roadmap and the mcp.tools interface spec
   design.md    locked design system for the editors — tokens.css is its runnable export
-  outputs.tf   ordinary runtime URLs consumed by service-side Interface blueprints
+   outputs.tf   ordinary runtime URLs used by reviewed Interface requests
 ```
 
 ## Runtime contract
 
-Takos Office publishes the user-facing office surfaces and consumes an object-storage service. Runtime declarations
-live in Takosumi's service-side `InstallConfig.interfaceBlueprints`; the repository exports only ordinary OpenTofu
-values.
+Takos Office publishes the Office Suite launcher and unified MCP endpoint and consumes an object-storage service.
+The root module in `.well-known/takosumi.json` requests the launcher at `/`, the MCP Interface at `/mcp`, and the
+installing principal's `ui.open` / `mcp.invoke` bindings. Takosumi validates these requests against operator policy
+and compiles them into its DB-owned `InstallConfig.interfaceBlueprints`. The ordinary OpenTofu outputs alone
+grant no access and do not create a launcher.
 
 | Direction | Service identity / capability                                                                  |
 | --------- | ---------------------------------------------------------------------------------------------- |
 | publish   | `mcp.server` at `/mcp`                                                                         |
-| publish   | `interface.ui.surface` for `/docs`, `/slide`, `/sheet`                                         |
+| publish   | `interface.ui.surface` at `/`, opening the Suite shell with Docs, Slides and Sheets links      |
 | consume   | `storage.object` via `OBJECT_STORAGE_API_URL`; bearer comes from `OBJECT_STORAGE_ACCESS_TOKEN` |
 
 ## How it serves
@@ -116,8 +118,9 @@ end-user formats or published file-handler Interfaces.
 `launch_url` / `url` / `public_url` remain normal deployment convenience outputs. `app_deployment` and
 `service_exports` are retired and are not runtime registries.
 
-On a managed first apply, Takosumi projects the non-secret Workspace id into
-`object_storage_workspace_id` and the Capsule id into `app_capsule_id`. The module injects them into the Worker as
+Managed installation requires the authenticated Capsule context to supply the non-secret Workspace id in
+`object_storage_workspace_id` and the Capsule id in `app_capsule_id`; the Worker Plan rejects a missing owner
+context. The module injects them into the Worker as
 `APP_WORKSPACE_ID` and `APP_CAPSULE_ID` (and keeps `TAKOS_SPACE_ID` for the storage namespace). Interface ids and
 resolved revisions do not exist until after apply, so they are deliberately not module variables or Worker env.
 
@@ -161,8 +164,8 @@ The separate general
 proposes input names and presentation projections for the root direct module and
 `deploy/takoform` from the same Git commit. Neither document carries secrets,
 provider credentials, Cloudflare account authority, Interface grants, or
-execution authority. Takosumi validates the proposal and compiles it into a
-DB-owned InstallConfig before the ordinary Plan and Apply lifecycle.
+execution authority. Interface and binding declarations are requests, not realized grants. Takosumi validates
+the proposal and compiles it into a DB-owned InstallConfig before the ordinary Plan and Apply lifecycle.
 
 ## Boundary
 
