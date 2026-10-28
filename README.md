@@ -44,7 +44,7 @@ takos-office/
   site/        standalone marketing site (office.takos.jp)
   docs/        roadmap and the mcp.tools interface spec
   design.md    locked design system for the editors — tokens.css is its runnable export
-   outputs.tf   ordinary runtime URLs used by reviewed Interface requests
+  outputs.tf   ordinary runtime URLs used by reviewed Interface requests
 ```
 
 ## Runtime contract
