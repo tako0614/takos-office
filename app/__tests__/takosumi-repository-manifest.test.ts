@@ -37,6 +37,28 @@ test("Takos Office publishes a closed Repository manifest", () => {
   }
 });
 
+test("the advertised root delivers all four public OIDC registration fields", () => {
+  const requirement = manifest.install.modules["."]?.requires?.find(
+    (entry) => entry.kind === "identity.oidc",
+  );
+  const variables = requirement?.deliver?.variables ?? {};
+  expect(Object.keys(variables).sort()).toEqual([
+    "accountsUrl",
+    "clientId",
+    "issuerUrl",
+    "redirectUri",
+  ]);
+  expect(new Set(Object.values(variables)).size).toBe(4);
+  for (const name of Object.values(variables)) {
+    expect(manifest.install.modules["."]?.inputs).toContainEqual(
+      expect.objectContaining({
+        name,
+        source: { kind: "module_default" },
+      }),
+    );
+  }
+});
+
 test("declared modules reference real variables and no secret or host authority", () => {
   for (const [path, module] of Object.entries(manifest.install.modules)) {
     const source = moduleSources[path];
@@ -80,9 +102,8 @@ function variableBlock(source: string, name: string): string {
 
 function referencedVariables(module: RepositoryModule): Set<string> {
   const names = new Set(module.inputs.map((input) => input.name));
-  for (const projection of module.installExperience?.projections ?? []) {
-    if (projection.variable) names.add(projection.variable);
-    for (const value of Object.values(projection.variables ?? {})) {
+  for (const requirement of module.requires ?? []) {
+    for (const value of Object.values(requirement.deliver?.variables ?? {})) {
       names.add(value);
     }
   }
@@ -104,10 +125,8 @@ interface RepositoryModule {
     source: { kind: string };
     secret?: boolean;
   }>;
-  installExperience?: {
-    projections: Array<{
-      variable?: string;
-      variables?: Record<string, string>;
-    }>;
-  };
+  requires?: Array<{
+    kind: string;
+    deliver?: { variables?: Record<string, string> };
+  }>;
 }
