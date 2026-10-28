@@ -118,6 +118,13 @@ end-user formats or published file-handler Interfaces.
 `launch_url` / `url` / `public_url` remain normal deployment convenience outputs. `app_deployment` and
 `service_exports` are retired and are not runtime registries.
 
+The Repository manifest uses `takosumi.com/v2.5` to request the current Workspace
+and Capsule IDs as noneditable context data for the existing root string inputs.
+Use an installer that supports v2.5 and select module `.` explicitly; the existing
+Cloudflare Source option retains that path. The legacy `defaultModule` hint is
+not part of v2.5. These selectors carry no literal ID, credential, or grant, and
+they do not change the portable module's contract.
+
 Managed installation requires the authenticated Capsule context to supply the non-secret Workspace id in
 `object_storage_workspace_id` and the Capsule id in `app_capsule_id`; the Worker Plan rejects a missing owner
 context. The module injects them into the Worker as
