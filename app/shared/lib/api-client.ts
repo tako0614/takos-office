@@ -1,4 +1,9 @@
-import { withCurrentSpaceId, workspaceStorageKey } from "./space-id.ts";
+import {
+  currentWorkspaceId,
+  withCurrentSpaceId,
+  withWorkspaceId,
+  workspaceStorageKey,
+} from "./space-id.ts";
 
 /**
  * Shared frontend storage-API client for the office editors.
@@ -19,6 +24,7 @@ const BASE_PATH = (typeof RAW_BASE === "string" ? RAW_BASE : "/").replace(
 );
 
 export interface ApiClient {
+  capture(): ApiClientScope;
   /** Absolute API path: BASE_PATH + the given suffix (e.g. "/docs/api/documents"). */
   apiPath: string;
   /** Drop this editor's localStorage cache entry. */
@@ -31,6 +37,23 @@ export interface ApiClient {
   withCurrentSpaceId(path: string): string;
   /** Fetch JSON with same-origin creds; clears cache + redirects on 401. */
   requestJson<T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+export interface ApiClientScope {
+  readonly workspaceId: string | null;
+  readonly cacheKey: string;
+  isCurrent(): boolean;
+  clearCache(): void;
+  redirectToLogin(): void;
+  withCurrentSpaceId(path: string): string;
+  requestJson<T>(path: string, init?: RequestInit): Promise<T>;
+}
+
+export class ApiRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Request failed: ${status}`);
+    this.name = "ApiRequestError";
+  }
 }
 
 export function createApiClient(
@@ -55,22 +78,45 @@ export function createApiClient(
   }
 
   async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(withCurrentSpaceId(path), {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        ...init?.headers,
+    return capture().requestJson<T>(path, init);
+  }
+
+  function capture(): ApiClientScope {
+    const workspaceId = currentWorkspaceId();
+    const key = workspaceStorageKey(storageKey, workspaceId);
+    const origin = globalThis.location?.origin;
+    const scope: ApiClientScope = Object.freeze({
+      workspaceId,
+      cacheKey: key,
+      isCurrent: () => currentWorkspaceId() === workspaceId,
+      clearCache: () => {
+        localStorage.removeItem(key);
       },
-      credentials: "same-origin",
+      redirectToLogin: () => {
+        if (scope.isCurrent()) redirectToLogin();
+      },
+      withCurrentSpaceId: (path: string) =>
+        withWorkspaceId(path, workspaceId, origin),
+      async requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+        const response = await fetch(scope.withCurrentSpaceId(path), {
+          ...init,
+          headers: {
+            "Content-Type": "application/json",
+            ...init?.headers,
+          },
+          credentials: "same-origin",
+        });
+        if (response.status === 401) {
+          scope.clearCache();
+          scope.redirectToLogin();
+        }
+        if (!response.ok) {
+          throw new ApiRequestError(response.status);
+        }
+        return (await response.json()) as T;
+      },
     });
-    if (response.status === 401) {
-      clearCache();
-      redirectToLogin();
-    }
-    if (!response.ok) {
-      throw new Error(`Request failed: ${response.status}`);
-    }
-    return (await response.json()) as T;
+    return scope;
   }
 
   return {
@@ -80,5 +126,6 @@ export function createApiClient(
     redirectToLogin,
     withCurrentSpaceId,
     requestJson,
+    capture,
   };
 }

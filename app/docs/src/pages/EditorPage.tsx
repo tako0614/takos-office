@@ -1,12 +1,13 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { useNavigate, useParams } from "@solidjs/router";
+import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import { ArrowLeft, Cloud, CloudOff, Keyboard } from "lucide-solid";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Document } from "../types";
 import {
-  DocumentConflictError,
+  captureDocumentWriter,
+  getDocumentSaveState,
   loadDocumentFromApi,
-  updateDocumentInStorage,
+  retryDocumentAfterConflict,
 } from "../lib/storage";
 import { nextBoundDoc } from "../lib/editor-sync";
 import Editor from "../components/Editor";
@@ -35,7 +36,24 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const location = useLocation();
+  const { t, language } = useI18n();
+  const recoveryLabels = () =>
+    language() === "ja"
+      ? {
+          message: "保存を確認できません。変更はエディターに残っています。",
+          retry: "この変更で再試行",
+          reload: "サーバーの内容を読み直す",
+          confirm:
+            "この端末の未保存の変更を破棄し、サーバーの内容を読み直しますか？",
+        }
+      : {
+          message: "Save is unconfirmed. Your changes are still in the editor.",
+          retry: "Retry my changes",
+          reload: "Reload server version",
+          confirm:
+            "Discard this device's unsaved changes and reload the server version?",
+        };
 
   const [doc, setDoc] = createSignal<Document | null>(null);
   const [editor, setEditor] = createSignal<TipTapEditor | null>(null);
@@ -48,6 +66,41 @@ export default function EditorPage() {
 
   let saveTimeout: ReturnType<typeof setTimeout> | undefined;
   let saveStatusResetTimeout: ReturnType<typeof setTimeout> | undefined;
+  let routeVersion = 0;
+  let editVersion = 0;
+  type Patch = Partial<Pick<Document, "title" | "content">>;
+  let pendingSave:
+    | {
+        write: ReturnType<typeof captureDocumentWriter>;
+        updates: Patch;
+        route: number;
+        edit: number;
+      }
+    | undefined;
+
+  function flushSave(): void {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    const pending = pendingSave;
+    pendingSave = undefined;
+    if (!pending) return;
+    const current = () =>
+      routeVersion === pending.route && editVersion === pending.edit;
+    void pending
+      .write(pending.updates)
+      .then((updated) => {
+        if (!current()) return;
+        if (!updated) throw new Error("Document is no longer available");
+        // Never feed a successful echo back over keystrokes entered in flight.
+        setDoc((d) => nextBoundDoc(d, { kind: "saveEcho", doc: updated }));
+        setSaveStatus("saved");
+        saveStatusResetTimeout = setTimeout(() => {
+          if (current()) setSaveStatus("idle");
+        }, 2000);
+      })
+      .catch(() => {
+        if (current()) setSaveStatus("failed");
+      });
+  }
 
   // Open Find & Replace on Ctrl/Cmd+F (suppressing the browser's own find bar)
   // and the shortcuts help on `?` (Shift+/) when not typing in a field.
@@ -72,18 +125,33 @@ export default function EditorPage() {
 
   createEffect(() => {
     const id = params.id;
+    // Query-only Workspace navigation must fence old asynchronous completions.
+    void location.search;
+    routeVersion++;
+    editVersion++;
+    flushSave();
+    if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
+    const selectedRoute = routeVersion;
     setDoc(null);
     setTitle("");
+    setSaveStatus("idle");
     void loadDocumentFromApi(id)
       .then((remote) => {
+        if (routeVersion !== selectedRoute) return;
         setDoc((d) => nextBoundDoc(d, { kind: "load", doc: remote }));
         setTitle(remote.title);
+        if (getDocumentSaveState(id) !== "clean") setSaveStatus("failed");
       })
-      .catch(() => navigate("/", { replace: true }));
+      .catch(() => {
+        if (routeVersion === selectedRoute) navigate("/", { replace: true });
+      });
   });
 
   onCleanup(() => {
-    if (saveTimeout) clearTimeout(saveTimeout);
+    routeVersion++;
+    editVersion++;
+    // Flush only the already-captured original operation; no route retargeting.
+    flushSave();
     if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
   });
 
@@ -91,43 +159,41 @@ export default function EditorPage() {
     updates: Partial<Pick<Document, "title" | "content">>,
   ) => {
     setSaveStatus("saving");
+    editVersion++;
+    if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
     if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      const id = doc()?.id ?? params.id;
-      void updateDocumentInStorage(id, updates)
-        .then((updated) => {
-          // A successful autosave echoes back the content we just sent. Do NOT
-          // feed it back into the bound document: the editor already holds it
-          // (plus any keystrokes typed during the round-trip), and re-applying
-          // the echo would reset the editor mid-typing and drop those edits.
-          // nextBoundDoc treats a saveEcho as a no-op. (The optimistic-
-          // concurrency base lives in localStorage, not this signal.)
-          if (updated) {
-            setDoc((d) => nextBoundDoc(d, { kind: "saveEcho", doc: updated }));
-          }
-          setSaveStatus("saved");
-          if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
-          saveStatusResetTimeout = setTimeout(
-            () => setSaveStatus("idle"),
-            2000,
-          );
-        })
-        .catch((error) => {
-          if (error instanceof DocumentConflictError) {
-            // Another writer (e.g. an agent over MCP) changed the doc between
-            // load and this autosave. Adopt their version instead of silently
-            // overwriting it; the editor reloads from the refreshed content.
-            setDoc((d) =>
-              nextBoundDoc(d, { kind: "conflict", doc: error.current })
-            );
-            setTitle(error.current.title);
-            setSaveStatus("saved");
-            return;
-          }
-          console.error("[takos-docs] Failed to save document", error);
-          setSaveStatus("failed");
-        });
-    }, 500);
+    pendingSave = {
+      write:
+        pendingSave?.write ?? captureDocumentWriter(doc()?.id ?? params.id),
+      updates: { ...pendingSave?.updates, ...updates },
+      route: routeVersion,
+      edit: editVersion,
+    };
+    saveTimeout = setTimeout(flushSave, 500);
+  };
+
+  const recoverSave = async (reload: boolean) => {
+    if (reload && !globalThis.confirm(recoveryLabels().confirm)) return;
+    const selectedRoute = routeVersion;
+    const selectedEdit = ++editVersion;
+    const id = doc()?.id ?? params.id;
+    setSaveStatus("saving");
+    try {
+      const updated = reload
+        ? await loadDocumentFromApi(id, { discardLocal: true })
+        : await retryDocumentAfterConflict(id);
+      if (routeVersion !== selectedRoute || editVersion !== selectedEdit)
+        return;
+      if (!updated) throw new Error("Document is no longer available");
+      if (reload) {
+        setDoc(updated);
+        setTitle(updated.title);
+      }
+      setSaveStatus(reload ? "idle" : "saved");
+    } catch {
+      if (routeVersion === selectedRoute && editVersion === selectedEdit)
+        setSaveStatus("failed");
+    }
   };
 
   const handleContentUpdate = (content: string) => {
@@ -193,6 +259,29 @@ export default function EditorPage() {
         <ThemeToggle t={t} />
         <LanguageSwitcher />
       </header>
+
+      <Show when={saveStatus() === "failed"}>
+        <div
+          role="alert"
+          class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm text-red-700 bg-red-50 dark:bg-red-950 dark:text-red-200"
+        >
+          <span>{recoveryLabels().message}</span>
+          <button
+            type="button"
+            class="underline"
+            onClick={() => void recoverSave(false)}
+          >
+            {recoveryLabels().retry}
+          </button>
+          <button
+            type="button"
+            class="underline"
+            onClick={() => void recoverSave(true)}
+          >
+            {recoveryLabels().reload}
+          </button>
+        </div>
+      </Show>
 
       {/* Toolbar */}
       <Toolbar
