@@ -7,10 +7,13 @@
   `docs/app-signin-claims.md`.
 - Pending: active Office auth/server/editor/test files are owned by another
   writer. Exact proposed runtime, test, and deployment-input patches are handed
-  to the parent coordination record; they are not applied in this branch.
+  to the parent coordination record; they are not applied in this branch. The
+  old wiring proposal was generated against TASK-0117 dirty source and must not
+  be applied; the Office owner must integrate from its current committed source.
 - Access policy: any account can establish a sign-in session. Private documents
   remain restricted to matching app owner/member roles, with legacy Workspace
-  compatibility only when app claims are absent. Ordinary signed-in users receive
+  compatibility when app claims are absent or when the exact Capsule matches,
+  app_role is absent, and matching nested Workspace plus role/membership remains. Ordinary signed-in users receive
   no private content access because Office has no per-document sharing grants.
 - Authority boundary: no deploy, live sign-in, provider resources, live database,
   credentials, ownership records, or billing state are changed.

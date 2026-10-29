@@ -26,12 +26,40 @@ describe("Office app-scoped sign-in policy", () => {
   test("an ordinary signed-in user has no private content or management role", () => {
     const claims = readOfficeAccessClaims({
       sub: "ordinary_user",
-      workspace_memberships: ["workspace_a"],
-      takosumi: { capsule_id: "office_a", workspace_id: "workspace_a" },
+      takosumi: { capsule_id: "office_a" },
     });
     expect(claims.app.state).toBe("scoped");
     expect(officeAppRole(claims, "office_a")).toBeNull();
     expect(canAccessOfficeContent(claims, expected)).toBe(false);
+  });
+
+  test.each(["owner", "admin", "member", "viewer"])(
+    "current Accounts capsule-bound %s claims preserve private access",
+    (role) => {
+      const claims = readOfficeAccessClaims({
+        sub: "legacy_user",
+        workspace_memberships: ["workspace_a"],
+        takosumi: { capsule_id: "office_a", workspace_id: "workspace_a", role },
+      });
+      expect(canAccessOfficeContent(claims, expected)).toBe(true);
+      expect(canAccessOfficeContent(claims, { capsuleId: "office_a" })).toBe(false);
+      expect(canAccessOfficeContent(claims, { ...expected, workspaceId: "other" })).toBe(false);
+      expect(canAccessOfficeContent(claims, { ...expected, capsuleId: "other" })).toBe(false);
+    },
+  );
+
+  test("capsule compatibility requires matching nested Workspace and membership evidence", () => {
+    for (const takosumi of [
+      { capsule_id: "office_a", workspace_id: "workspace_a" },
+      { capsule_id: "office_a", workspace_id: "other", role: "owner" },
+      { capsule_id: "office_a", role: "owner" },
+    ]) {
+      expect(canAccessOfficeContent(readOfficeAccessClaims({ takosumi }), expected)).toBe(false);
+    }
+    expect(canAccessOfficeContent(readOfficeAccessClaims({
+      workspace_memberships: ["workspace_a"],
+      takosumi: { capsule_id: "office_a", workspace_id: "workspace_a" },
+    }), expected)).toBe(true);
   });
 
   test("another app's role cannot use the legacy Workspace fallback", () => {

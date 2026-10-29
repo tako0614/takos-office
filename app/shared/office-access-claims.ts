@@ -6,6 +6,8 @@ export type OfficeAppRole = "owner" | "member";
 
 export interface OfficeAccessClaims {
   readonly workspaceIds: readonly string[];
+  readonly legacyWorkspaceId?: string;
+  readonly legacyMembership?: boolean;
   readonly app:
     | { readonly state: "absent" }
     | { readonly state: "invalid" }
@@ -44,6 +46,7 @@ export function readOfficeAccessClaims(value: unknown): OfficeAccessClaims {
     return { workspaceIds: [], app: { state: "invalid" } };
   }
   const workspaceIds = workspaceIdsFrom(value.workspace_memberships);
+  const membershipIds = [...workspaceIds];
   const evidence = value.takosumi;
   if (evidence !== undefined && !isRecord(evidence)) {
     return { workspaceIds, app: { state: "invalid" } };
@@ -63,6 +66,13 @@ export function readOfficeAccessClaims(value: unknown): OfficeAccessClaims {
   ) {
     return { workspaceIds, app: { state: "absent" } };
   }
+  const legacy = {
+    ...(typeof workspaceId === "string" ? { legacyWorkspaceId: workspaceId } : {}),
+    legacyMembership:
+      typeof workspaceId === "string" &&
+      (membershipIds.includes(workspaceId) ||
+        ["owner", "admin", "member", "viewer"].includes(String(evidence.role))),
+  };
   const capsuleId = evidence.capsule_id;
   const role = evidence.app_role;
   if (
@@ -73,6 +83,7 @@ export function readOfficeAccessClaims(value: unknown): OfficeAccessClaims {
   }
   return {
     workspaceIds,
+    ...legacy,
     app: {
       state: "scoped",
       capsuleId,
@@ -96,7 +107,8 @@ export function officeAppRole(
 /**
  * Office currently has private shared documents and no per-document sharing
  * grants. Ordinary signed-in users therefore receive no document access. The
- * Workspace adapter applies only to issuers without the new app claims.
+ * Workspace adapter also accepts current Accounts capsule-bound claims before
+ * app_role is emitted, after the exact Capsule and Workspace both match.
  */
 export function canAccessOfficeContent(
   claims: OfficeAccessClaims,
@@ -106,7 +118,16 @@ export function canAccessOfficeContent(
   },
 ): boolean {
   if (claims.app.state !== "absent") {
-    return officeAppRole(claims, expected.capsuleId) !== null;
+    if (officeAppRole(claims, expected.capsuleId) !== null) return true;
+    return (
+      claims.app.state === "scoped" &&
+      claims.app.capsuleId === expected.capsuleId &&
+      claims.app.role === undefined &&
+      typeof expected.workspaceId === "string" &&
+      expected.workspaceId !== "" &&
+      claims.legacyWorkspaceId === expected.workspaceId &&
+      claims.legacyMembership === true
+    );
   }
   return (
     typeof expected.workspaceId === "string" &&
