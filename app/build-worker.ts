@@ -30,6 +30,9 @@ function contentTypeFor(path: string): string {
   if (path.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (path.endsWith(".css")) return "text/css; charset=utf-8";
   if (path.endsWith(".json")) return "application/json; charset=utf-8";
+  if (path.endsWith(".webmanifest")) {
+    return "application/manifest+json; charset=utf-8";
+  }
   if (path.endsWith(".svg")) return "image/svg+xml";
   if (path.endsWith(".png")) return "image/png";
   if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
@@ -127,7 +130,8 @@ function assetResponse(assetPath, request) {
   return new Response(body, {
     headers: {
       "content-type": asset.contentType,
-      "cache-control": assetPath.endsWith("index.html")
+      "cache-control": assetPath.endsWith("index.html") ||
+          assetPath.endsWith(".webmanifest")
         ? "no-cache"
         : "public, max-age=31536000, immutable",
     },
@@ -169,6 +173,10 @@ for (const editor of editors) {
     `${editor}/`,
   );
 }
+// Suite-wide files served at the Worker root (the home-screen web app manifest
+// and its icons). One manifest covers the shell and all three editors, so
+// moving between them stays inside one installed app.
+await collectAssets(new URL("./public/", import.meta.url), "");
 await mkdir(outDir, { recursive: true });
 await writeFile(tempEntryFile, createEntrySource());
 
@@ -192,5 +200,39 @@ try {
   stop();
   await rm(tempEntryFile).catch(() => undefined);
 }
+
+// Probe the built artifact: browsers fetch the manifest and its icons without
+// credentials, so the Worker must answer them from the asset map (not the app
+// routes or an SPA fallback) with their real content types.
+const built = (await import(`${workerFile.href}?probe=${Date.now()}`)) as {
+  default: {
+    fetch(request: Request, env: unknown, ctx: unknown): Promise<Response>;
+  };
+};
+async function probe(path: string, contentType: string): Promise<Response> {
+  const response = await built.default.fetch(
+    new Request(`https://takos-office.invalid${path}`),
+    {},
+    {},
+  );
+  const actual = response.headers.get("content-type") ?? "";
+  if (response.status !== 200 || !actual.startsWith(contentType)) {
+    throw new Error(
+      `Built worker served ${path} as ${response.status} ${actual}; expected 200 ${contentType}`,
+    );
+  }
+  return response;
+}
+const webManifest = (await (
+  await probe("/manifest.webmanifest", "application/manifest+json")
+).json()) as { icons?: Array<{ src: string }> };
+for (const path of [
+  ...(webManifest.icons ?? []).map((icon) => icon.src),
+  "/apple-touch-icon.png",
+]) {
+  await probe(path, "image/png");
+}
+// eslint-disable-next-line no-console
+console.log("Verified web app manifest and icon routes in the built worker");
 
 void outDir;
