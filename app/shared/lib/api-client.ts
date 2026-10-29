@@ -5,9 +5,19 @@ import {
   workspaceStorageKey,
 } from "./space-id.ts";
 
-/** Same-origin Office API requests and immutable Workspace/cache scopes.
- * A delayed401 clears its original scope and redirects only while still there.
+/**
+ * Shared frontend storage-API client for the office editors.
+ *
+ * Each editor (docs / slide / sheet) talks to its own `${base}/api/<kind>`
+ * endpoints with the same scaffold: resolve the subpath base, carry the active
+ * Workspace via `space_id`, send same-origin credentials, and on a 401 clear
+ * the local cache and bounce to the login flow. `createApiClient` is that
+ * scaffold; the per-editor module supplies its API suffix and cache key.
+ * Captured scopes keep delayed responses attached to their original Workspace.
  */
+
+// Subpath base under the unified Takos Office worker (vite injects "/docs/"
+// etc. at build; falls back to "" under bun test where BASE_URL is unset).
 const RAW_BASE = import.meta.env.BASE_URL;
 const BASE_PATH = (typeof RAW_BASE === "string" ? RAW_BASE : "/").replace(
   /\/+$/,
@@ -15,12 +25,19 @@ const BASE_PATH = (typeof RAW_BASE === "string" ? RAW_BASE : "/").replace(
 );
 
 export interface ApiClient {
+  /** Absolute API path: BASE_PATH + the given suffix (e.g. "/docs/api/documents"). */
   apiPath: string;
+  /** Freeze the Workspace and cache destination before asynchronous work. */
   capture(): ApiClientScope;
+  /** Drop this editor's localStorage cache entry. */
   clearCache(): void;
+  /** Current Workspace-scoped localStorage cache key. */
   cacheKey(): string;
+  /** Redirect to the login flow, preserving the current location as return_to. */
   redirectToLogin(): void;
+  /** Append the active Workspace id (`space_id`) query to a path. */
   withCurrentSpaceId(path: string): string;
+  /** Fetch JSON with same-origin creds; clears cache + redirects on 401. */
   requestJson<T>(path: string, init?: RequestInit): Promise<T>;
 }
 export interface ApiClientScope {
@@ -30,6 +47,7 @@ export interface ApiClientScope {
   clearCache(): void;
   redirectToLogin(): void;
   withCapturedWorkspaceId(path: string): string;
+  /** Clear only this scope on 401; redirect only if it is still current. */
   request(path: string, init?: RequestInit): Promise<Response>;
   requestJson<T>(path: string, init?: RequestInit): Promise<T>;
 }
@@ -43,6 +61,7 @@ export class ApiRequestError extends Error {
 export function createApiClient(
   apiPathSuffix: string,
   storageKey: string,
+  // The editor can invalidate pending writes when this captured cache is cleared.
   options: { onClear?: (scope: ApiClientScope) => void } = {},
 ): ApiClient {
   const apiPath = `${BASE_PATH}${apiPathSuffix}`;

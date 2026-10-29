@@ -206,8 +206,12 @@ export async function updateDocumentInStorage(
 /** Capture before an editor debounce, so a later route change cannot retarget it. */
 export function captureDocumentWriter(id: string) {
   const scope = api.capture();
-  return (updates: Partial<Pick<Document, "title" | "content">>) =>
-    updateInScope(scope, id, updates);
+  const capturedEpoch = epoch(scope);
+  return (updates: Partial<Pick<Document, "title" | "content">>) => {
+    if (epoch(scope) !== capturedEpoch)
+      return Promise.reject(new Error("Document cache was cleared"));
+    return updateInScope(scope, id, updates);
+  };
 }
 
 async function updateInScope(

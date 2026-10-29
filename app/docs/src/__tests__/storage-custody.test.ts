@@ -1121,3 +1121,22 @@ test("a persisted conflict stays classified as conflict after a fresh-module edi
     fixture.restore();
   }
 });
+
+test("a debounced writer cannot resume after its captured cache scope was invalidated", async () => {
+  const fixture = installFixture("stale-writer-epoch");
+  try {
+    const doc = document("epoch-doc", "initial");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    const write = client.captureDocumentWriter(doc.id);
+    client.clearDocumentsCache();
+    await client.loadDocumentFromApi(doc.id);
+    await expect(write({ content: "old deferred intent" })).rejects.toThrow();
+    expect([
+      remote.requests.length,
+      client.getDocument(doc.id)?.content,
+    ]).toEqual([0, "initial"]);
+  } finally {
+    fixture.restore();
+  }
+});

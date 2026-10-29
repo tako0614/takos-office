@@ -77,6 +77,7 @@ export default function EditorPage() {
     "saved" | "saving" | "failed" | "idle"
   >("idle");
   const [saveKind, setSaveKind] = createSignal<"failed" | "conflict">("failed");
+  const [recovering, setRecovering] = createSignal(false);
   const [showFind, setShowFind] = createSignal(false);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
 
@@ -137,6 +138,7 @@ export default function EditorPage() {
   // and the shortcuts help on `?` (Shift+/) when not typing in a field.
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
+      if (recovering()) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setShowFind(true);
@@ -167,6 +169,7 @@ export default function EditorPage() {
     setDoc(null);
     setTitle("");
     setSaveStatus("idle");
+    setRecovering(false);
     void loadDocumentFromApi(id)
       .then((remote) => {
         if (routeVersion !== selectedRoute) return;
@@ -206,6 +209,7 @@ export default function EditorPage() {
   };
 
   const recoverSave = async (reload: boolean) => {
+    if (recovering()) return;
     if (
       !globalThis.confirm(
         reload ? recoveryLabels().confirm : recoveryLabels().replaceConfirm,
@@ -215,9 +219,11 @@ export default function EditorPage() {
     const selectedRoute = routeVersion;
     const selectedEdit = ++editVersion;
     const id = doc()?.id ?? params.id;
+    const discardedPending = reload ? pendingSave : undefined;
     if (saveTimeout) clearTimeout(saveTimeout);
     if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
     if (reload) pendingSave = undefined;
+    setRecovering(true);
     setSaveStatus("saving");
     try {
       if (!reload) await flushSave();
@@ -240,8 +246,19 @@ export default function EditorPage() {
       if (getDocumentSaveState(id) !== "clean") showSaveFailure(id);
       else setSaveStatus(reload ? "idle" : "saved");
     } catch (error) {
-      if (routeVersion === selectedRoute && editVersion === selectedEdit)
+      if (routeVersion === selectedRoute && editVersion === selectedEdit) {
+        // A failed discard read did not replace the draft. Keep its unflushed
+        // patch for the next explicit recovery instead of saving older cache.
+        if (discardedPending)
+          pendingSave = {
+            ...discardedPending,
+            updates: { ...discardedPending.updates, ...pendingSave?.updates },
+            edit: selectedEdit,
+          };
         showSaveFailure(id, error);
+      }
+    } finally {
+      if (routeVersion === selectedRoute) setRecovering(false);
     }
   };
 
@@ -274,6 +291,7 @@ export default function EditorPage() {
           <input
             type="text"
             value={title()}
+            disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
             class="text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
@@ -332,46 +350,56 @@ export default function EditorPage() {
         </div>
       </Show>
 
-      {/* Toolbar */}
-      <Toolbar
-        editor={editor()}
-        documentTitle={title()}
-        documentContent={doc()?.content ?? ""}
-      />
+      <div class="contents" inert={recovering()}>
+        {/* Toolbar */}
+        <Toolbar
+          editor={editor()}
+          documentTitle={title()}
+          documentContent={doc()?.content ?? ""}
+        />
 
-      {/* Find & Replace */}
-      <FindReplace
-        editor={editor()}
-        open={showFind()}
-        onClose={() => setShowFind(false)}
-      />
+        {/* Find & Replace */}
+        <FindReplace
+          editor={editor()}
+          open={showFind()}
+          onClose={() => setShowFind(false)}
+        />
 
-      {/* Keyboard shortcut help */}
-      <ShortcutsHelp
-        open={showShortcuts()}
-        onClose={() => setShowShortcuts(false)}
-      />
+        {/* Keyboard shortcut help */}
+        <ShortcutsHelp
+          open={showShortcuts()}
+          onClose={() => setShowShortcuts(false)}
+        />
 
-      {/* Main area: sidebar + paper */}
-      <div class="flex flex-1 overflow-hidden">
-        <Sidebar editor={editor()} />
+        {/* Main area: sidebar + paper */}
+        <div class="flex flex-1 overflow-hidden">
+          <Sidebar editor={editor()} />
 
-        {/* Document area — gray background with centered white paper */}
-        <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
-          <div class="max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
-            <Show keyed when={doc()} fallback={<div />}>
-              <Editor
-                content={doc()!.content}
-                onUpdate={handleContentUpdate}
-                onEditorReady={(e) => setEditor(e)}
-              />
-            </Show>
+          {/* Document area — gray background with centered white paper */}
+          <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
+            <div class="max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
+              <Show
+                keyed
+                when={doc()}
+                fallback={
+                  <div role="status" aria-live="polite" class="p-6">
+                    {t("loadingDocuments")}
+                  </div>
+                }
+              >
+                <Editor
+                  content={doc()!.content}
+                  onUpdate={handleContentUpdate}
+                  onEditorReady={(e) => setEditor(e)}
+                />
+              </Show>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Footer — word count */}
-      <WordCount editor={editor()} />
+        {/* Footer — word count */}
+        <WordCount editor={editor()} />
+      </div>
     </div>
   );
 }
