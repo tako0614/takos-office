@@ -23,6 +23,11 @@ Current Accounts already emits capsule_id, workspace_id, role and top-level
 workspace_memberships without app_role. For that shape the Capsule must match,
 the nested workspace_id must equal the configured compatibility Workspace, and
 a legacy role or membership must be present; private access then stays as before.
+Legacy Workspace `owner` and `admin` roles only satisfy the old Workspace
+membership compatibility for private content; they do not prove Capsule
+ownership or supply an app management role. Only an explicit matching
+`app_role: owner` is an app owner signal. Legacy `viewer` remains a
+compatibility membership without app management authority.
 An explicitly malformed legacy role cannot use membership as a fallback.
 Without APP_CAPSULE_ID, current capsule-bound claims still use the configured
 legacy Workspace and role/membership; an incoming Capsule/app_role does not
@@ -58,3 +63,10 @@ reuse this corrected helper, and run the runtime regressions above. This PR
 continues to change only the helper, its tests, and documentation. The helper
 keeps private documents restricted to app owner/member or compatible legacy
 membership; any explicit public-share route must retain its own public policy.
+
+## Follow-up rollout order
+
+Deploy the updated consuming apps first. Apply the Takosumi Accounts open-sign-in
+writer B change from PR #657 last. Self-host installs that have not received the
+app update must keep their configured `APP_WORKSPACE_ID` membership requirement
+until they update.
