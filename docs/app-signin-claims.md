@@ -9,8 +9,8 @@ private shared content and no per-document sharing grants. Any Takosumi account
 may sign in; a matching `takosumi.capsule_id` plus `takosumi.app_role` of `owner`
 or `member` permits private content access. A matching Capsule without a role is
 an ordinary signed-in user unless matching legacy Workspace membership remains
-during compatibility. That legacy membership retains private content access. The role
-helper identifies app management membership; Office does not implement Takosumi
+during compatibility. That legacy membership retains private content access.
+The role helper identifies app management membership; Office does not implement Takosumi
 ownership transfer or member-management APIs.
 
 `app/shared/office-access-claims.ts` accepts authenticated UserInfo only. Its
@@ -23,8 +23,8 @@ Current Accounts already emits capsule_id, workspace_id, role and top-level
 workspace_memberships without app_role. For that shape the Capsule must match,
 the nested workspace_id must equal the configured compatibility Workspace, and
 a legacy role or membership must be present; private access then stays as before.
-A role-less account without that legacy evidence remains an ordinary user. UserInfo must be revalidated on each
-content request so revocation takes effect on the next request; cached session
+A role-less account without that legacy evidence remains an ordinary user.
+UserInfo must be revalidated on each content request so revocation takes effect on the next request; cached session
 claims are not current authorization.
 
 The pending runtime change should use `APP_CAPSULE_ID` to select app authority.
@@ -39,13 +39,12 @@ Interface ID, binding ID, and positive resolved revision. Removing a Workspace
 requirement must preserve all those checks and the storage namespace pin. An
 Interface grant does not imply a browser app role.
 
-Before applying the coordinated patches, the owning runtime writer must add
+When integrating the policy, the owning runtime writer must add
 coverage for owner/member access across the root, docs, slide, and sheet APIs;
 ordinary users; cross-Capsule denial; app-role revocation; subject changes;
 legacy Workspace compatibility; workspace-less Interface OAuth; and namespace
 override rejection. The repository CI runs `bun run check`, including type
 checking, portable tests, builds, and worker size validation.
-
 
 Owner handoff after independent review: do not apply the previous runtime wiring
 patch embedded in TASK0118-E-COORDINATION.json. It was generated against the
