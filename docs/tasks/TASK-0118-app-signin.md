@@ -19,3 +19,10 @@
   credentials, ownership records, or billing state are changed.
 - Verification: focused claims tests, TypeScript checking, and formatting/static
   checks locally; the complete repository gate runs in PR CI.
+
+## Follow-up rollout order
+
+Deploy the updated consuming apps first. Apply the Takosumi Accounts open-sign-in
+writer B change from PR #657 last. Self-host installs that have not received the
+app update must keep their configured `APP_WORKSPACE_ID` membership requirement
+until they update.
