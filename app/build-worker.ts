@@ -86,6 +86,13 @@ import type { OfficeRuntimeEnv } from "../app/server.ts";
 const EDITORS = ${JSON.stringify(editors)};
 const ASSETS = ${JSON.stringify(assets)};
 
+// ASSETS is a plain object, so only its own keys are shipped files. Inherited
+// names such as "__proto__", "constructor" or "toString" must be 404s, not
+// Object.prototype members handed to assetResponse.
+function ownAsset(assetPath) {
+  return Object.hasOwn(ASSETS, assetPath) ? ASSETS[assetPath] : undefined;
+}
+
 function decodeBase64(value) {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -136,7 +143,7 @@ function spaFallback(pathname) {
 }
 
 function assetResponse(assetPath, request) {
-  const asset = ASSETS[assetPath];
+  const asset = ownAsset(assetPath);
   if (!asset) return new Response("Not found", { status: 404 });
   const body = request.method === "HEAD" ? null : decodeBase64(asset.body);
   return new Response(body, {
@@ -165,10 +172,10 @@ export default {
       return getApp(runtimeEnv).fetch(request, runtimeEnv, ctx);
     }
     const assetPath = resolveAssetPath(url.pathname);
-    if (ASSETS[assetPath]) return assetResponse(assetPath, request);
+    if (ownAsset(assetPath)) return assetResponse(assetPath, request);
     if (!hasFileExtension(assetPath) && isNavigationRequest(request)) {
       const fallback = spaFallback(url.pathname);
-      if (fallback && ASSETS[fallback]) return assetResponse(fallback, request);
+      if (fallback && ownAsset(fallback)) return assetResponse(fallback, request);
     }
     return new Response("Not found", { status: 404 });
   },
@@ -267,3 +274,45 @@ console.log(
 );
 
 void outDir;
+
+// Regression probe on the built artifact: names inherited from
+// Object.prototype are not assets. Before ownAsset(), GET /__proto__ threw
+// InvalidCharacterError (a 500) and HEAD /constructor answered 200 with
+// `content-type: undefined`.
+const probed = (await import(`${workerFile.href}?probe=${Date.now()}`)) as {
+  default: {
+    fetch(request: Request, env: unknown, ctx: unknown): Promise<Response>;
+  };
+};
+for (const [method, path] of [
+  ["GET", "/__proto__"],
+  ["HEAD", "/constructor"],
+  ["GET", "/toString"],
+  ["GET", "/hasOwnProperty"],
+] as const) {
+  const response = await probed.default.fetch(
+    new Request(`https://takos-office.invalid${path}`, { method }),
+    {},
+    {},
+  );
+  if (response.status !== 404) {
+    throw new Error(
+      `Built worker answered ${method} ${path} with ${response.status} ${response.headers.get("content-type")}; expected 404`,
+    );
+  }
+}
+const editorIndex = await probed.default.fetch(
+  new Request("https://takos-office.invalid/docs/"),
+  {},
+  {},
+);
+if (
+  editorIndex.status !== 200 ||
+  !(editorIndex.headers.get("content-type") ?? "").startsWith("text/html")
+) {
+  throw new Error(
+    `Built worker answered GET /docs/ with ${editorIndex.status}; expected the docs index`,
+  );
+}
+// eslint-disable-next-line no-console
+console.log("Verified inherited object keys are not served as assets");
