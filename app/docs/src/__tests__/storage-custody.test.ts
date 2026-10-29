@@ -1140,3 +1140,117 @@ test("a debounced writer cannot resume after its captured cache scope was invali
     fixture.restore();
   }
 });
+
+for (const missing of [false, true]) {
+  test(`a cancelled discard cannot change a reopened document after a late ${missing ? "404" : "200"}`, async () => {
+    const fixture = installFixture(`cancelled-discard-${missing}`);
+    const entered = deferred(),
+      release = deferred();
+    let pending: Promise<unknown> | undefined;
+    try {
+      const doc = document("reopened-doc", "initial");
+      const remote = server(doc);
+      client.saveDocuments([doc]);
+      await remote.store.upsert(
+        { ...doc, content: "other writer" },
+        { expectedUpdatedAt: doc.updatedAt },
+      );
+      await expect(
+        client.updateDocumentInStorage(doc.id, { content: "retained draft" }),
+      ).rejects.toBeInstanceOf(client.DocumentConflictError);
+      if (missing) {
+        const current = await remote.store.get(doc.id);
+        await remote.store.delete(doc.id, {
+          expectedUpdatedAt: current!.updatedAt,
+        });
+      }
+      const transport = globalThis.fetch;
+      let reads = 0;
+      globalThis.fetch = (async (url, init) => {
+        if ((!init?.method || init.method === "GET") && ++reads === 1) {
+          entered.resolve();
+          // Deliberately ignore AbortSignal at this external transport seam:
+          // the real client's adoption guard must still reject the late result.
+          await release.promise;
+        }
+        return transport(url, init);
+      }) as typeof fetch;
+      const controller = new AbortController();
+      pending = client.loadDocumentFromApi(doc.id, {
+        discardLocal: true,
+        signal: controller.signal,
+      });
+      const observed = pending.catch((error) => error);
+      await entered.promise;
+      controller.abort();
+      expect((await client.loadDocumentFromApi(doc.id)).content).toBe(
+        "retained draft",
+      );
+      release.resolve();
+      const outcome = await observed;
+      expect(outcome).toMatchObject({ name: "AbortError" });
+      expect([
+        client.getDocument(doc.id)?.content,
+        client.getDocumentSaveState(doc.id),
+      ]).toEqual(["retained draft", "conflict"]);
+      await expect(
+        client.updateDocumentInStorage(doc.id, {
+          content: "new edit in reopened view",
+        }),
+      ).rejects.toThrow();
+      expect(remote.requests.length).toBe(1);
+      expect((await remote.store.get(doc.id))?.content).toBe(
+        missing ? undefined : "other writer",
+      );
+    } finally {
+      release.resolve();
+      await pending?.catch(() => {});
+      fixture.restore();
+    }
+  });
+}
+
+test("leaving an explicit replacement before its GET returns has no write effect", async () => {
+  const fixture = installFixture("cancelled-replacement");
+  const entered = deferred(),
+    release = deferred();
+  let pending: Promise<unknown> | undefined;
+  try {
+    const doc = document("replacement-doc", "initial");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    await remote.store.upsert(
+      { ...doc, content: "other writer" },
+      { expectedUpdatedAt: doc.updatedAt },
+    );
+    await expect(
+      client.updateDocumentInStorage(doc.id, { content: "draft" }),
+    ).rejects.toThrow();
+    const transport = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      if (!init?.method || init.method === "GET") {
+        entered.resolve();
+        await release.promise;
+      }
+      return transport(url, init);
+    }) as typeof fetch;
+    const controller = new AbortController();
+    pending = client.retryDocumentAfterConflict(doc.id, {
+      signal: controller.signal,
+    });
+    const observed = pending.catch((error) => error);
+    await entered.promise;
+    controller.abort();
+    release.resolve();
+    expect(await observed).toMatchObject({ name: "AbortError" });
+    expect([
+      remote.requests.length,
+      client.getDocumentSaveState(doc.id),
+      (await remote.store.get(doc.id))?.content,
+    ]).toEqual([1, "conflict", "other writer"]);
+  } finally {
+    release.resolve();
+    await pending?.catch(() => {});
+    fixture.restore();
+  }
+});

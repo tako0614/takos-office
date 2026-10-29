@@ -85,6 +85,7 @@ export default function EditorPage() {
   let saveStatusResetTimeout: ReturnType<typeof setTimeout> | undefined;
   let routeVersion = 0;
   let editVersion = 0;
+  let recoveryController: AbortController | undefined;
   type Patch = Partial<Pick<Document, "title" | "content">>;
   let pendingSave:
     | {
@@ -160,6 +161,8 @@ export default function EditorPage() {
     const id = params.id;
     // Query-only Workspace navigation must fence old asynchronous completions.
     void location.search;
+    recoveryController?.abort();
+    recoveryController = undefined;
     routeVersion++;
     editVersion++;
     flushSave();
@@ -184,6 +187,7 @@ export default function EditorPage() {
   });
 
   onCleanup(() => {
+    recoveryController?.abort();
     routeVersion++;
     editVersion++;
     // Flush only the already-captured original operation; no route retargeting.
@@ -194,6 +198,7 @@ export default function EditorPage() {
   const debouncedSave = (
     updates: Partial<Pick<Document, "title" | "content">>,
   ) => {
+    if (recovering()) return;
     setSaveStatus("saving");
     editVersion++;
     if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
@@ -219,6 +224,8 @@ export default function EditorPage() {
     const selectedRoute = routeVersion;
     const selectedEdit = ++editVersion;
     const id = doc()?.id ?? params.id;
+    const controller = new AbortController();
+    recoveryController = controller;
     const discardedPending = reload ? pendingSave : undefined;
     if (saveTimeout) clearTimeout(saveTimeout);
     if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
@@ -230,8 +237,11 @@ export default function EditorPage() {
       if (routeVersion !== selectedRoute || editVersion !== selectedEdit)
         return;
       const updated = reload
-        ? await loadDocumentFromApi(id, { discardLocal: true })
-        : await retryDocumentAfterConflict(id);
+        ? await loadDocumentFromApi(id, {
+            discardLocal: true,
+            signal: controller.signal,
+          })
+        : await retryDocumentAfterConflict(id, { signal: controller.signal });
       if (routeVersion !== selectedRoute || editVersion !== selectedEdit)
         return;
       if (!updated) {
@@ -252,12 +262,12 @@ export default function EditorPage() {
         if (discardedPending)
           pendingSave = {
             ...discardedPending,
-            updates: { ...discardedPending.updates, ...pendingSave?.updates },
             edit: selectedEdit,
           };
         showSaveFailure(id, error);
       }
     } finally {
+      if (recoveryController === controller) recoveryController = undefined;
       if (routeVersion === selectedRoute) setRecovering(false);
     }
   };
@@ -267,6 +277,7 @@ export default function EditorPage() {
   };
 
   const handleTitleChange = (newTitle: string) => {
+    if (recovering()) return;
     setTitle(newTitle);
     debouncedSave({ title: newTitle });
   };
@@ -317,6 +328,7 @@ export default function EditorPage() {
           type="button"
           class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => setShowShortcuts(true)}
+          disabled={recovering()}
           title={t("keyboardShortcuts")}
           aria-label={t("keyboardShortcuts")}
           aria-haspopup="dialog"

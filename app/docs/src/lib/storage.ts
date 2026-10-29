@@ -96,9 +96,14 @@ export function getDocumentSaveState(
     : pending.state;
 }
 
-function requestDocument(scope: ApiClientScope, id: string): Promise<Document> {
+function requestDocument(
+  scope: ApiClientScope,
+  id: string,
+  signal?: AbortSignal,
+): Promise<Document> {
   return scope.requestJson<Document>(
     `${api.apiPath}/${encodeURIComponent(id)}`,
+    signal ? { signal } : undefined,
   );
 }
 
@@ -236,16 +241,17 @@ async function updateInScope(
 export function loadDocumentFromApi(id: string): Promise<Document>;
 export function loadDocumentFromApi(
   id: string,
-  options: { discardLocal: true },
+  options: { discardLocal: true; signal?: AbortSignal },
 ): Promise<Document | null>;
 export async function loadDocumentFromApi(
   id: string,
-  options?: { discardLocal?: boolean },
+  options?: { discardLocal?: boolean; signal?: AbortSignal },
 ): Promise<Document | null> {
   const scope = api.capture();
   const startedEpoch = epoch(scope);
   const creating = queues.find(scope.cacheKey, id);
   if (creating?.busy) await creating.settled();
+  options?.signal?.throwIfAborted();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   const before = JSON.stringify(
@@ -253,8 +259,9 @@ export async function loadDocumentFromApi(
   );
   let remote: Document;
   try {
-    remote = await requestDocument(scope, id);
+    remote = await requestDocument(scope, id, options?.signal);
   } catch (error) {
+    options?.signal?.throwIfAborted();
     if (epoch(scope) !== startedEpoch) throw error;
     const docs = loadAt(scope.cacheKey);
     const local = docs.find((doc) => doc.id === id);
@@ -275,6 +282,7 @@ export async function loadDocumentFromApi(
     }
     throw error;
   }
+  options?.signal?.throwIfAborted();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   if (!options?.discardLocal) {
@@ -335,7 +343,9 @@ export async function loadDocumentsFromApi(): Promise<Document[]> {
 /** Explicitly replace the retained draft against a fresh server revision, once. */
 export async function retryDocumentAfterConflict(
   id: string,
+  options?: { signal?: AbortSignal },
 ): Promise<Document | null> {
+  options?.signal?.throwIfAborted();
   const scope = api.capture();
   if (queues.find(scope.cacheKey, id)?.busy)
     throw new Error("A save is still in flight");
@@ -343,8 +353,9 @@ export async function retryDocumentAfterConflict(
   const startedEpoch = epoch(scope);
   let remote: Document | undefined;
   try {
-    remote = await requestDocument(scope, id);
+    remote = await requestDocument(scope, id, options?.signal);
   } catch (error) {
+    options?.signal?.throwIfAborted();
     const pending = journal(scope)[id];
     // Only an explicitly retried, never-acknowledged create may reconcile a
     // fresh404 as absence. The subsequent PUT still uses If-None-Match:*.
@@ -358,6 +369,7 @@ export async function retryDocumentAfterConflict(
     )
       throw error;
   }
+  options?.signal?.throwIfAborted();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   if (queues.find(scope.cacheKey, id)?.busy)
