@@ -265,6 +265,21 @@ export async function loadDocumentFromApi(
     if (epoch(scope) !== startedEpoch) throw error;
     const docs = loadAt(scope.cacheKey);
     const local = docs.find((doc) => doc.id === id);
+    // A transient read failure must not strand an already-unconfirmed draft.
+    // Its failed/conflict journal remains authoritative; this is not a fresh
+    // server read or permission to retry, replace or discard it.
+    const transientReadFailure =
+      error instanceof TypeError ||
+      (error instanceof ApiRequestError &&
+        error.status >= 500 &&
+        error.status < 600);
+    if (
+      !options?.discardLocal &&
+      transientReadFailure &&
+      local &&
+      protectedDraft(scope, id)
+    )
+      return local;
     if (error instanceof ApiRequestError && error.status === 404) {
       if (options?.discardLocal) {
         if (JSON.stringify(local) !== before) return local ?? null;

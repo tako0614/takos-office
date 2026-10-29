@@ -1254,3 +1254,101 @@ test("leaving an explicit replacement before its GET returns has no write effect
     fixture.restore();
   }
 });
+
+for (const status of [500, 502, 503, 504, "network"] as const) {
+  test(`an unconfirmed draft stays accessible when reopening GET returns ${status}`, async () => {
+    const fixture = installFixture(`retained-read-${status}`);
+    try {
+      const doc = document("unconfirmed-read", "initial");
+      const remote = server(doc);
+      client.saveDocuments([doc]);
+      remote.loseAck();
+      await expect(
+        client.updateDocumentInStorage(doc.id, {
+          content: "retained unknown draft",
+        }),
+      ).rejects.toThrow();
+      const committed = await remote.store.get(doc.id);
+      await remote.store.upsert(
+        { ...committed!, content: "other writer after unknown ACK" },
+        { expectedUpdatedAt: committed!.updatedAt },
+      );
+      const transport = globalThis.fetch;
+      globalThis.fetch = (async (url, init) => {
+        if (!init?.method || init.method === "GET") {
+          if (status === "network")
+            throw new TypeError("synthetic fetch transport failure");
+          return Response.json(
+            { error: "synthetic temporary read failure" },
+            { status },
+          );
+        }
+        return transport(url, init);
+      }) as typeof fetch;
+      const before = fixture.dump();
+      const reopened = await client.loadDocumentFromApi(doc.id);
+      expect([reopened.content, client.getDocumentSaveState(doc.id)]).toEqual([
+        "retained unknown draft",
+        "failed",
+      ]);
+      expect(fixture.dump()).toEqual(before);
+      await expect(
+        client.loadDocumentFromApi(doc.id, { discardLocal: true }),
+      ).rejects.toThrow();
+      await expect(client.retryDocumentAfterConflict(doc.id)).rejects.toThrow();
+      expect(fixture.dump()).toEqual(before);
+      expect([
+        remote.requests.length,
+        (await remote.store.get(doc.id))?.content,
+      ]).toEqual([1, "other writer after unknown ACK"]);
+    } finally {
+      fixture.restore();
+    }
+  });
+}
+
+for (const status of [401, 403]) {
+  test(`a retained draft does not mask read authorization refusal ${status}`, async () => {
+    const fixture = installFixture(`refused-read-${status}`);
+    try {
+      const doc = document("refused-read", "initial");
+      const remote = server(doc);
+      client.saveDocuments([doc]);
+      remote.loseAck();
+      await expect(
+        client.updateDocumentInStorage(doc.id, { content: "unconfirmed" }),
+      ).rejects.toThrow();
+      const before = fixture.dump();
+      Object.defineProperty(globalThis, "fetch", {
+        configurable: true,
+        writable: true,
+        value: async () =>
+          Response.json({ error: "synthetic auth refusal" }, { status }),
+      });
+      await expect(client.loadDocumentFromApi(doc.id)).rejects.toThrow();
+      expect(fixture.dump()).toEqual(status === 401 ? [] : before);
+      expect(remote.requests.length).toBe(1);
+    } finally {
+      fixture.restore();
+    }
+  });
+}
+
+test("a clean cached document is not reported as a successful load during a503", async () => {
+  const fixture = installFixture("clean-read-503");
+  try {
+    const doc = document("clean-unavailable", "cached clean");
+    client.saveDocuments([doc]);
+    const before = fixture.dump();
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: async () =>
+        Response.json({ error: "synthetic unavailable" }, { status: 503 }),
+    });
+    await expect(client.loadDocumentFromApi(doc.id)).rejects.toThrow();
+    expect(fixture.dump()).toEqual(before);
+  } finally {
+    fixture.restore();
+  }
+});
