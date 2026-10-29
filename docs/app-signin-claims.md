@@ -23,6 +23,10 @@ Current Accounts already emits capsule_id, workspace_id, role and top-level
 workspace_memberships without app_role. For that shape the Capsule must match,
 the nested workspace_id must equal the configured compatibility Workspace, and
 a legacy role or membership must be present; private access then stays as before.
+An explicitly malformed legacy role cannot use membership as a fallback.
+Without APP_CAPSULE_ID, current capsule-bound claims still use the configured
+legacy Workspace and role/membership; an incoming Capsule/app_role does not
+supply the missing deployment authority.
 A role-less account without that legacy evidence remains an ordinary user.
 UserInfo must be revalidated on each content request so revocation takes effect on the next request; cached session
 claims are not current authorization.

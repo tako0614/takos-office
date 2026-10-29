@@ -66,12 +66,15 @@ export function readOfficeAccessClaims(value: unknown): OfficeAccessClaims {
   ) {
     return { workspaceIds, app: { state: "absent" } };
   }
+  const legacyRole = evidence.role;
+  const validLegacyRole = legacyRole === undefined ||
+    (typeof legacyRole === "string" &&
+      ["owner", "admin", "member", "viewer"].includes(legacyRole));
   const legacy = {
     ...(typeof workspaceId === "string" ? { legacyWorkspaceId: workspaceId } : {}),
     legacyMembership:
-      typeof workspaceId === "string" &&
-      (membershipIds.includes(workspaceId) ||
-        ["owner", "admin", "member", "viewer"].includes(String(evidence.role))),
+      typeof workspaceId === "string" && validLegacyRole &&
+      (membershipIds.includes(workspaceId) || legacyRole !== undefined),
   };
   const capsuleId = evidence.capsule_id;
   const role = evidence.app_role;
@@ -121,8 +124,9 @@ export function canAccessOfficeContent(
     if (officeAppRole(claims, expected.capsuleId) !== null) return true;
     return (
       claims.app.state === "scoped" &&
-      claims.app.capsuleId === expected.capsuleId &&
-      claims.app.role === undefined &&
+      (!expected.capsuleId ||
+        (claims.app.capsuleId === expected.capsuleId &&
+          claims.app.role === undefined)) &&
       typeof expected.workspaceId === "string" &&
       expected.workspaceId !== "" &&
       claims.legacyWorkspaceId === expected.workspaceId &&

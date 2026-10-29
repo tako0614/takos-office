@@ -62,6 +62,33 @@ describe("Office app-scoped sign-in policy", () => {
     }), expected)).toBe(true);
   });
 
+  test("legacy Workspace context accepts current Accounts without configured Capsule authority", () => {
+    const claims = readOfficeAccessClaims({
+      sub: "legacy_user",
+      workspace_memberships: ["workspace_a"],
+      takosumi: { capsule_id: "office_a", workspace_id: "workspace_a", role: "member" },
+    });
+    expect(canAccessOfficeContent(claims, { workspaceId: "workspace_a" })).toBe(true);
+    expect(canAccessOfficeContent(claims, { workspaceId: "other" })).toBe(false);
+    expect(officeAppRole(claims, undefined)).toBeNull();
+    expect(canAccessOfficeContent(readOfficeAccessClaims({
+      takosumi: { capsule_id: "office_a", app_role: "owner" },
+    }), { workspaceId: "workspace_a" })).toBe(false);
+  });
+
+  test("malformed legacy roles never grant compatibility access", () => {
+    for (const role of [["owner"], ["member"], null, 42, {}, "OWNER", "manager"]) {
+      for (const memberships of [[], ["workspace_a"]]) {
+        const claims = readOfficeAccessClaims({
+          workspace_memberships: memberships,
+          takosumi: { capsule_id: "office_a", workspace_id: "workspace_a", role },
+        });
+        expect(canAccessOfficeContent(claims, expected)).toBe(false);
+        expect(canAccessOfficeContent(claims, { workspaceId: "workspace_a" })).toBe(false);
+      }
+    }
+  });
+
   test("another app's role cannot use the legacy Workspace fallback", () => {
     const claims = readOfficeAccessClaims({
       workspace_memberships: ["workspace_a"],
