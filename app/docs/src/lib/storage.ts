@@ -7,7 +7,9 @@ import {
 import { nextEntityRevision } from "../../../shared/lib/entity-revision.ts";
 import { ScopedRevisionWriteQueues } from "../../../shared/lib/revision-write-queue.ts";
 
-const api = createApiClient("/api/documents", "takos-docs-documents");
+const api = createApiClient("/api/documents", "takos-docs-documents", {
+  onClear: invalidateWrites,
+});
 const queues = new ScopedRevisionWriteQueues();
 const epochs = new Map<string, number>();
 type PendingWrite = {
@@ -36,15 +38,14 @@ function mark(scope: ApiClientScope, id: string, state?: PendingWrite): void {
   else localStorage.removeItem(journalKey(scope));
 }
 
-function clearScope(scope: ApiClientScope): void {
+function invalidateWrites(scope: ApiClientScope): void {
   epochs.set(scope.cacheKey, epoch(scope) + 1);
   queues.clear(scope.cacheKey);
-  scope.clearCache();
   localStorage.removeItem(journalKey(scope));
 }
 
 export function clearDocumentsCache(): void {
-  clearScope(api.capture());
+  api.clearCache();
 }
 
 /** A genuine server CAS refusal; the local draft is retained. */
@@ -95,19 +96,10 @@ export function getDocumentSaveState(
     : pending.state;
 }
 
-async function requestDocument(
-  scope: ApiClientScope,
-  id: string,
-): Promise<Document> {
-  try {
-    return await scope.requestJson<Document>(
-      `${api.apiPath}/${encodeURIComponent(id)}`,
-    );
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 401)
-      clearScope(scope);
-    throw error;
-  }
+function requestDocument(scope: ApiClientScope, id: string): Promise<Document> {
+  return scope.requestJson<Document>(
+    `${api.apiPath}/${encodeURIComponent(id)}`,
+  );
 }
 
 async function syncDocument(
@@ -115,8 +107,8 @@ async function syncDocument(
   doc: Document,
   revision?: string,
 ): Promise<Document> {
-  const response = await fetch(
-    scope.withCurrentSpaceId(`${api.apiPath}/${encodeURIComponent(doc.id)}`),
+  const response = await scope.request(
+    `${api.apiPath}/${encodeURIComponent(doc.id)}`,
     {
       method: "PUT",
       credentials: "same-origin",
@@ -127,10 +119,6 @@ async function syncDocument(
       body: JSON.stringify(doc),
     },
   );
-  if (response.status === 401) {
-    clearScope(scope);
-    scope.redirectToLogin();
-  }
   if (response.status === 409) {
     const body = (await response.json()) as { current: Document };
     throw new DocumentConflictError(body.current);
@@ -157,7 +145,7 @@ function queueDocumentWrite(
   const queue = queues.get(
     scope.cacheKey,
     doc.id,
-    previous?.revision ?? initialRevision,
+    previous ? previous.revision : initialRevision,
     previous
       ? new Error("Previous save needs explicit reload or retry")
       : undefined,
@@ -189,7 +177,10 @@ function queueDocumentWrite(
           mark(scope, doc.id, {
             revision: queue.revision,
             state:
-              error instanceof DocumentConflictError ? "conflict" : "failed",
+              error instanceof DocumentConflictError ||
+              previous?.state === "conflict"
+                ? "conflict"
+                : "failed",
           });
       },
     )
@@ -238,15 +229,19 @@ async function updateInScope(
   return queueDocumentWrite(scope, draft, base.updatedAt);
 }
 
+export function loadDocumentFromApi(id: string): Promise<Document>;
+export function loadDocumentFromApi(
+  id: string,
+  options: { discardLocal: true },
+): Promise<Document | null>;
 export async function loadDocumentFromApi(
   id: string,
   options?: { discardLocal?: boolean },
-): Promise<Document> {
+): Promise<Document | null> {
   const scope = api.capture();
   const startedEpoch = epoch(scope);
   const creating = queues.find(scope.cacheKey, id);
-  if (creating?.busy && creating.revision === undefined)
-    await creating.settled();
+  if (creating?.busy) await creating.settled();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   const before = JSON.stringify(
@@ -256,19 +251,34 @@ export async function loadDocumentFromApi(
   try {
     remote = await requestDocument(scope, id);
   } catch (error) {
-    const local = loadAt(scope.cacheKey).find((doc) => doc.id === id);
-    if (
-      !options?.discardLocal &&
-      local &&
-      protectedDraft(scope, id) &&
-      error instanceof ApiRequestError &&
-      error.status === 404
-    )
-      return local;
+    if (epoch(scope) !== startedEpoch) throw error;
+    const docs = loadAt(scope.cacheKey);
+    const local = docs.find((doc) => doc.id === id);
+    if (error instanceof ApiRequestError && error.status === 404) {
+      if (options?.discardLocal) {
+        if (JSON.stringify(local) !== before) return local ?? null;
+        if (queues.find(scope.cacheKey, id)?.busy)
+          throw new Error("A save is still in flight");
+        queues.discard(scope.cacheKey, id);
+        mark(scope, id);
+        saveAt(
+          scope.cacheKey,
+          docs.filter((doc) => doc.id !== id),
+        );
+        return null;
+      }
+      if (local && protectedDraft(scope, id)) return local;
+    }
     throw error;
   }
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
+  if (!options?.discardLocal) {
+    const writing = queues.find(scope.cacheKey, id);
+    if (writing?.busy) await writing.settled();
+    if (epoch(scope) !== startedEpoch)
+      throw new Error("Document cache was cleared");
+  }
   const docs = loadAt(scope.cacheKey);
   const index = docs.findIndex((doc) => doc.id === id);
   const local = docs[index];
@@ -297,14 +307,7 @@ export async function loadDocumentsFromApi(): Promise<Document[]> {
   const before = new Map(
     loadAt(scope.cacheKey).map((doc) => [doc.id, JSON.stringify(doc)]),
   );
-  let remote: Document[];
-  try {
-    remote = await scope.requestJson<Document[]>(api.apiPath);
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 401)
-      clearScope(scope);
-    throw error;
-  }
+  const remote = await scope.requestJson<Document[]>(api.apiPath);
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   const current = loadAt(scope.cacheKey);
@@ -325,13 +328,14 @@ export async function loadDocumentsFromApi(): Promise<Document[]> {
   return merged;
 }
 
-/** Explicit user recovery: reconcile against a fresh server read, then CAS once. */
+/** Explicitly replace the retained draft against a fresh server revision, once. */
 export async function retryDocumentAfterConflict(
   id: string,
 ): Promise<Document | null> {
   const scope = api.capture();
   if (queues.find(scope.cacheKey, id)?.busy)
     throw new Error("A save is still in flight");
+  if (!journal(scope)[id]) return null;
   const startedEpoch = epoch(scope);
   let remote: Document | undefined;
   try {
@@ -368,18 +372,14 @@ export async function removeDocument(id: string): Promise<void> {
   const current = loadAt(scope.cacheKey).find((doc) => doc.id === id);
   if (!current) return;
   const startedEpoch = epoch(scope);
-  const response = await fetch(
-    scope.withCurrentSpaceId(`${api.apiPath}/${encodeURIComponent(id)}`),
+  const response = await scope.request(
+    `${api.apiPath}/${encodeURIComponent(id)}`,
     {
       method: "DELETE",
       headers: { "If-Match": current.updatedAt },
       credentials: "same-origin",
     },
   );
-  if (response.status === 401) {
-    clearScope(scope);
-    scope.redirectToLogin();
-  }
   if (!response.ok) throw new ApiRequestError(response.status);
   if (epoch(scope) === startedEpoch)
     saveAt(

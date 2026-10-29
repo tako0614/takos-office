@@ -291,7 +291,10 @@ function server(initial?: Document) {
   const backing: TakosStorageClient = {
     async ready() {},
     async rename() {},
-    async delete() {},
+    async delete(id) {
+      records.delete(id);
+      revision++;
+    },
     async list(prefix) {
       return prefix
         ? [...records.values()].map(file)
@@ -605,7 +608,7 @@ test("explicit discard loads the actual other writer after preserving a conflict
       discardLocal: true,
     });
     expect({
-      returned: read.content,
+      returned: read?.content,
       cache: client.getDocument(doc.id)?.content,
       requests: remote.requests.length,
       state: client.getDocumentSaveState(doc.id),
@@ -798,14 +801,24 @@ test("opening a newly created document waits for its real create ACK instead of 
     await entered.promise;
     const open = client.loadDocumentFromApi(doc.id);
     pending.push(open);
+    let openedEarly = false;
     const observed = open.then(
-      (doc) => doc.content,
+      (doc) => {
+        openedEarly = true;
+        return doc;
+      },
       () => "premature read failure",
     );
     await new Promise<void>((resolve) => setImmediate(resolve));
+    const resolvedBeforeAck = openedEarly;
     release.resolve();
-    await create;
-    expect(await observed).toBe("created draft");
+    const ack = await create;
+    const opened = await observed;
+    expect({
+      resolvedBeforeAck,
+      sameAck: typeof opened === "object" && opened.updatedAt === ack.updatedAt,
+      state: client.getDocumentSaveState(doc.id),
+    }).toEqual({ resolvedBeforeAck: false, sameAck: true, state: "clean" });
   } finally {
     release.resolve();
     await Promise.allSettled(pending);
@@ -833,6 +846,277 @@ test("a failed create stays recoverable and explicit retry creates only after a 
       createOnly: remote.requests[1]?.create,
       expected: remote.requests[1]?.expected,
     }).toEqual({ stored: "unsaved creation", createOnly: "*", expected: null });
+  } finally {
+    fixture.restore();
+  }
+});
+
+/** A fresh browser module using only synthetic localStorage and loopback I/O. */
+async function freshClient(
+  fixture: ReturnType<typeof installFixture>,
+  script: string,
+) {
+  const wire = globalThis.fetch;
+  const listener = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      return wire(`${url.pathname}${url.search}`, {
+        method: request.method,
+        headers: request.headers,
+        ...(request.method === "GET" ? {} : { body: await request.text() }),
+      });
+    },
+  });
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--eval",
+      `
+    const memory = new Map(JSON.parse(process.env.CUSTODY_CACHE));
+    globalThis.localStorage = {getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)};
+    globalThis.location = new URL(process.env.CUSTODY_LOCATION);
+    const nativeFetch = globalThis.fetch;
+    globalThis.fetch = (url,init) => nativeFetch(process.env.CUSTODY_ORIGIN + url,init);
+    const fresh = await import(process.env.CUSTODY_MODULE);
+    ${script}
+  `,
+    ],
+    {
+      env: {
+        ...process.env,
+        CUSTODY_CACHE: JSON.stringify(fixture.dump()),
+        CUSTODY_LOCATION: globalThis.location.href,
+        CUSTODY_ORIGIN: `http://127.0.0.1:${listener.port}`,
+        CUSTODY_MODULE: new URL("../lib/storage.ts", import.meta.url).pathname,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  try {
+    const [output, errors, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { exit, output: output.trim(), errors };
+  } finally {
+    if (child.exitCode === null) {
+      child.kill();
+      await child.exited;
+    }
+    listener.stop(true);
+  }
+}
+
+test("failed creation remains create-only after reload and another edit", async () => {
+  const fixture = installFixture("reload-failed-create");
+  try {
+    const doc = document("fresh-create", "draft");
+    const remote = server();
+    remote.hold(async () => {
+      throw Error("synthetic offline before effect");
+    });
+    await expect(client.addDocument(doc)).rejects.toThrow();
+    remote.hold(async () => {});
+    const child = await freshClient(
+      fixture,
+      `
+      try { await fresh.updateDocumentInStorage('fresh-create',{content:'edited after reload'}); } catch {}
+      await fresh.retryDocumentAfterConflict('fresh-create');
+      console.log(JSON.stringify({content:fresh.getDocument('fresh-create').content,state:fresh.getDocumentSaveState('fresh-create')}));
+    `,
+    );
+    expect({
+      exit: child.exit,
+      output: child.output,
+      errors: child.errors,
+    }).toEqual({
+      exit: 0,
+      output: JSON.stringify({
+        content: "edited after reload",
+        state: "clean",
+      }),
+      errors: "",
+    });
+    expect([
+      remote.requests[1]?.expected,
+      remote.requests[1]?.create,
+      (await remote.store.get(doc.id))?.content,
+    ]).toEqual([null, "*", "edited after reload"]);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("a deleted document's failed draft can be explicitly discarded after a fresh404", async () => {
+  const fixture = installFixture("deleted-draft");
+  try {
+    const doc = document("deleted-doc", "initial");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    await remote.store.delete(doc.id, { expectedUpdatedAt: doc.updatedAt });
+    remote.hold(async () => {
+      throw Error("synthetic transport refusal before effect");
+    });
+    await expect(
+      client.updateDocumentInStorage(doc.id, { content: "keep until discard" }),
+    ).rejects.toThrow();
+    expect((await client.loadDocumentFromApi(doc.id)).content).toBe(
+      "keep until discard",
+    );
+    const result = await client.loadDocumentFromApi(doc.id, {
+      discardLocal: true,
+    });
+    expect([
+      result,
+      client.getDocument(doc.id),
+      client.getDocumentSaveState(doc.id),
+      remote.requests.length,
+    ]).toEqual([null, undefined, "clean", 1]);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("retrying a clean document cannot overwrite a later other-writer revision", async () => {
+  const fixture = installFixture("clean-retry");
+  try {
+    const doc = document("clean-doc", "original");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    await remote.store.upsert(
+      { ...doc, content: "other writer" },
+      { expectedUpdatedAt: doc.updatedAt },
+    );
+    await client.retryDocumentAfterConflict(doc.id);
+    expect([
+      remote.requests.length,
+      (await remote.store.get(doc.id))?.content,
+    ]).toEqual([0, "other writer"]);
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("a load overlapping an update waits for its ACK instead of returning a pending failure view", async () => {
+  const fixture = installFixture("read-overlap");
+  const readEntered = deferred(),
+    releaseRead = deferred(),
+    writeEntered = deferred(),
+    releaseWrite = deferred();
+  const pending: Promise<unknown>[] = [];
+  try {
+    const doc = document("overlap-doc", "initial");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    remote.hold(async () => {
+      writeEntered.resolve();
+      await releaseWrite.promise;
+    });
+    const wire = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      if (init?.method === "PUT") return wire(input, init);
+      readEntered.resolve();
+      await releaseRead.promise;
+      return Response.json(doc);
+    }) as typeof fetch;
+    let readFinished = false;
+    const read = client.loadDocumentFromApi(doc.id).then((value) => {
+      readFinished = true;
+      return value;
+    });
+    pending.push(read);
+    await readEntered.promise;
+    const write = client.updateDocumentInStorage(doc.id, { content: "new" });
+    pending.push(write);
+    await writeEntered.promise;
+    releaseRead.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const early = readFinished;
+    releaseWrite.resolve();
+    const ack = await write;
+    assert(ack);
+    const loaded = await read;
+    expect({
+      early,
+      revision: loaded.updatedAt,
+      state: client.getDocumentSaveState(doc.id),
+    }).toEqual({ early: false, revision: ack.updatedAt, state: "clean" });
+  } finally {
+    releaseRead.resolve();
+    releaseWrite.resolve();
+    await Promise.allSettled(pending);
+    fixture.restore();
+  }
+});
+
+test("a scoped401 invalidates the Docs journal and prevents a late ACK from recreating A's cache", async () => {
+  const fixture = installFixture("unauthorized-A");
+  const entered = deferred(),
+    release = deferred();
+  let pending: Promise<unknown> | undefined;
+  try {
+    const doc = document("late-ack", "initial");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    const a = fixture.lastCacheSnapshot();
+    fixture.setWorkspace("unauthorized-B");
+    client.saveDocuments([document("B", "B")]);
+    const b = fixture.lastCacheSnapshot();
+    fixture.setWorkspace("unauthorized-A");
+    remote.hold(async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    const wire = globalThis.fetch;
+    globalThis.fetch = (async (input, init) =>
+      init?.method === "PUT"
+        ? wire(input, init)
+        : new Response("", { status: 401 })) as typeof fetch;
+    pending = client.updateDocumentInStorage(doc.id, { content: "in flight" });
+    await entered.promise;
+    await expect(client.loadDocumentFromApi("other-id")).rejects.toThrow();
+    release.resolve();
+    await pending;
+    fixture.setWorkspace("unauthorized-A");
+    expect({
+      a: fixture.cacheBytes(a.key),
+      b: fixture.cacheBytes(b.key),
+      state: client.getDocumentSaveState(doc.id),
+    }).toEqual({ a: null, b: b.bytes, state: "clean" });
+  } finally {
+    release.resolve();
+    await pending?.catch(() => {});
+    fixture.restore();
+  }
+});
+
+test("a persisted conflict stays classified as conflict after a fresh-module edit", async () => {
+  const fixture = installFixture("persist-conflict");
+  try {
+    const doc = document("persist-doc", "old");
+    const remote = server(doc);
+    client.saveDocuments([doc]);
+    await remote.store.upsert(
+      { ...doc, content: "other" },
+      { expectedUpdatedAt: doc.updatedAt },
+    );
+    await expect(
+      client.updateDocumentInStorage(doc.id, { content: "local" }),
+    ).rejects.toThrow();
+    const child = await freshClient(
+      fixture,
+      `try{await fresh.updateDocumentInStorage('persist-doc',{content:'new local'});}catch{};console.log(fresh.getDocumentSaveState('persist-doc'));`,
+    );
+    expect([
+      child.exit,
+      child.output,
+      child.errors,
+      remote.requests.length,
+    ]).toEqual([0, "conflict", "", 1]);
   } finally {
     fixture.restore();
   }

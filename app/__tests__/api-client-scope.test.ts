@@ -81,7 +81,7 @@ test("a captured no-Workspace scope preserves the original cache and request sha
     const scope = createApiClient("/api/documents", "no-space").capture();
     expect([
       scope.cacheKey,
-      scope.withCurrentSpaceId("/api/documents?x=1"),
+      scope.withCapturedWorkspaceId("/api/documents?x=1"),
     ]).toEqual(["no-space", "/api/documents?x=1"]);
   } finally {
     if (original) Object.defineProperty(globalThis, "location", original);

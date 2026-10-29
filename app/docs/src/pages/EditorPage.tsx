@@ -4,6 +4,7 @@ import { ArrowLeft, Cloud, CloudOff, Keyboard } from "lucide-solid";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { Document } from "../types";
 import {
+  DocumentConflictError,
   captureDocumentWriter,
   getDocumentSaveState,
   loadDocumentFromApi,
@@ -41,15 +42,29 @@ export default function EditorPage() {
   const recoveryLabels = () =>
     language() === "ja"
       ? {
-          message: "保存を確認できません。変更はエディターに残っています。",
-          retry: "この変更で再試行",
+          status:
+            saveKind() === "conflict" ? "保存の競合" : "保存結果が不明です",
+          message:
+            saveKind() === "conflict"
+              ? "別の場所で文書が変更されています。下書きはエディターに残っています。"
+              : "保存を確認できません。下書きはエディターに残っています。",
+          replaceConfirm:
+            "サーバーの最新内容をこの下書きで置き換えますか？別の場所で行われた変更も上書きされます。",
+          retry: "自分の下書きで置き換える",
           reload: "サーバーの内容を読み直す",
           confirm:
             "この端末の未保存の変更を破棄し、サーバーの内容を読み直しますか？",
         }
       : {
-          message: "Save is unconfirmed. Your changes are still in the editor.",
-          retry: "Retry my changes",
+          status:
+            saveKind() === "conflict" ? "Save conflict" : "Save unconfirmed",
+          message:
+            saveKind() === "conflict"
+              ? "This document changed elsewhere. Your draft is still in the editor."
+              : "Save is unconfirmed. Your draft is still in the editor.",
+          replaceConfirm:
+            "Replace the latest server version with this draft? Changes made elsewhere will be overwritten.",
+          retry: "Replace with my draft",
           reload: "Reload server version",
           confirm:
             "Discard this device's unsaved changes and reload the server version?",
@@ -61,6 +76,7 @@ export default function EditorPage() {
   const [saveStatus, setSaveStatus] = createSignal<
     "saved" | "saving" | "failed" | "idle"
   >("idle");
+  const [saveKind, setSaveKind] = createSignal<"failed" | "conflict">("failed");
   const [showFind, setShowFind] = createSignal(false);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
 
@@ -78,18 +94,33 @@ export default function EditorPage() {
       }
     | undefined;
 
-  function flushSave(): void {
+  function showSaveFailure(id: string, error?: unknown): void {
+    let conflict = error instanceof DocumentConflictError;
+    try {
+      conflict ||= getDocumentSaveState(id) === "conflict";
+    } catch {
+      /* Cache failures stay visible. */
+    }
+    setSaveKind(conflict ? "conflict" : "failed");
+    setSaveStatus("failed");
+  }
+
+  function flushSave(): Promise<void> | undefined {
     if (saveTimeout) clearTimeout(saveTimeout);
     const pending = pendingSave;
     pendingSave = undefined;
     if (!pending) return;
     const current = () =>
       routeVersion === pending.route && editVersion === pending.edit;
-    void pending
+    return pending
       .write(pending.updates)
       .then((updated) => {
         if (!current()) return;
         if (!updated) throw new Error("Document is no longer available");
+        if (getDocumentSaveState(updated.id) !== "clean") {
+          showSaveFailure(updated.id);
+          return;
+        }
         // Never feed a successful echo back over keystrokes entered in flight.
         setDoc((d) => nextBoundDoc(d, { kind: "saveEcho", doc: updated }));
         setSaveStatus("saved");
@@ -97,8 +128,8 @@ export default function EditorPage() {
           if (current()) setSaveStatus("idle");
         }, 2000);
       })
-      .catch(() => {
-        if (current()) setSaveStatus("failed");
+      .catch((error) => {
+        if (current()) showSaveFailure(params.id, error);
       });
   }
 
@@ -132,6 +163,7 @@ export default function EditorPage() {
     flushSave();
     if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
     const selectedRoute = routeVersion;
+    const selectedEdit = editVersion;
     setDoc(null);
     setTitle("");
     setSaveStatus("idle");
@@ -139,11 +171,12 @@ export default function EditorPage() {
       .then((remote) => {
         if (routeVersion !== selectedRoute) return;
         setDoc((d) => nextBoundDoc(d, { kind: "load", doc: remote }));
-        setTitle(remote.title);
-        if (getDocumentSaveState(id) !== "clean") setSaveStatus("failed");
+        if (editVersion === selectedEdit) setTitle(remote.title);
+        if (getDocumentSaveState(id) !== "clean") showSaveFailure(id);
       })
       .catch(() => {
-        if (routeVersion === selectedRoute) navigate("/", { replace: true });
+        if (routeVersion === selectedRoute)
+          navigate(`/${location.search}`, { replace: true });
       });
   });
 
@@ -173,26 +206,42 @@ export default function EditorPage() {
   };
 
   const recoverSave = async (reload: boolean) => {
-    if (reload && !globalThis.confirm(recoveryLabels().confirm)) return;
+    if (
+      !globalThis.confirm(
+        reload ? recoveryLabels().confirm : recoveryLabels().replaceConfirm,
+      )
+    )
+      return;
     const selectedRoute = routeVersion;
     const selectedEdit = ++editVersion;
     const id = doc()?.id ?? params.id;
+    if (saveTimeout) clearTimeout(saveTimeout);
+    if (saveStatusResetTimeout) clearTimeout(saveStatusResetTimeout);
+    if (reload) pendingSave = undefined;
     setSaveStatus("saving");
     try {
+      if (!reload) await flushSave();
+      if (routeVersion !== selectedRoute || editVersion !== selectedEdit)
+        return;
       const updated = reload
         ? await loadDocumentFromApi(id, { discardLocal: true })
         : await retryDocumentAfterConflict(id);
       if (routeVersion !== selectedRoute || editVersion !== selectedEdit)
         return;
-      if (!updated) throw new Error("Document is no longer available");
+      if (!updated) {
+        if (reload) navigate(`/${location.search}`, { replace: true });
+        else setSaveStatus("idle");
+        return;
+      }
       if (reload) {
         setDoc(updated);
         setTitle(updated.title);
       }
-      setSaveStatus(reload ? "idle" : "saved");
-    } catch {
+      if (getDocumentSaveState(id) !== "clean") showSaveFailure(id);
+      else setSaveStatus(reload ? "idle" : "saved");
+    } catch (error) {
       if (routeVersion === selectedRoute && editVersion === selectedEdit)
-        setSaveStatus("failed");
+        showSaveFailure(id, error);
     }
   };
 
@@ -243,7 +292,7 @@ export default function EditorPage() {
           </Show>
           <Show when={saveStatus() === "failed"}>
             <CloudOff size={14} class="text-red-600" />
-            <span class="text-red-600">{t("saveFailed")}</span>
+            <span class="text-red-600">{recoveryLabels().status}</span>
           </Show>
         </div>
         <button
@@ -310,7 +359,7 @@ export default function EditorPage() {
         {/* Document area — gray background with centered white paper */}
         <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
           <div class="max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
-            <Show when={doc()} fallback={<div />}>
+            <Show keyed when={doc()} fallback={<div />}>
               <Editor
                 content={doc()!.content}
                 onUpdate={handleContentUpdate}
