@@ -30,6 +30,9 @@ function contentTypeFor(path: string): string {
   if (path.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (path.endsWith(".css")) return "text/css; charset=utf-8";
   if (path.endsWith(".json")) return "application/json; charset=utf-8";
+  if (path.endsWith(".webmanifest")) {
+    return "application/manifest+json; charset=utf-8";
+  }
   if (path.endsWith(".svg")) return "image/svg+xml";
   if (path.endsWith(".png")) return "image/png";
   if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
@@ -100,6 +103,18 @@ function hasFileExtension(pathname) {
   return segment.includes(".");
 }
 
+function cacheControlFor(assetPath) {
+  if (assetPath.endsWith("index.html") || assetPath.endsWith(".webmanifest")) {
+    return "no-cache";
+  }
+  // Only Vite's content-hashed build output may be cached forever.
+  if (EDITORS.some((editor) => assetPath.startsWith(editor + "/assets/"))) {
+    return "public, max-age=31536000, immutable";
+  }
+  // Fixed-name public files (icons, apple-touch-icon) can change in place.
+  return "public, max-age=86400";
+}
+
 function isAppRoute(pathname) {
   if (pathname === "/" || pathname === "/mcp" || pathname === "/health" || pathname === "/healthz") {
     return true;
@@ -127,9 +142,7 @@ function assetResponse(assetPath, request) {
   return new Response(body, {
     headers: {
       "content-type": asset.contentType,
-      "cache-control": assetPath.endsWith("index.html")
-        ? "no-cache"
-        : "public, max-age=31536000, immutable",
+      "cache-control": cacheControlFor(assetPath),
     },
   });
 }
@@ -169,6 +182,10 @@ for (const editor of editors) {
     `${editor}/`,
   );
 }
+// Suite-wide files served at the Worker root (the home-screen web app manifest
+// and its icons). One manifest covers the shell and all three editors, so
+// moving between them stays inside one installed app.
+await collectAssets(new URL("./public/", import.meta.url), "");
 await mkdir(outDir, { recursive: true });
 await writeFile(tempEntryFile, createEntrySource());
 
@@ -192,5 +209,61 @@ try {
   stop();
   await rm(tempEntryFile).catch(() => undefined);
 }
+
+// Probe the built artifact: browsers fetch the manifest and its icons without
+// credentials, so the Worker must answer them from the asset map (not the app
+// routes or an SPA fallback) with their real content types. Fixed-name files
+// must not be cached as immutable, or a changed icon stays stale for a year
+// and the browser's manifest update check sees the old one.
+const built = (await import(`${workerFile.href}?probe=${Date.now()}`)) as {
+  default: {
+    fetch(request: Request, env: unknown, ctx: unknown): Promise<Response>;
+  };
+};
+async function probe(
+  path: string,
+  contentType: string,
+  cacheControl: string,
+): Promise<Response> {
+  const response = await built.default.fetch(
+    new Request(`https://takos-office.invalid${path}`),
+    {},
+    {},
+  );
+  const actualType = response.headers.get("content-type") ?? "";
+  const actualCache = response.headers.get("cache-control") ?? "";
+  if (
+    response.status !== 200 ||
+    !actualType.startsWith(contentType) ||
+    actualCache !== cacheControl
+  ) {
+    throw new Error(
+      `Built worker served ${path} as ${response.status} ${actualType} (${actualCache}); expected 200 ${contentType} (${cacheControl})`,
+    );
+  }
+  return response;
+}
+const webManifest = (await (
+  await probe("/manifest.webmanifest", "application/manifest+json", "no-cache")
+).json()) as { icons?: Array<{ src: string }> };
+for (const path of [
+  ...(webManifest.icons ?? []).map((icon) => icon.src),
+  "/apple-touch-icon.png",
+]) {
+  await probe(path, "image/png", "public, max-age=86400");
+}
+const hashedAsset = Object.keys(assets).find((path) =>
+  /^docs\/assets\/.+\.js$/u.test(path),
+);
+if (!hashedAsset) throw new Error("Built worker has no hashed docs/assets/*.js");
+await probe(
+  `/${hashedAsset}`,
+  "text/javascript",
+  "public, max-age=31536000, immutable",
+);
+// eslint-disable-next-line no-console
+console.log(
+  "Verified web app manifest, icon and hashed asset routes in the built worker",
+);
 
 void outDir;

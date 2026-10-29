@@ -73,6 +73,11 @@ export function renderShellPage(): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Takos Office</title>
+<!-- Home-screen install: one suite-wide manifest served at the Worker root. -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#161a22" media="(prefers-color-scheme: dark)" />
 <script>
   // Apply the shared suite theme before paint (no flash). Same key as the editors.
   (function () {
