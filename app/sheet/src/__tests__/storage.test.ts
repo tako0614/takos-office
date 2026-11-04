@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   createSpreadsheet,
   loadSpreadsheetsFromApi,
+  saveSpreadsheets,
   updateSpreadsheet,
 } from "../lib/storage.ts";
 import { createServerApp } from "../server.ts";
@@ -80,11 +81,12 @@ test("client storage normalizes spaceId query to space_id", async () => {
   let requestedUrl = "";
   const spreadsheet = makeSpreadsheet();
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([spreadsheet]));
+
   Object.defineProperty(globalThis, "location", {
     value: new URL("http://localhost/editor?spaceId=space-camel"),
     configurable: true,
   });
+  saveSpreadsheets([spreadsheet]);
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     requestedUrl = input instanceof Request ? input.url : String(input);
     return Promise.resolve(

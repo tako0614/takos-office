@@ -105,6 +105,15 @@ create acknowledgement before opening the new item. An unconfirmed create
 is retained for its Workspace across route changes and remounts until a
 successful library read, without resending it.
 
+Sheets serializes saves for each spreadsheet against acknowledged server
+revisions. Its cache and pending-write journal belong to the selected Workspace.
+Conflicts and unknown acknowledgements retain the local draft, including across
+reload, and block automatic replay. Recovery offers a fresh conditional
+replacement or an explicit read/discard; a concurrent writer can still reject
+the replacement. Tab operations use the same revision queue, and deletion
+removes a local item only after an explicit successful deletion acknowledgement.
+Formula-bar typing retains its own focus; each Enter commits the edit once.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains

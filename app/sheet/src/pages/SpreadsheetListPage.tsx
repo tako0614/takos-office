@@ -1,9 +1,10 @@
-import { Component, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Component, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
 import {
   createSpreadsheet,
   deleteSpreadsheet,
   loadSpreadsheetsFromApi,
+  loadSpreadsheets,
 } from "../lib/storage";
 import { SpreadsheetCard } from "../components/SpreadsheetCard";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -50,6 +51,9 @@ export const SpreadsheetListPage: Component = () => {
   const { t } = useI18n();
   const [spreadsheets, setSpreadsheets] = createSignal<Spreadsheet[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [deleteError, setDeleteError] = createSignal("");
+  const [deleting, setDeleting] = createSignal(new Set<string>());
+
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
 
@@ -77,8 +81,12 @@ export const SpreadsheetListPage: Component = () => {
     }
   };
 
-  onMount(() => {
+  createEffect(() => {
     const scope = routeScope();
+    setIsLoading(true);
+    setSpreadsheets([]);
+    setDeleteError("");
+    setDeleting(new Set<string>());
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
@@ -91,8 +99,11 @@ export const SpreadsheetListPage: Component = () => {
         }
       })
       .catch(() => undefined)
-      .finally(() => setIsLoading(false));
+      .finally(() => { if (active && routeScope() === scope) setIsLoading(false); });
 
+  });
+
+  onMount(() => {
     // Quick-create entry point from the Office shell: `?new=1` immediately
     // fires the same create action as the "New Spreadsheet" button and then
     // strips the param so a refresh doesn't create another spreadsheet.
@@ -109,12 +120,19 @@ export const SpreadsheetListPage: Component = () => {
 
   const handleDelete = (e: Event, id: string) => {
     e.stopPropagation();
-    if (confirm(t("deleteSpreadsheetConfirm"))) {
-      void deleteSpreadsheet(id).catch((error) => {
-        console.error("[takos-excel] Failed to delete spreadsheet", error);
+    if (deleting().has(id) || !confirm(t("deleteSpreadsheetConfirm"))) return;
+    const scope = routeScope();
+    setDeleteError("");
+    setDeleting((previous) => new Set(previous).add(id));
+    void deleteSpreadsheet(id).then(() => {
+      if (active && routeScope() === scope) setSpreadsheets(loadSpreadsheets());
+    }).catch(() => {
+      if (active && routeScope() === scope) setDeleteError(t("deleteUnconfirmed"));
+    }).finally(() => {
+      if (active && routeScope() === scope) setDeleting((previous) => {
+        const next = new Set(previous);next.delete(id);return next;
       });
-      setSpreadsheets((prev) => prev.filter((ss) => ss.id !== id));
-    }
+    });
   };
 
   return (
@@ -162,6 +180,13 @@ export const SpreadsheetListPage: Component = () => {
 
       {/* Content */}
       <main class="mx-auto max-w-5xl px-6 py-6">
+        <Show when={deleting().size > 0}><p role="status" class="mb-3 text-sm">{t("deletePending")}</p></Show>
+        <Show when={deleteError()}>
+          <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-neutral-100">
+            <p>{deleteError()}</p>
+            <button type="button" class="mt-2 underline" onClick={() => window.location.reload()}>{t("reloadLibrary")}</button>
+          </div>
+        </Show>
         <Show when={creating()}>
           <p role="status" class="mb-4 text-sm text-gray-600 dark:text-gray-300">
             {t("creating")}
