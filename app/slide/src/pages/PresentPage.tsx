@@ -1,7 +1,7 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { useNavigate, useParams } from "@solidjs/router";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import type { Presentation, SlideTransition } from "../types";
-import { getPresentation, loadPresentationsFromApi } from "../lib/storage";
+import { getPresentation, loadPresentationFromApi } from "../lib/storage";
 import { renderSlide } from "../lib/canvas-renderer";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
@@ -12,6 +12,7 @@ const SLIDE_H = 540;
 export default function PresentPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [presentation, setPresentation] = createSignal<Presentation | null>(
@@ -23,24 +24,36 @@ export default function PresentPage() {
   let canvasRef: HTMLCanvasElement | undefined;
   let wrapperRef: HTMLDivElement | undefined;
 
-  onMount(() => {
-    const pres = getPresentation(params.id);
-    if (!pres) {
-      void loadPresentationsFromApi()
-        .then(() => {
-          const remote = getPresentation(params.id);
-          if (remote) setPresentation(remote);
-          else navigate(withCurrentSpaceId("/"));
-        })
-        .catch(() => navigate(withCurrentSpaceId("/")));
-      return;
-    }
-    setPresentation(pres);
-
-    // Request fullscreen
-    document.documentElement.requestFullscreen?.().catch(() => {
-      // Fullscreen might be blocked; continue anyway
+  let owner: object | undefined;
+  let active = true, ownsFullscreen = false;
+  const enterFullscreen = () => {
+    if (document.fullscreenElement) return;
+    void document.documentElement.requestFullscreen?.().then(() => {
+      ownsFullscreen = true;
+      if (!active && document.fullscreenElement === document.documentElement)
+        void document.exitFullscreen?.().catch(() => {});
+    }).catch(() => {});
+  };
+  onCleanup(() => {
+    active = false;
+    if (ownsFullscreen && document.fullscreenElement === document.documentElement)
+      void document.exitFullscreen?.().catch(() => {});
+  });
+  createEffect(() => {
+    const id = params.id;
+    void location.search;
+    const binding = {}, controller = new AbortController();
+    owner = binding;
+    setPresentation(null);setCurrentIndex(0);setTransitionStyle("");setIsTransitioning(false);
+    void loadPresentationFromApi(id, { signal: controller.signal }).then((remote) => {
+      if (owner === binding) { setPresentation(remote);enterFullscreen(); }
+    }).catch(() => {
+      if (owner !== binding || controller.signal.aborted) return;
+      const retained = getPresentation(id);
+      if (retained) { setPresentation(retained);enterFullscreen(); }
+      else navigate(withCurrentSpaceId("/"));
     });
+    onCleanup(() => { controller.abort();if (owner === binding) owner = undefined; });
   });
 
   const exitPresentation = () => {
@@ -118,14 +131,18 @@ export default function PresentPage() {
     setCurrentIndex(newIndex);
 
     // After a frame, apply the transition and end style
+    const binding = owner;
     requestAnimationFrame(() => {
+      if (owner !== binding) return;
       requestAnimationFrame(() => {
+        if (owner !== binding) return;
         const transitionProp = getTransitionProp(transition);
         setTransitionStyle(
           `transition: ${transitionProp}; opacity: 1; transform: none;`,
         );
 
         setTimeout(() => {
+          if (owner !== binding) return;
           setTransitionStyle("");
           setIsTransitioning(false);
         }, transition.duration);

@@ -5,7 +5,7 @@ import {
   onCleanup,
   Show,
 } from "solid-js";
-import { useNavigate, useParams } from "@solidjs/router";
+import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import type { Presentation, SlideElement } from "../types";
 import {
   createDefaultSlide,
@@ -13,8 +13,10 @@ import {
   createShapeElement,
   createTextElement,
   loadPresentationFromApi,
-  PresentationConflictError,
-  savePresentation,
+  getPresentation,
+  getPresentationSaveState,
+  capturePresentationWriter,
+  retryPresentationAfterConflict,
 } from "../lib/storage";
 import SlideCanvas from "../components/SlideCanvas";
 import SlidePanel from "../components/SlidePanel";
@@ -28,6 +30,7 @@ import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [presentation, setPresentation] = createSignal<Presentation | null>(
@@ -42,12 +45,51 @@ export default function EditorPage() {
   const [editingTextId, setEditingTextId] = createSignal<string | null>(null);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
 
-  // Load presentation
+  const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getPresentationSaveState>>("clean");
+  const [recovering, setRecovering] = createSignal(false);
+  const [recoveryError, setRecoveryError] = createSignal("");
+  let owner: object | undefined;
+  let writer: ReturnType<typeof capturePresentationWriter> | undefined;
+  let editVersion = 0;
+  let recoveryController: AbortController | undefined;
+  const refreshSaveKind = (failed = false) => {
+    try {
+      const state = getPresentationSaveState(params.id);
+      setSaveKind(failed && state === "clean" ? "failed" : state);
+    } catch { setSaveKind("failed"); }
+  };
+
+  // Capture a route binding before any asynchronous read or write.
   createEffect(() => {
+    const id = params.id;
+    void location.search;
+    const binding = {}, controller = new AbortController();
+    owner = binding;
+    writer = capturePresentationWriter(id);
+    editVersion++;
     setPresentation(null);
-    void loadPresentationFromApi(params.id)
-      .then((remote) => setPresentation(remote))
-      .catch(() => navigate(withCurrentSpaceId("/")));
+    setSelectedSlideIndex(0);
+    setSelectedElementId(null);
+    setEditingTextId(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    setRecovering(false);
+    setRecoveryError("");
+    setSaveKind("clean");
+    void loadPresentationFromApi(id, { signal: controller.signal }).then((remote) => {
+      if (owner !== binding) return;
+      setPresentation(remote);
+      refreshSaveKind();
+    }).catch(() => {
+      if (owner !== binding || controller.signal.aborted) return;
+      const retained = getPresentation(id);
+      if (retained) { setPresentation(retained);refreshSaveKind(true); }
+      else navigate(withCurrentSpaceId("/"));
+    });
+    onCleanup(() => {
+      controller.abort();recoveryController?.abort();
+      if (owner === binding) { owner = undefined;writer = undefined; }
+    });
   });
 
   const currentSlide = createMemo(() => {
@@ -72,18 +114,48 @@ export default function EditorPage() {
   };
 
   const persist = (pres: Presentation) => {
+    if (!writer || !owner) return;
+    const binding = owner, version = ++editVersion, id = params.id;
     setPresentation(pres);
-    const result = savePresentation(pres);
-    void result.remote.catch((error) => {
-      if (error instanceof PresentationConflictError) {
-        // Another writer (e.g. an agent over MCP) changed the presentation
-        // between our load and this autosave. Adopt their version instead of
-        // silently overwriting it; the editor reloads from the refreshed copy.
-        setPresentation(error.current);
-        return;
+    try {
+      const result = writer(pres);
+      refreshSaveKind();
+      void result.remote.then(() => {
+        if (owner !== binding) return;
+        if (version === editVersion) {
+          const acknowledged = getPresentation(id);
+          if (acknowledged) setPresentation(acknowledged);
+        }
+        refreshSaveKind();
+      }).catch(() => { if (owner === binding) refreshSaveKind(true); });
+    } catch { refreshSaveKind(true); }
+  };
+
+  const reconcile = async (discard: boolean) => {
+    if (recovering() || !owner) return;
+    if (!confirm(t(discard ? "discardDraftConfirm" : "replaceDraftConfirm"))) return;
+    const binding = owner, version = editVersion, id = params.id;
+    const controller = new AbortController();
+    recoveryController = controller;
+    setRecovering(true);setRecoveryError("");
+    try {
+      const result = discard
+        ? await loadPresentationFromApi(id, { discardLocal: true, signal: controller.signal })
+        : await retryPresentationAfterConflict(id, { signal: controller.signal });
+      if (owner !== binding) return;
+      if (!discard && result === null) throw new Error("No retained draft is available");
+      if (version === editVersion) {
+        if (result) {
+          setPresentation(result);setUndoStack([]);setRedoStack([]);
+          setSelectedSlideIndex(0);setSelectedElementId(null);setEditingTextId(null);
+        } else if (discard) navigate(withCurrentSpaceId("/"));
+      } else if (discard) setRecoveryError(t("newerEditsKept"));
+      refreshSaveKind();
+    } catch {
+      if (owner === binding && !controller.signal.aborted) {
+        setRecoveryError(t("saveRecoveryFailed"));refreshSaveKind(true);
       }
-      console.error("[takos-slide] Failed to save presentation", error);
-    });
+    } finally { if (owner === binding) setRecovering(false); }
   };
 
   const updateSlide = (
@@ -316,6 +388,21 @@ export default function EditorPage() {
         <div class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 py-2">
           <OfficeNav />
         </div>
+
+            <Show when={saveKind() === "pending"}>
+              <p role="status" class="px-4 py-1 text-sm text-gray-600 dark:text-gray-300">{t("savePending")}</p>
+            </Show>
+            <Show when={saveKind() === "conflict" || saveKind() === "failed"}>
+              <div role="alert" class="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:bg-gray-800 dark:text-gray-100">
+                <strong>{t(saveKind() === "conflict" ? "saveConflict" : "saveUnconfirmed")}</strong>
+                <p>{t("saveRecoveryHint")}</p>
+                <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
+                <div class="mt-2 flex flex-wrap gap-3">
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(true)}>{t("readServer")}</button>
+                </div>
+              </div>
+            </Show>
 
         {/* Toolbar */}
         <ShapeToolbar
