@@ -43,11 +43,17 @@ export default function EditorPage() {
     language() === "ja"
       ? {
           status:
-            saveKind() === "conflict" ? "保存の競合" : "保存結果が不明です",
+            saveKind() === "conflict"
+              ? "保存の競合"
+              : saveKind() === "draft"
+                ? "未保存の下書きがあります"
+                : "保存結果が不明です",
           message:
             saveKind() === "conflict"
               ? "別の場所で文書が変更されています。下書きはエディターに残っています。"
-              : "保存を確認できません。下書きはエディターに残っています。",
+              : saveKind() === "draft"
+                ? "この端末に下書きが残っています。サーバーの内容を確認して保存するか、下書きを破棄できます。"
+                : "保存を確認できません。下書きはエディターに残っています。",
           replaceConfirm:
             "サーバーの最新内容をこの下書きで置き換えますか？別の場所で行われた変更も上書きされます。",
           retry: "自分の下書きで置き換える",
@@ -57,11 +63,17 @@ export default function EditorPage() {
         }
       : {
           status:
-            saveKind() === "conflict" ? "Save conflict" : "Save unconfirmed",
+            saveKind() === "conflict"
+              ? "Save conflict"
+              : saveKind() === "draft"
+                ? "Unsaved draft"
+                : "Save unconfirmed",
           message:
             saveKind() === "conflict"
               ? "This document changed elsewhere. Your draft is still in the editor."
-              : "Save is unconfirmed. Your draft is still in the editor.",
+              : saveKind() === "draft"
+                ? "A draft is retained on this device. Check the server version before saving, or discard the draft."
+                : "Save is unconfirmed. Your draft is still in the editor.",
           replaceConfirm:
             "Replace the latest server version with this draft? Changes made elsewhere will be overwritten.",
           retry: "Replace with my draft",
@@ -76,7 +88,9 @@ export default function EditorPage() {
   const [saveStatus, setSaveStatus] = createSignal<
     "saved" | "saving" | "failed" | "idle"
   >("idle");
-  const [saveKind, setSaveKind] = createSignal<"failed" | "conflict">("failed");
+  const [saveKind, setSaveKind] = createSignal<"failed" | "conflict" | "draft">(
+    "failed",
+  );
   const [recovering, setRecovering] = createSignal(false);
   const [showFind, setShowFind] = createSignal(false);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
@@ -98,12 +112,15 @@ export default function EditorPage() {
 
   function showSaveFailure(id: string, error?: unknown): void {
     let conflict = error instanceof DocumentConflictError;
+    let draft = false;
     try {
-      conflict ||= getDocumentSaveState(id) === "conflict";
+      const state = getDocumentSaveState(id);
+      conflict ||= state === "conflict";
+      draft = state === "draft";
     } catch {
       /* Cache failures stay visible. */
     }
-    setSaveKind(conflict ? "conflict" : "failed");
+    setSaveKind(conflict ? "conflict" : draft ? "draft" : "failed");
     setSaveStatus("failed");
   }
 
@@ -146,7 +163,10 @@ export default function EditorPage() {
         return;
       }
       if (
-        e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        e.key === "?" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
         !isTypingTarget(e.target)
       ) {
         e.preventDefault();
@@ -210,6 +230,12 @@ export default function EditorPage() {
       route: routeVersion,
       edit: editVersion,
     };
+    try {
+      pendingSave.write.stage(pendingSave.updates);
+    } catch (error) {
+      showSaveFailure(doc()?.id ?? params.id, error);
+      return;
+    }
     saveTimeout = setTimeout(flushSave, 500);
   };
 

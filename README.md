@@ -79,6 +79,13 @@ Each editor SPA is built with its own vite `base` (`/docs/`, `/slide/`, `/sheet/
 base, so assets and routes resolve under the subpath. Storage stays the object-storage HTTP API
 (folders `/takos-docs/`, `/takos-slide/`, `/takos-excel/`), unchanged.
 
+Docs retains title and content edits in the current Workspace's browser cache
+before its 500 ms autosave delay. Reloading during that delay restores an
+**Unsaved draft** with explicit save/discard recovery; it does not silently
+replay a write. A pending request whose acknowledgement was lost remains
+**Save unconfirmed**, even after further typing. Both paths keep the existing
+server revision checks and require a fresh read for explicit replacement.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains
