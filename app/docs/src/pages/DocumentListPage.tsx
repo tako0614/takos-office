@@ -10,6 +10,7 @@ import {
 import DocumentCard from "../components/DocumentCard";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -33,7 +34,7 @@ export default function DocumentListPage() {
       console.error("[takos-docs] Failed to save document", error);
     });
     setDocuments((prev) => [...prev, doc]);
-    navigate(`/${doc.id}`);
+    navigate(withCurrentSpaceId(`/${doc.id}`));
   };
 
   onMount(() => {
@@ -180,7 +181,7 @@ export default function DocumentListPage() {
                 {(doc) => (
                   <DocumentCard
                     document={doc}
-                    onClick={() => navigate(`/${doc.id}`)}
+                    onClick={() => navigate(withCurrentSpaceId(`/${doc.id}`))}
                     onDelete={() => handleDelete(doc.id)}
                   />
                 )}

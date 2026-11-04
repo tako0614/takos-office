@@ -19,6 +19,7 @@ import FindReplace from "../components/FindReplace";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 
@@ -315,7 +316,7 @@ export default function EditorPage() {
         <button
           type="button"
           class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-          onClick={() => navigate("/")}
+          onClick={() => navigate(withCurrentSpaceId("/"))}
           title={t("backToDocuments")}
           aria-label={t("backToDocuments")}
         >
