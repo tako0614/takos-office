@@ -86,6 +86,12 @@ replay a write. A pending request whose acknowledgement was lost remains
 **Save unconfirmed**, even after further typing. Both paths keep the existing
 server revision checks and require a fresh read for explicit replacement.
 
+On phone screens, Docs places its collapsible outline above the document and
+gives the title its own row. Compact screen gutters keep text readable. The
+desktop outline retains its separate collapse preference and releases the
+sidebar space when collapsed. Choosing a heading focuses its text and scrolls
+that heading into view; on phones it also closes the outline.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains
