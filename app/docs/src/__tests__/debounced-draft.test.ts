@@ -365,3 +365,28 @@ test("a browser storage failure surfaces before any network write", () => {
   );
   expect(f.requests).toHaveLength(0);
 });
+
+test("a newly mounted writer cannot autosave a restored draft merely because the title was edited", async () => {
+  const f = fixture();
+  const previousEditor = client.captureDocumentWriter("doc");
+  previousEditor.stage({ content: "Retained content awaiting recovery" });
+  const reopenedEditor = client.captureDocumentWriter("doc");
+  reopenedEditor.stage({ title: "Title typed after reopening" });
+  const outcome = await reopenedEditor({
+    title: "Title typed after reopening",
+  }).then(
+    () => "saved",
+    () => "blocked",
+  );
+  expect({
+    outcome,
+    requests: f.requests.length,
+    serverContent: f.stored().content,
+    localContent: client.getDocument("doc")?.content,
+  }).toEqual({
+    outcome: "blocked",
+    requests: 0,
+    serverContent: "Initial text",
+    localContent: "Retained content awaiting recovery",
+  });
+});

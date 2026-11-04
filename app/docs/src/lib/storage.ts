@@ -145,9 +145,12 @@ function queueDocumentWrite(
   scope: ApiClientScope,
   doc: Document,
   initialRevision?: string,
+  allowStagedDraft = false,
 ): Promise<Document> {
   const submitted = JSON.stringify(doc);
   const previous = journal(scope)[doc.id];
+  if (previous?.state === "draft" && !allowStagedDraft)
+    return Promise.reject(new Error("Restored draft needs explicit recovery"));
   const queue = queues.get(
     scope.cacheKey,
     doc.id,
@@ -219,10 +222,13 @@ export async function updateDocumentInStorage(
 export function captureDocumentWriter(id: string) {
   const scope = api.capture();
   const capturedEpoch = epoch(scope);
+  // Only the writer that starts staging in the active editor may autosave it.
+  // A newly mounted editor must not borrow that permission from disk state.
+  const allowStagedDraft = journal(scope)[id]?.state !== "draft";
   const write = (updates: Partial<Pick<Document, "title" | "content">>) => {
     if (epoch(scope) !== capturedEpoch)
       return Promise.reject(new Error("Document cache was cleared"));
-    return updateInScope(scope, id, updates);
+    return updateInScope(scope, id, updates, allowStagedDraft);
   };
   return Object.assign(write, {
     stage(updates: Partial<Pick<Document, "title" | "content">>): void {
@@ -254,6 +260,7 @@ async function updateInScope(
   scope: ApiClientScope,
   id: string,
   updates: Partial<Pick<Document, "title" | "content">>,
+  allowStagedDraft = false,
 ): Promise<Document | null> {
   const docs = loadAt(scope.cacheKey);
   const index = docs.findIndex((doc) => doc.id === id);
@@ -266,7 +273,7 @@ async function updateInScope(
   };
   docs[index] = draft;
   saveAt(scope.cacheKey, docs);
-  return queueDocumentWrite(scope, draft, base.updatedAt);
+  return queueDocumentWrite(scope, draft, base.updatedAt, allowStagedDraft);
 }
 
 export function loadDocumentFromApi(id: string): Promise<Document>;
