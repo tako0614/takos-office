@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { updateSpreadsheet } from "../lib/storage.ts";
+import {
+  createSpreadsheet,
+  loadSpreadsheetsFromApi,
+  updateSpreadsheet,
+} from "../lib/storage.ts";
+import { createServerApp } from "../server.ts";
+import { SpreadsheetStore } from "../spreadsheet-store.ts";
+import type {
+  StorageFile,
+  TakosStorageClient,
+} from "../../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "../types/index.ts";
 
 const STORAGE_KEY = "takos-excel-spreadsheets";
@@ -97,5 +107,80 @@ test("client storage normalizes spaceId query to space_id", async () => {
     } else {
       delete (globalThis as { location?: Location }).location;
     }
+  }
+});
+
+test("client create persists through the canonical API and preserves conditional update guards", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+  const restoreLocalStorage = installMemoryLocalStorage();
+  const files = new Map<string, { file: StorageFile; content: string }>();
+  const client: TakosStorageClient = {
+    async ready() {},
+    async list(prefix) {
+      const all = [...files.values()].map((entry) => entry.file);
+      if (!prefix) return all.filter((file) => !file.parentId);
+      const folder = all.find((file) => file.type === "folder" && file.name === prefix);
+      return all.filter((file) => file.parentId === folder?.id);
+    },
+    async get(id) { return files.get(id)?.file ?? null; },
+    async getContent(id) { return files.get(id)!.content; },
+    async create(name, parentId, options) {
+      const now = new Date().toISOString();
+      const file: StorageFile = { id: crypto.randomUUID(), name, parentId, type: "file", createdAt: now, updatedAt: now, revision: "0" };
+      files.set(file.id, { file, content: options?.content ?? "" });
+      return file;
+    },
+    async createFolder(name) {
+      const now = new Date().toISOString();
+      const file: StorageFile = { id: crypto.randomUUID(), name, type: "folder", createdAt: now, updatedAt: now };
+      files.set(file.id, { file, content: "" });
+      return file;
+    },
+    async putContent(id, content, _mime, options) {
+      const entry = files.get(id)!;
+      if (options?.expectedRevision !== entry.file.revision) throw new Error("synthetic storage CAS mismatch");
+      entry.content = content;
+      entry.file = { ...entry.file, revision: String(Number(entry.file.revision) + 1) };
+    },
+    async rename() { throw new Error("unexpected fixture rename"); },
+    async delete() { throw new Error("unexpected fixture delete"); },
+  };
+  const store = new SpreadsheetStore(client);
+  const app = createServerApp(store, { env: { ALLOW_UNAUTHENTICATED_ACCESS: "1", TAKOS_SPACE_ID: "client-create-test" } });
+  const statuses: number[] = [];
+  Object.defineProperty(globalThis, "location", { value: new URL("http://localhost/sheet/?space_id=client-create-test"), configurable: true });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input instanceof Request ? input : new URL(String(input), "http://localhost"), init);
+    const response = await app.fetch(request);
+    statuses.push(response.status);
+    return response;
+  }) as typeof fetch;
+  try {
+    const created = createSpreadsheet("Created through client");
+    await created.remote;
+    expect(statuses).toEqual([200]);
+    const persisted = await store.getSpreadsheet(created.value.id);
+    expect(persisted.title).toBe("Created through client");
+    expect(persisted.sheets).toEqual(created.value.sheets);
+    // Refresh through the actual client/API, never hand-reseed the server ACK.
+    const [loaded] = await loadSpreadsheetsFromApi();
+    expect(loaded).toEqual(persisted);
+    const updated = await updateSpreadsheet({ ...loaded!, title: "Conditional update" });
+    expect(updated?.title).toBe("Conditional update");
+    expect(await store.getSpreadsheet(created.value.id)).toEqual(updated!);
+    const beforeRejectedWrites = await store.getSpreadsheet(created.value.id);
+    const path = "/api/spreadsheets/" + created.value.id + "?space_id=client-create-test";
+    const duplicate = await app.request(path, { method: "PUT", headers: { "Content-Type": "application/json", "If-None-Match": "*" }, body: JSON.stringify({ ...created.value, title: "Must not overwrite" }) });
+    expect(duplicate.status).toBe(428);
+    const stale = await app.request(path, { method: "PUT", headers: { "Content-Type": "application/json", "If-Match": persisted.updatedAt }, body: JSON.stringify({ ...persisted, title: "Stale writer" }) });
+    expect(stale.status).toBe(409);
+    expect(await store.getSpreadsheet(created.value.id)).toEqual(beforeRejectedWrites);
+    expect(await store.listSpreadsheets()).toHaveLength(1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreLocalStorage();
+    if (originalLocation) Object.defineProperty(globalThis, "location", originalLocation);
+    else delete (globalThis as { location?: Location }).location;
   }
 });

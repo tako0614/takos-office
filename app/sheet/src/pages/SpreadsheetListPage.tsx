@@ -1,5 +1,5 @@
-import { Component, createSignal, For, onMount, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { Component, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { useLocation, useNavigate } from "@solidjs/router";
 import {
   createSpreadsheet,
   deleteSpreadsheet,
@@ -10,31 +10,86 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 import type { Spreadsheet } from "../types";
 
 export const SpreadsheetListPage: Component = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeScope = createMemo(() => ({
+    pathname: location.pathname,
+    search: location.search,
+  }));
+  let active = true;
+  onCleanup(() => { active = false; });
+  const [creating, setCreating] = createSignal(false);
+  const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
+  const creationReceipt = () => {
+    routeScope();
+    return captureCreateReceipt("takos-sheet-create-receipt");
+  };
+  const clearCreationFailure = (key: string) => {
+    setCreationFailures((previous) => {
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
+  };
+  const creationError = () => {
+    const receipt = creationReceipt();
+    if (creating()) return "";
+    try {
+      return creationFailures().has(receipt.key) || receipt.current()
+        ? t("createUnconfirmed")
+        : "";
+    } catch {
+      return t("createUnconfirmed");
+    }
+  };
   const { t } = useI18n();
   const [spreadsheets, setSpreadsheets] = createSignal<Spreadsheet[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
 
-  const handleCreate = () => {
-    const title = newTitle().trim() || t("untitledSpreadsheet");
-    const result = createSpreadsheet(title, t("defaultSheetName"));
-    const ss = result.value;
-    void result.remote.catch((error) => {
-      console.error("[takos-excel] Failed to save spreadsheet", error);
-    });
-    setShowNewDialog(false);
-    setNewTitle("");
-    navigate(`/${ss.id}`);
+  const handleCreate = async () => {
+    if (creating() || creationError()) return;
+    const scope = routeScope();
+    const receipt = creationReceipt();
+    setCreating(true);
+    try {
+      const token = receipt.begin();
+      const title = newTitle().trim() || t("untitledSpreadsheet");
+      const result = createSpreadsheet(title, t("defaultSheetName"));
+      const destination = withCurrentSpaceId("/" + result.value.id);
+      setShowNewDialog(false);
+      setNewTitle("");
+      await result.remote;
+      if (receipt.acknowledge(token) && active) clearCreationFailure(receipt.key);
+      if (active && routeScope() === scope) navigate(destination);
+    } catch {
+      if (active) {
+        setCreationFailures((previous) => new Set(previous).add(receipt.key));
+      }
+    } finally {
+      if (active) setCreating(false);
+    }
   };
 
   onMount(() => {
+    const scope = routeScope();
+    const receipt = creationReceipt();
+    let snapshot: string | null | undefined;
+    try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
     void loadSpreadsheetsFromApi()
-      .then(setSpreadsheets)
+      .then((items) => {
+        if (!active || routeScope() !== scope) return;
+        setSpreadsheets(items);
+        if (snapshot !== undefined && receipt.acknowledge(snapshot)) {
+          clearCreationFailure(receipt.key);
+        }
+      })
       .catch(() => undefined)
       .finally(() => setIsLoading(false));
 
@@ -48,7 +103,7 @@ export const SpreadsheetListPage: Component = () => {
       const url = window.location.pathname +
         (query ? `?${query}` : "") + window.location.hash;
       window.history.replaceState(window.history.state, "", url);
-      handleCreate();
+      void handleCreate();
     }
   });
 
@@ -82,6 +137,7 @@ export const SpreadsheetListPage: Component = () => {
             <button
               type="button"
               class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              disabled={creating() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
             >
               <svg
@@ -106,6 +162,23 @@ export const SpreadsheetListPage: Component = () => {
 
       {/* Content */}
       <main class="mx-auto max-w-5xl px-6 py-6">
+        <Show when={creating()}>
+          <p role="status" class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+            {t("creating")}
+          </p>
+        </Show>
+        <Show when={creationError()}>
+          <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-gray-100">
+            <p>{creationError()}</p>
+            <button
+              type="button"
+              class="mt-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onClick={() => window.location.reload()}
+            >
+              {t("reloadLibrary")}
+            </button>
+          </div>
+        </Show>
         <Show when={isLoading()}>
           {/* Lightweight skeleton while the list loads from the API. */}
           <div
@@ -169,7 +242,8 @@ export const SpreadsheetListPage: Component = () => {
                 <button
                   type="button"
                   class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500"
-                  onClick={() => setShowNewDialog(true)}
+                  disabled={creating() || !!creationError()}
+              onClick={() => setShowNewDialog(true)}
                 >
                   {t("createSpreadsheet")}
                 </button>
@@ -182,7 +256,7 @@ export const SpreadsheetListPage: Component = () => {
               {(ss) => (
                 <SpreadsheetCard
                   spreadsheet={ss}
-                  onClick={() => navigate(`/${ss.id}`)}
+                  onClick={() => navigate(withCurrentSpaceId(`/${ss.id}`))}
                   onDelete={(e) => handleDelete(e, ss.id)}
                 />
               )}
@@ -227,6 +301,7 @@ export const SpreadsheetListPage: Component = () => {
               <button
                 type="button"
                 class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+                disabled={creating() || !!creationError()}
                 onClick={handleCreate}
               >
                 {t("create")}

@@ -97,6 +97,14 @@ active Workspace in the URL, so reloading keeps API reads in that Workspace.
 Both `space_id` and `spaceId` entry URLs are supported; standalone URLs remain
 usable without adding a Workspace identifier.
 
+Slides and Sheets also retain the Workspace across library/editor navigation,
+including creation and error recovery. Slides keeps it when starting a
+presentation, leaving with Escape, or exiting fullscreen. Sheets sends a
+create-only condition when saving a new spreadsheet. Both editors wait for the
+create acknowledgement before opening the new item. An unconfirmed create
+is retained for its Workspace across route changes and remounts until a
+successful library read, without resending it.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains
