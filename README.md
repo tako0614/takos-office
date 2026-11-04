@@ -92,6 +92,11 @@ desktop outline retains its separate collapse preference and releases the
 sidebar space when collapsed. Choosing a heading focuses its text and scrolls
 that heading into view; on phones it also closes the outline.
 
+Opening or creating a document and returning to the Docs library preserve the
+active Workspace in the URL, so reloading keeps API reads in that Workspace.
+Both `space_id` and `spaceId` entry URLs are supported; standalone URLs remain
+usable without adding a Workspace identifier.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains
