@@ -23,6 +23,7 @@ import PropertyPanel from "../components/PropertyPanel";
 import OfficeNav from "../components/OfficeNav";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -46,7 +47,7 @@ export default function EditorPage() {
     setPresentation(null);
     void loadPresentationFromApi(params.id)
       .then((remote) => setPresentation(remote))
-      .catch(() => navigate("/"));
+      .catch(() => navigate(withCurrentSpaceId("/")));
   });
 
   const currentSlide = createMemo(() => {
@@ -246,7 +247,7 @@ export default function EditorPage() {
 
   const handlePresent = () => {
     const id = presentation()?.id ?? params.id;
-    navigate(`/${id}/present`);
+    navigate(withCurrentSpaceId(`/${id}/present`));
   };
 
   const handleEditText = (elementId: string) => {
@@ -453,7 +454,7 @@ export default function EditorPage() {
             type="button"
             class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
             aria-label={t("backToList")}
-            onClick={() => navigate("/")}
+            onClick={() => navigate(withCurrentSpaceId("/"))}
           >
             {t("backToList")}
           </button>

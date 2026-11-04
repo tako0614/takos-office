@@ -31,6 +31,7 @@ import { SheetTabs } from "../components/SheetTabs";
 import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 
 export const EditorPage: Component = () => {
   const params = useParams<{ id: string }>();
@@ -95,7 +96,7 @@ export const EditorPage: Component = () => {
     void loadSpreadsheetFromApi(params.id)
       .then((remote) => setSpreadsheetForEditing(remote))
       .catch(() => {
-        if (!spreadsheet()) navigate("/");
+        if (!spreadsheet()) navigate(withCurrentSpaceId("/"));
       });
 
     // Register undo/redo keyboard shortcuts
@@ -587,7 +588,7 @@ export const EditorPage: Component = () => {
               onFormatChange={handleFormatChange}
               title={ss().title}
               onTitleChange={handleTitleChange}
-              onNavigateHome={() => navigate("/")}
+              onNavigateHome={() => navigate(withCurrentSpaceId("/"))}
               onImportCsv={handleImportCsv}
               onUndo={handleUndo}
               onRedo={handleRedo}

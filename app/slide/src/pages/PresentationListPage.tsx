@@ -1,5 +1,5 @@
-import { createSignal, For, onMount, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { useLocation, useNavigate } from "@solidjs/router";
 import type { Presentation } from "../types";
 import {
   createPresentation,
@@ -12,9 +12,42 @@ import LanguageSwitcher from "../components/LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 
 export default function PresentationListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routeScope = createMemo(() => ({
+    pathname: location.pathname,
+    search: location.search,
+  }));
+  let active = true;
+  onCleanup(() => { active = false; });
+  const [creating, setCreating] = createSignal(false);
+  const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
+  const creationReceipt = () => {
+    routeScope();
+    return captureCreateReceipt("takos-slide-create-receipt");
+  };
+  const clearCreationFailure = (key: string) => {
+    setCreationFailures((previous) => {
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
+  };
+  const creationError = () => {
+    const receipt = creationReceipt();
+    if (creating()) return "";
+    try {
+      return creationFailures().has(receipt.key) || receipt.current()
+        ? t("createUnconfirmed")
+        : "";
+    } catch {
+      return t("createUnconfirmed");
+    }
+  };
   const { t } = useI18n();
   const [presentations, setPresentations] = createSignal<Presentation[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -23,21 +56,46 @@ export default function PresentationListPage() {
 
   // Create a presentation and navigate into it. Shared by the dialog's
   // "Create" button and the `?new=1` quick-create entry from the Office shell.
-  const createAndOpen = (title: string) => {
-    const pres = createPresentation(title);
-    const result = savePresentation(pres);
-    setPresentations(result.value);
-    void result.remote.catch((error) => {
-      console.error("[takos-slide] Failed to save presentation", error);
-    });
-    setShowNewDialog(false);
-    setNewTitle(t("untitledPresentation"));
-    navigate(`/${pres.id}`);
+  const createAndOpen = async (title: string) => {
+    if (creating() || creationError()) return;
+    const scope = routeScope();
+    const receipt = creationReceipt();
+    setCreating(true);
+    try {
+      const token = receipt.begin();
+      const pres = createPresentation(title);
+      const destination = withCurrentSpaceId("/" + pres.id);
+      const result = savePresentation(pres);
+      setShowNewDialog(false);
+      setNewTitle(t("untitledPresentation"));
+      await result.remote;
+      if (receipt.acknowledge(token) && active) clearCreationFailure(receipt.key);
+      if (active && routeScope() === scope) {
+        setPresentations(result.value);
+        navigate(destination);
+      }
+    } catch {
+      if (active) {
+        setCreationFailures((previous) => new Set(previous).add(receipt.key));
+      }
+    } finally {
+      if (active) setCreating(false);
+    }
   };
 
   onMount(() => {
+    const scope = routeScope();
+    const receipt = creationReceipt();
+    let snapshot: string | null | undefined;
+    try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
     void loadPresentationsFromApi()
-      .then(setPresentations)
+      .then((items) => {
+        if (!active || routeScope() !== scope) return;
+        setPresentations(items);
+        if (snapshot !== undefined && receipt.acknowledge(snapshot)) {
+          clearCreationFailure(receipt.key);
+        }
+      })
       .catch(() => undefined)
       .finally(() => setIsLoading(false));
 
@@ -51,12 +109,12 @@ export default function PresentationListPage() {
       const url = globalThis.location?.pathname +
         (query ? `?${query}` : "") + (globalThis.location?.hash ?? "");
       globalThis.history?.replaceState(null, "", url);
-      createAndOpen(t("untitledPresentation"));
+      void createAndOpen(t("untitledPresentation"));
     }
   });
 
   const handleCreate = () => {
-    createAndOpen(newTitle());
+    void createAndOpen(newTitle());
   };
 
   const openNewDialog = () => {
@@ -85,6 +143,7 @@ export default function PresentationListPage() {
             <button
               type="button"
               class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+              disabled={creating() || !!creationError()}
               onClick={openNewDialog}
             >
               {t("newPresentationButton")}
@@ -95,6 +154,23 @@ export default function PresentationListPage() {
 
       {/* Content */}
       <main class="max-w-6xl mx-auto px-6 py-8">
+        <Show when={creating()}>
+          <p role="status" class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+            {t("creating")}
+          </p>
+        </Show>
+        <Show when={creationError()}>
+          <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-gray-100">
+            <p>{creationError()}</p>
+            <button
+              type="button"
+              class="mt-2 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onClick={() => window.location.reload()}
+            >
+              {t("reloadLibrary")}
+            </button>
+          </div>
+        </Show>
         <Show when={isLoading()}>
           <div
             class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"
@@ -132,7 +208,8 @@ export default function PresentationListPage() {
                 <button
                   type="button"
                   class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
-                  onClick={openNewDialog}
+                  disabled={creating() || !!creationError()}
+              onClick={openNewDialog}
                 >
                   {t("createPresentation")}
                 </button>
@@ -145,7 +222,7 @@ export default function PresentationListPage() {
               {(pres) => (
                 <PresentationCard
                   presentation={pres}
-                  onClick={() => navigate(`/${pres.id}`)}
+                  onClick={() => navigate(withCurrentSpaceId(`/${pres.id}`))}
                   onDelete={() => handleDelete(pres.id)}
                 />
               )}
@@ -187,6 +264,7 @@ export default function PresentationListPage() {
               <button
                 type="button"
                 class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+                disabled={creating() || !!creationError()}
                 onClick={handleCreate}
               >
                 {t("create")}

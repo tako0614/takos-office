@@ -4,6 +4,7 @@ import type { Presentation, SlideTransition } from "../types";
 import { getPresentation, loadPresentationsFromApi } from "../lib/storage";
 import { renderSlide } from "../lib/canvas-renderer";
 import { useI18n } from "../i18n";
+import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 
 const SLIDE_W = 960;
 const SLIDE_H = 540;
@@ -29,9 +30,9 @@ export default function PresentPage() {
         .then(() => {
           const remote = getPresentation(params.id);
           if (remote) setPresentation(remote);
-          else navigate("/");
+          else navigate(withCurrentSpaceId("/"));
         })
-        .catch(() => navigate("/"));
+        .catch(() => navigate(withCurrentSpaceId("/")));
       return;
     }
     setPresentation(pres);
@@ -46,7 +47,7 @@ export default function PresentPage() {
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
     }
-    navigate(`/${params.id}`);
+    navigate(withCurrentSpaceId(`/${params.id}`));
   };
 
   const totalSlides = () => presentation()?.slides.length ?? 0;
@@ -167,7 +168,7 @@ export default function PresentPage() {
   // Handle fullscreen exit
   const handleFullscreenChange = () => {
     if (!document.fullscreenElement) {
-      navigate(`/${params.id}`);
+      navigate(withCurrentSpaceId(`/${params.id}`));
     }
   };
   document.addEventListener("fullscreenchange", handleFullscreenChange);

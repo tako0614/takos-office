@@ -37,7 +37,9 @@ async function syncSpreadsheetToApi(
       headers: {
         "Content-Type": "application/json",
         // Send the loaded version so the server can reject a stale overwrite.
-        ...(baseUpdatedAt ? { "If-Match": baseUpdatedAt } : {}),
+        ...(baseUpdatedAt
+          ? { "If-Match": baseUpdatedAt }
+          : { "If-None-Match": "*" }),
       },
       body: JSON.stringify(spreadsheet),
       credentials: "same-origin",
