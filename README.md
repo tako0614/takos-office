@@ -114,6 +114,12 @@ the replacement. Tab operations use the same revision queue, and deletion
 removes a local item only after an explicit successful deletion acknowledgement.
 Formula-bar typing retains its own focus; each Enter commits the edit once.
 
+Slides uses the same acknowledged-revision queue and Workspace-bound cache/journal.
+Continuous edits and late responses preserve newer drafts. Unknown saves or true
+conflicts retain the draft across reload and expose explicit conditional recovery;
+opening presentation mode also keeps the current Workspace. Library deletion
+keeps the item until an explicit successful deletion acknowledgement.
+
 ### Office file compatibility
 
 The standard Office formats are exchange formats; the private JSON model remains

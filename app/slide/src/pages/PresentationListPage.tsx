@@ -1,10 +1,11 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
 import type { Presentation } from "../types";
 import {
   createPresentation,
   deletePresentation,
   loadPresentationsFromApi,
+  loadPresentations,
   savePresentation,
 } from "../lib/storage";
 import PresentationCard from "../components/PresentationCard";
@@ -51,6 +52,8 @@ export default function PresentationListPage() {
   const { t } = useI18n();
   const [presentations, setPresentations] = createSignal<Presentation[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [deleteError, setDeleteError] = createSignal("");
+  const [deleting, setDeleting] = createSignal(new Set<string>());
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal(t("untitledPresentation"));
 
@@ -71,7 +74,7 @@ export default function PresentationListPage() {
       await result.remote;
       if (receipt.acknowledge(token) && active) clearCreationFailure(receipt.key);
       if (active && routeScope() === scope) {
-        setPresentations(result.value);
+        setPresentations(loadPresentations());
         navigate(destination);
       }
     } catch {
@@ -83,8 +86,9 @@ export default function PresentationListPage() {
     }
   };
 
-  onMount(() => {
+  createEffect(() => {
     const scope = routeScope();
+    setIsLoading(true);setPresentations([]);setDeleteError("");setDeleting(new Set<string>());
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
@@ -97,8 +101,10 @@ export default function PresentationListPage() {
         }
       })
       .catch(() => undefined)
-      .finally(() => setIsLoading(false));
+      .finally(() => { if (active && routeScope() === scope) setIsLoading(false); });
+  });
 
+  onMount(() => {
     // Quick-create from the Office shell: `?new=1` fires the same create+open
     // action as the "新規プレゼンテーション" button, then strips the param so a
     // refresh doesn't re-create another deck.
@@ -123,11 +129,17 @@ export default function PresentationListPage() {
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm(t("deletePresentationConfirm"))) return;
-    const result = deletePresentation(id);
-    setPresentations(result.value);
-    void result.remote.catch((error) => {
-      console.error("[takos-slide] Failed to delete presentation", error);
+    if (deleting().has(id) || !confirm(t("deletePresentationConfirm"))) return;
+    const scope = routeScope();
+    setDeleteError("");setDeleting((previous) => new Set(previous).add(id));
+    void deletePresentation(id).then(() => {
+      if (active && routeScope() === scope) setPresentations(loadPresentations());
+    }).catch(() => {
+      if (active && routeScope() === scope) setDeleteError(t("deleteUnconfirmed"));
+    }).finally(() => {
+      if (active && routeScope() === scope) setDeleting((previous) => {
+        const next = new Set(previous);next.delete(id);return next;
+      });
     });
   };
 
@@ -154,6 +166,12 @@ export default function PresentationListPage() {
 
       {/* Content */}
       <main class="max-w-6xl mx-auto px-6 py-8">
+        <Show when={deleteError()}>
+          <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-gray-100">
+            <p>{deleteError()}</p>
+            <button type="button" class="mt-2 underline" onClick={() => window.location.reload()}>{t("reloadLibrary")}</button>
+          </div>
+        </Show>
         <Show when={creating()}>
           <p role="status" class="mb-4 text-sm text-gray-600 dark:text-gray-300">
             {t("creating")}
