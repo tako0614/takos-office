@@ -14,7 +14,8 @@ const queues = new ScopedRevisionWriteQueues();
 const epochs = new Map<string, number>();
 type PendingWrite = {
   revision?: string;
-  state: "pending" | "failed" | "conflict";
+  state: "draft" | "pending" | "failed" | "conflict";
+  hasDraft?: true;
 };
 const epoch = (scope: ApiClientScope) => epochs.get(scope.cacheKey) ?? 0;
 const journalKey = (scope: ApiClientScope) =>
@@ -85,7 +86,7 @@ function protectedDraft(scope: ApiClientScope, id: string): boolean {
 
 export function getDocumentSaveState(
   id: string,
-): "clean" | "pending" | "failed" | "conflict" {
+): "clean" | "draft" | "pending" | "failed" | "conflict" {
   const scope = api.capture();
   const pending = journal(scope)[id];
   if (!pending) return "clean";
@@ -151,7 +152,7 @@ function queueDocumentWrite(
     scope.cacheKey,
     doc.id,
     previous ? previous.revision : initialRevision,
-    previous
+    previous && previous.state !== "draft"
       ? new Error("Previous save needs explicit reload or retry")
       : undefined,
   );
@@ -174,8 +175,14 @@ function queueDocumentWrite(
           docs[index] = ack;
           saveAt(scope.cacheKey, docs);
           mark(scope, doc.id);
-        } else
-          mark(scope, doc.id, { revision: ack.updatedAt, state: "pending" });
+        } else {
+          const hasDraft = journal(scope)[doc.id]?.hasDraft;
+          mark(scope, doc.id, {
+            revision: ack.updatedAt,
+            state: latest && hasDraft ? "draft" : "pending",
+            ...(hasDraft ? { hasDraft: true } : {}),
+          });
+        }
       },
       (error) => {
         if (epoch(scope) === startedEpoch)
@@ -212,11 +219,35 @@ export async function updateDocumentInStorage(
 export function captureDocumentWriter(id: string) {
   const scope = api.capture();
   const capturedEpoch = epoch(scope);
-  return (updates: Partial<Pick<Document, "title" | "content">>) => {
+  const write = (updates: Partial<Pick<Document, "title" | "content">>) => {
     if (epoch(scope) !== capturedEpoch)
       return Promise.reject(new Error("Document cache was cleared"));
     return updateInScope(scope, id, updates);
   };
+  return Object.assign(write, {
+    stage(updates: Partial<Pick<Document, "title" | "content">>): void {
+      if (epoch(scope) !== capturedEpoch)
+        throw new Error("Document cache was cleared");
+      const docs = loadAt(scope.cacheKey);
+      const index = docs.findIndex((doc) => doc.id === id);
+      if (index < 0) throw new Error("Document is no longer available");
+      const base = docs[index];
+      docs[index] = { ...base, ...updates };
+      // Persist before the UI debounce, without turning a client edit into an
+      // acknowledged revision or issuing a request. Keep unknown/conflict
+      // journals blocked even when the user edits that retained draft.
+      saveAt(scope.cacheKey, docs);
+      const pending = journal(scope)[id];
+      const queue = queues.find(scope.cacheKey, id);
+      mark(scope, id, {
+        ...(pending ?? {
+          revision: queue ? queue.revision : base.updatedAt,
+          state: queue?.protected ? "pending" : "draft",
+        }),
+        hasDraft: true,
+      });
+    },
+  });
 }
 
 async function updateInScope(
@@ -374,14 +405,12 @@ export async function retryDocumentAfterConflict(
     const pending = journal(scope)[id];
     // Only an explicitly retried, never-acknowledged create may reconcile a
     // fresh404 as absence. The subsequent PUT still uses If-None-Match:*.
-    if (
-      !(
-        error instanceof ApiRequestError &&
-        error.status === 404 &&
-        pending &&
-        pending.revision === undefined
-      )
-    )
+    if (!(
+      error instanceof ApiRequestError &&
+      error.status === 404 &&
+      pending &&
+      pending.revision === undefined
+    ))
       throw error;
   }
   options?.signal?.throwIfAborted();
