@@ -31,6 +31,38 @@ body {
   font-family: Arial, sans-serif;
 }
 
+.docs-outline-collapsed {
+  width: 2.75rem;
+}
+
+.docs-outline-collapsed .docs-outline-header {
+  justify-content: center;
+  padding-inline: 0.5rem;
+}
+
+@media screen and (max-width: 767px) {
+  .docs-editor-main {
+    flex-direction: column;
+  }
+
+  .docs-outline,
+  .docs-outline-collapsed {
+    width: 100%;
+    max-height: min(40dvh, 16rem);
+    border-right: 0;
+    border-bottom-width: 1px;
+  }
+
+  .docs-paper {
+    margin: 0.5rem;
+    min-height: calc(100% - 1rem);
+  }
+
+  .tiptap {
+    padding: 1.25rem 1rem;
+  }
+}
+
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;

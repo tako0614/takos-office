@@ -311,7 +311,7 @@ export default function EditorPage() {
   return (
     <div class="h-screen flex flex-col bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
       {/* Header bar */}
-      <header class="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
+      <header class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
         <button
           type="button"
           class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -324,13 +324,13 @@ export default function EditorPage() {
 
         <OfficeNav />
 
-        <div class="flex flex-col flex-1 min-w-0">
+        <div class="order-last basis-full lg:order-none lg:basis-0 flex flex-col flex-1 min-w-0">
           <input
             type="text"
             value={title()}
             disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
-            class="text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
+            class="w-full min-w-0 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />
         </div>
@@ -410,12 +410,12 @@ export default function EditorPage() {
         />
 
         {/* Main area: sidebar + paper */}
-        <div class="flex flex-1 overflow-hidden">
+        <div class="docs-editor-main flex flex-1 min-h-0 min-w-0 overflow-hidden">
           <Sidebar editor={editor()} />
 
           {/* Document area — gray background with centered white paper */}
-          <div class="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
-            <div class="max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
+          <div class="flex-1 min-h-0 min-w-0 overflow-y-auto bg-gray-100 dark:bg-neutral-950">
+            <div class="docs-paper max-w-[816px] mx-auto my-6 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-black/40 border border-gray-200 dark:border-neutral-800 rounded-sm min-h-[1056px]">
               <Show
                 keyed
                 when={doc()}
