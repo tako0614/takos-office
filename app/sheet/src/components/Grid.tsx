@@ -253,6 +253,9 @@ export const Grid: Component<GridProps> = (props) => {
   // Handle keydown for navigation
   const handleKeyDown = (e: KeyboardEvent) => {
     if (props.isEditing) return;
+    const target = e.target;
+    if (target instanceof Element && target.closest("input, textarea, select, button, a, [contenteditable='true']")) return;
+
 
     const { col, row } = selectedParsed();
 

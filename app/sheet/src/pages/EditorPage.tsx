@@ -1,5 +1,5 @@
-import { Component, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { useNavigate, useParams } from "@solidjs/router";
+import { Component, createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import type { CellData, CellFormat, Sheet, Spreadsheet } from "../types";
 import {
   addSheet,
@@ -7,7 +7,10 @@ import {
   getSpreadsheet,
   loadSpreadsheetFromApi,
   renameSheet,
-  SpreadsheetConflictError,
+  captureSpreadsheetWriter,
+  getSpreadsheetSaveState,
+  retrySpreadsheetAfterConflict,
+  type LocalSaveResult,
   updateSpreadsheet,
 } from "../lib/storage";
 import {
@@ -36,6 +39,7 @@ import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 export const EditorPage: Component = () => {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
 
   const [spreadsheet, setSpreadsheet] = createSignal<Spreadsheet | null>(null);
@@ -47,8 +51,23 @@ export const EditorPage: Component = () => {
     } | null
   >(null);
   const [isEditing, setIsEditing] = createSignal(false);
+  const [editingInFormulaBar, setEditingInFormulaBar] = createSignal(false);
   const [editValue, setEditValue] = createSignal("");
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getSpreadsheetSaveState>>("clean");
+  const [recovering, setRecovering] = createSignal(false);
+  const [recoveryError, setRecoveryError] = createSignal("");
+  let owner: object | undefined;
+  let writer: ReturnType<typeof captureSpreadsheetWriter> | undefined;
+  let editVersion = 0;
+  let recoveryController: AbortController | undefined;
+  const refreshSaveKind = (failed = false) => {
+    try {
+      const state = getSpreadsheetSaveState(params.id);
+      setSaveKind(failed && state === "clean" ? "failed" : state);
+    } catch { setSaveKind("failed"); }
+  };
+
 
   // Undo/redo managers keyed by sheet id
   const historyManagers = new Map<
@@ -91,17 +110,45 @@ export const EditorPage: Component = () => {
     refreshUndoRedo();
   };
 
-  // Load spreadsheet on mount
-  onMount(() => {
-    void loadSpreadsheetFromApi(params.id)
-      .then((remote) => setSpreadsheetForEditing(remote))
+  createEffect(() => {
+    const id = params.id;
+    void location.search;
+    const binding = {};
+    const controller = new AbortController();
+    owner = binding;
+    writer = captureSpreadsheetWriter(id);
+    editVersion++;
+    setIsEditing(false);
+    setEditingInFormulaBar(false);
+    historyManagers.clear();
+    setCanUndo(false);
+    setCanRedo(false);
+    setSpreadsheet(null);
+    setRecovering(false);
+    setRecoveryError("");
+    setSaveKind("clean");
+    void loadSpreadsheetFromApi(id, { signal: controller.signal })
+      .then((remote) => {
+        if (owner !== binding) return;
+        setSpreadsheetForEditing(remote);
+        refreshSaveKind();
+      })
       .catch(() => {
-        if (!spreadsheet()) navigate(withCurrentSpaceId("/"));
+        if (owner !== binding || controller.signal.aborted) return;
+        const retained = getSpreadsheet(id);
+        if (retained) {
+          setSpreadsheetForEditing(retained);
+          refreshSaveKind(true);
+        } else navigate(withCurrentSpaceId("/"));
       });
-
-    // Register undo/redo keyboard shortcuts
-    document.addEventListener("keydown", handleGlobalKeyDown);
+    onCleanup(() => {
+      controller.abort();
+      recoveryController?.abort();
+      if (owner === binding) { owner = undefined; writer = undefined; }
+    });
   });
+
+  onMount(() => document.addEventListener("keydown", handleGlobalKeyDown));
 
   const setSpreadsheetForEditing = (ss: Spreadsheet) => {
     // Evaluate all formulas on load
@@ -136,19 +183,71 @@ export const EditorPage: Component = () => {
     return sheet.cells[selectedCell()];
   };
 
-  // Save spreadsheet to localStorage
-  const save = (ss: Spreadsheet) => {
-    setSpreadsheet({ ...ss });
-    void updateSpreadsheet(ss).catch((error) => {
-      if (error instanceof SpreadsheetConflictError) {
-        // Another writer (e.g. an agent over MCP) changed the spreadsheet
-        // between our load and this autosave. Adopt their version instead of
-        // silently overwriting it; the editor reloads from the refreshed copy.
-        setSpreadsheetForEditing(error.current);
-        return;
+  const trackSave = (promise: Promise<unknown>) => {
+    const binding = owner, version = editVersion, id = params.id;
+    refreshSaveKind();
+    void promise.then(() => {
+      if (owner !== binding) return;
+      if (version === editVersion) {
+        const acknowledged = getSpreadsheet(id);
+        if (acknowledged) setSpreadsheet(acknowledged);
       }
-      console.error("[takos-excel] Failed to save spreadsheet", error);
+      refreshSaveKind();
+    }).catch(() => {
+      if (owner === binding) refreshSaveKind(true);
     });
+  };
+
+  const save = (ss: Spreadsheet) => {
+    if (!writer) return;
+    editVersion++;
+    setSpreadsheet({ ...ss });
+    trackSave(writer(ss).then((ack) => {
+      if (!ack) throw new Error("Spreadsheet is no longer available");
+      return ack;
+    }));
+  };
+
+  function mutate<T>(operation: () => LocalSaveResult<T>): T | undefined {
+    try {
+      const result = operation();
+      if (result.value === false || result.value === undefined) return result.value;
+      editVersion++;
+      trackSave(result.remote);
+      return result.value;
+    } catch {
+      refreshSaveKind(true);
+      return undefined;
+    }
+  }
+
+  const reconcile = async (discard: boolean) => {
+    if (recovering() || !owner) return;
+    if (!confirm(t(discard ? "discardDraftConfirm" : "replaceDraftConfirm"))) return;
+    const binding = owner, version = editVersion, id = params.id;
+    const controller = new AbortController();
+    recoveryController = controller;
+    setRecovering(true);
+    setRecoveryError("");
+    try {
+      const result = discard
+        ? await loadSpreadsheetFromApi(id, { discardLocal: true, signal: controller.signal })
+        : await retrySpreadsheetAfterConflict(id, { signal: controller.signal });
+      if (owner !== binding) return;
+      if (!discard && result === null) throw new Error("No retained draft is available");
+      if (version === editVersion) {
+        if (result) setSpreadsheetForEditing(result);
+        else if (discard) navigate(withCurrentSpaceId("/"));
+      } else if (discard) setRecoveryError(t("newerEditsKept"));
+      refreshSaveKind();
+    } catch {
+      if (owner === binding && !controller.signal.aborted) {
+        setRecoveryError(t("saveRecoveryFailed"));
+        refreshSaveKind(true);
+      }
+    } finally {
+      if (owner === binding) setRecovering(false);
+    }
   };
 
   // Update cells in active sheet
@@ -175,6 +274,7 @@ export const EditorPage: Component = () => {
 
   // Start editing a cell
   const handleStartEdit = (address: string, value?: string) => {
+    setEditingInFormulaBar(false);
     setSelectedCell(address);
     setIsEditing(true);
     setEditValue(value ?? "");
@@ -182,6 +282,7 @@ export const EditorPage: Component = () => {
 
   // Submit cell edit
   const handleSubmitEdit = () => {
+    if (!isEditing()) return;
     const sheet = activeSheet();
     if (!sheet) return;
 
@@ -190,6 +291,7 @@ export const EditorPage: Component = () => {
     const updatedCells = setCellValue(sheet, address, value, spreadsheet()?.sheets);
     commitCells(updatedCells);
     setIsEditing(false);
+    setEditingInFormulaBar(false);
 
     // Move down after submit
     try {
@@ -206,12 +308,14 @@ export const EditorPage: Component = () => {
   // Cancel editing
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setEditingInFormulaBar(false);
     const cell = selectedCellData();
     setEditValue(cell?.value ?? "");
   };
 
   // Tab in editor
   const handleTabEdit = (shiftKey: boolean) => {
+    if (!isEditing()) return;
     const sheet = activeSheet();
     if (!sheet) return;
 
@@ -221,6 +325,7 @@ export const EditorPage: Component = () => {
     const updatedCells = setCellValue(sheet, address, value, spreadsheet()?.sheets);
     commitCells(updatedCells);
     setIsEditing(false);
+    setEditingInFormulaBar(false);
 
     // Move to next/prev cell
     try {
@@ -237,6 +342,7 @@ export const EditorPage: Component = () => {
 
   // Formula bar value change
   const handleFormulaBarChange = (value: string) => {
+    setEditingInFormulaBar(true);
     setEditValue(value);
     if (!isEditing()) {
       setIsEditing(true);
@@ -431,6 +537,7 @@ export const EditorPage: Component = () => {
 
   // Keyboard shortcut handler for undo/redo + shortcut help.
   const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    if (isTypingTarget(e.target)) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
       e.preventDefault();
       handleUndo();
@@ -473,56 +580,39 @@ export const EditorPage: Component = () => {
     setSelectedCell("A1");
     setEditValue("");
     setIsEditing(false);
+    setEditingInFormulaBar(false);
     refreshUndoRedo();
   };
 
   const handleAddSheet = () => {
     const ss = spreadsheet();
     if (!ss) return;
-    const result = addSheet(
-      ss.id,
-      t("newSheetName", { number: ss.sheets.length + 1 }),
-    );
-    const newSheet = result.value;
-    void result.remote.catch((error) => {
-      console.error("[takos-excel] Failed to add sheet", error);
-    });
+    const newSheet = mutate(() => addSheet(ss.id, t("newSheetName", { number: ss.sheets.length + 1 })));
     if (newSheet) {
-      const reloaded = getSpreadsheet(ss.id);
-      if (reloaded) {
-        setSpreadsheet(reloaded);
-        setSelectedCell("A1");
-        setEditValue("");
-      }
+      const draft = getSpreadsheet(ss.id);
+      if (draft) setSpreadsheet(draft);
+      setSelectedCell("A1");
+      setEditValue("");
     }
   };
 
   const handleRenameSheet = (sheetId: string, newName: string) => {
     const ss = spreadsheet();
     if (!ss) return;
-    const result = renameSheet(ss.id, sheetId, newName);
-    void result.remote.catch((error) => {
-      console.error("[takos-excel] Failed to rename sheet", error);
-    });
-    const reloaded = getSpreadsheet(ss.id);
-    if (reloaded) setSpreadsheet(reloaded);
+    mutate(() => renameSheet(ss.id, sheetId, newName));
+    const draft = getSpreadsheet(ss.id);
+    if (draft) setSpreadsheet(draft);
   };
 
   const handleDeleteSheet = (sheetId: string) => {
     const ss = spreadsheet();
-    if (!ss) return;
-    if (ss.sheets.length <= 1) return;
-    if (confirm(t("deleteSheetConfirm"))) {
-      const result = deleteSheet(ss.id, sheetId);
-      void result.remote.catch((error) => {
-        console.error("[takos-excel] Failed to delete sheet", error);
-      });
-      const reloaded = getSpreadsheet(ss.id);
-      if (reloaded) {
-        setSpreadsheet(reloaded);
-        setSelectedCell("A1");
-        setEditValue("");
-      }
+    if (!ss || ss.sheets.length <= 1 || !confirm(t("deleteSheetConfirm"))) return;
+    const changed = mutate(() => deleteSheet(ss.id, sheetId));
+    if (changed) {
+      const draft = getSpreadsheet(ss.id);
+      if (draft) setSpreadsheet(draft);
+      setSelectedCell("A1");
+      setEditValue("");
     }
   };
 
@@ -582,6 +672,21 @@ export const EditorPage: Component = () => {
               </button>
             </div>
 
+            <Show when={saveKind() === "pending"}>
+              <p role="status" class="px-4 py-1 text-sm text-gray-600 dark:text-neutral-300">{t("savePending")}</p>
+            </Show>
+            <Show when={saveKind() === "conflict" || saveKind() === "failed"}>
+              <div role="alert" class="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:bg-neutral-800 dark:text-neutral-100">
+                <strong>{t(saveKind() === "conflict" ? "saveConflict" : "saveUnconfirmed")}</strong>
+                <p>{t("saveRecoveryHint")}</p>
+                <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
+                <div class="mt-2 flex flex-wrap gap-3">
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(true)}>{t("readServer")}</button>
+                </div>
+              </div>
+            </Show>
+
             {/* Toolbar */}
             <Toolbar
               format={selectedCellData()?.format}
@@ -612,6 +717,9 @@ export const EditorPage: Component = () => {
               onValueChange={handleFormulaBarChange}
               onSubmit={handleFormulaBarSubmit}
               onCancel={handleCancelEdit}
+              onBlur={() => {
+                if (isEditing() && editingInFormulaBar()) handleSubmitEdit();
+              }}
             />
 
             {/* Grid */}
@@ -621,7 +729,7 @@ export const EditorPage: Component = () => {
                   sheet={sheet()}
                   selectedCell={selectedCell()}
                   selectionRange={selectionRange()}
-                  isEditing={isEditing()}
+                  isEditing={isEditing() && !editingInFormulaBar()}
                   editValue={editValue()}
                   onSelectCell={handleSelectCell}
                   onStartEdit={handleStartEdit}

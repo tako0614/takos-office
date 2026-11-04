@@ -7,6 +7,7 @@ interface FormulaBarProps {
   onValueChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onBlur?: () => void;
 }
 
 export const FormulaBar: Component<FormulaBarProps> = (props) => {
@@ -27,6 +28,7 @@ export const FormulaBar: Component<FormulaBarProps> = (props) => {
         aria-label={t("formulaInput", { cell: props.cellAddress })}
         value={props.value}
         onInput={(e) => props.onValueChange(e.currentTarget.value)}
+        onBlur={props.onBlur}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
