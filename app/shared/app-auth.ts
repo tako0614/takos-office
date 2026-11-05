@@ -2,6 +2,11 @@
 // worker, so this is the single source for all Office surfaces.
 
 import type { Hono } from "hono";
+import {
+  canAccessOfficeContent,
+  officeAppRole,
+  readOfficeAccessClaims,
+} from "./office-access-claims.ts";
 
 const SESSION_COOKIE = "takos_app_session";
 const STATE_COOKIE = "takos_app_oauth_state";
@@ -25,11 +30,12 @@ type AppSession = {
 
 export type RequireAppAuthOptions = {
   /**
-   * If provided, the subject's session must include the spaceId in its
-   * `workspace_memberships` claim. Otherwise the request is rejected with 403
-   * `space_membership_required`.
+   * Storage namespace chosen by the server. Legacy sessions prove captured
+   * and current Workspace membership; app-scoped sessions prove the exact
+   * App role and may use only the deployment's configured namespace.
    */
   spaceId?: string | null;
+  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
 type AppRuntimeEnv = Record<string, string | undefined>;
@@ -329,14 +335,18 @@ function normalizeSpaceIds(value: unknown): string[] {
   return [...seen];
 }
 
-async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
+async function fetchUserInfo(
+  env: AppRuntimeEnv,
+  accessToken: string,
+  fetchImpl: NonNullable<RequireAppAuthOptions["fetchImpl"]> = fetch,
+) {
   const config = authConfig(env);
   const issuer = config.issuer!;
   const userinfoEndpoint = oidcEndpoint(
     config.userinfoEndpoint || `${issuer.replace(/\/$/, "")}/oauth/userinfo`,
     issuer,
   );
-  const res = await fetch(userinfoEndpoint, {
+  const res = await fetchImpl(userinfoEndpoint, {
     headers: { Authorization: `Bearer ${accessToken}` },
     redirect: "manual",
     signal: AbortSignal.timeout(5_000),
@@ -382,7 +392,12 @@ async function fetchUserInfo(env: AppRuntimeEnv, accessToken: string) {
   ) {
     spaceIds.push(nestedSpaceId);
   }
-  return { sub, name: body.user?.name ?? body.name, spaceIds };
+  return {
+    sub,
+    name: body.user?.name ?? body.name,
+    spaceIds,
+    accessClaims: readOfficeAccessClaims(parsed),
+  };
 }
 
 class UserInfoError extends Error {
@@ -453,7 +468,8 @@ export async function requireAppAuth(
   const sessionMemberships = Array.isArray(session.spaceIds)
     ? session.spaceIds
     : [];
-  if (!sessionMemberships.includes(requestedSpaceId)) {
+  const expectedCapsuleId = envValue(env, "APP_CAPSULE_ID");
+  if (!expectedCapsuleId && !sessionMemberships.includes(requestedSpaceId)) {
     return Response.json(
       {
         error: "space_membership_required",
@@ -463,7 +479,7 @@ export async function requireAppAuth(
   }
   let currentUser: Awaited<ReturnType<typeof fetchUserInfo>>;
   try {
-    currentUser = await fetchUserInfo(env, session.accessToken);
+    currentUser = await fetchUserInfo(env, session.accessToken, options.fetchImpl);
   } catch (error) {
     if (
       error instanceof UserInfoError &&
@@ -491,13 +507,31 @@ export async function requireAppAuth(
       },
     );
   }
-  if (!currentUser.spaceIds.includes(requestedSpaceId)) {
+  const appRole = officeAppRole(currentUser.accessClaims, expectedCapsuleId);
+  if (appRole === null && !sessionMemberships.includes(requestedSpaceId)) {
+    return Response.json({ error: "space_membership_required" }, { status: 403 });
+  }
+  if (!canAccessOfficeContent(currentUser.accessClaims, {
+    capsuleId: expectedCapsuleId,
+    workspaceId: requestedSpaceId,
+  })) {
     return Response.json(
-      {
-        error: "space_membership_required",
-      },
+      { error: expectedCapsuleId ? "app_membership_required" : "space_membership_required" },
       { status: 403 },
     );
+  }
+  if (expectedCapsuleId) {
+    const configuredNamespace =
+      envValue(env, "APP_WORKSPACE_ID") ?? envValue(env, "TAKOS_SPACE_ID");
+    if (!configuredNamespace) {
+      return Response.json(
+        { error: "app_storage_namespace_not_configured" },
+        { status: 503 },
+      );
+    }
+    if (requestedSpaceId !== configuredNamespace) {
+      return Response.json({ error: "workspace_owner_mismatch" }, { status: 403 });
+    }
   }
   return null;
 }

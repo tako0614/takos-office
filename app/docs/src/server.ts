@@ -9,6 +9,7 @@ import type { Context } from "hono";
 import { DocumentConflictError, TakosDocumentStore } from "./document-store.ts";
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
+import type { OfficeServerFetchOptions } from "../../shared/server-options.ts";
 import { serverLog } from "./server-log.ts";
 import {
   envValue,
@@ -28,7 +29,10 @@ import {
   titlePatchSchema,
 } from "../../shared/office-schema.ts";
 
-export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
+export function createDocsApp(
+  env: RuntimeEnv = runtimeEnv(),
+  options: OfficeServerFetchOptions = {},
+) {
   const apiUrl =
     envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
@@ -47,6 +51,7 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
         token!,
         spaceId,
         keyPrefix,
+        { fetchImpl: options.storageFetch },
       );
       store = new TakosDocumentStore(client);
       stores.set(spaceId, store);
@@ -88,6 +93,7 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   app.use("/api/documents", async (c, next) => {
     const unauthorized = await requireAppAuth(env, c.req.raw, {
       spaceId: requestSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();
@@ -95,6 +101,7 @@ export function createDocsApp(env: RuntimeEnv = runtimeEnv()) {
   app.use("/api/documents/*", async (c, next) => {
     const unauthorized = await requireAppAuth(env, c.req.raw, {
       spaceId: requestSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();

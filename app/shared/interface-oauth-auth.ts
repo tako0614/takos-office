@@ -17,7 +17,7 @@ export interface InterfaceOAuthOptions {
 
 export interface InterfaceOAuthAuthorization {
   readonly subject: string;
-  readonly workspaceId: string;
+  readonly workspaceId?: string;
   readonly capsuleId: string;
   readonly interfaceId: string;
   readonly interfaceBindingId: string;
@@ -109,7 +109,7 @@ export function hasValidInterfaceOAuthConfiguration(input: {
   return (
     userInfoEndpoint(input.issuerUrl) !== null &&
     canonicalInterfaceResourceUri(input.audience ?? "") !== null &&
-    boundedId(input.workspaceId) &&
+    (input.workspaceId === undefined || boundedId(input.workspaceId)) &&
     boundedId(input.capsuleId)
   );
 }
@@ -162,7 +162,7 @@ export async function authorizeInterfaceOAuthBearer(
   if (
     !endpoint ||
     !expectedAudience ||
-    !boundedId(expectedWorkspaceId) ||
+    (options.expectedWorkspaceId !== undefined && !boundedId(expectedWorkspaceId)) ||
     !boundedId(expectedCapsuleId) ||
     !validPermission(expectedPermission) ||
     !requestTargetsResource(request, expectedAudience) ||
@@ -194,7 +194,9 @@ export async function authorizeInterfaceOAuthBearer(
       !boundedId(claims.sub) ||
       claims.aud !== expectedAudience ||
       claims.scope !== expectedPermission ||
-      evidence.workspace_id !== expectedWorkspaceId ||
+      (evidence.workspace_id !== undefined && !boundedId(evidence.workspace_id)) ||
+      (expectedWorkspaceId !== undefined && evidence.workspace_id !== undefined &&
+        evidence.workspace_id !== expectedWorkspaceId) ||
       evidence.capsule_id !== expectedCapsuleId ||
       !boundedId(evidence.interface_id) ||
       !boundedId(evidence.interface_binding_id) ||
@@ -206,7 +208,7 @@ export async function authorizeInterfaceOAuthBearer(
 
     return {
       subject: claims.sub,
-      workspaceId: expectedWorkspaceId,
+      ...(boundedId(evidence.workspace_id) ? { workspaceId: evidence.workspace_id } : {}),
       capsuleId: expectedCapsuleId,
       interfaceId: evidence.interface_id,
       interfaceBindingId: evidence.interface_binding_id,

@@ -1,8 +1,9 @@
 # App-scoped sign-in integration (TASK-0118)
 
-Status: the pure claims policy and its tests are implemented. Runtime integration
-is pending coordination with the active Office editor/auth work. This document
-does not claim that the current browser or Interface routes use the new policy.
+Status: the browser content guard uses the claims policy, and the MCP guard
+accepts Capsule-scoped Interface credentials without Workspace claims. Portable
+regressions exercise the routed APIs with synthetic identity and object-service
+fixtures. This is source integration, not a deployed sign-in or storage qualification.
 
 Office is one app containing docs, slide, and sheet. Its current storage model has
 private shared content and no per-document sharing grants. Any Takosumi account
@@ -19,8 +20,8 @@ ownership transfer or member-management APIs.
 `takosumi.workspace_id` access when app claims are absent, and supports the
 current capsule-bound compatibility shape described below. An
 explicit Capsule mismatch or malformed app evidence cannot use the fallback.
-Current Accounts already emits capsule_id, workspace_id, role and top-level
-workspace_memberships without app_role. For that shape the Capsule must match,
+The compatibility UserInfo shape includes capsule_id, workspace_id, role and
+top-level workspace_memberships without app_role. For that shape the Capsule must match,
 the nested workspace_id must equal the configured compatibility Workspace, and
 a legacy role or membership must be present; private access then stays as before.
 Legacy Workspace `owner` and `admin` roles only satisfy the old Workspace
@@ -36,9 +37,9 @@ A role-less account without that legacy evidence remains an ordinary user.
 UserInfo must be revalidated on each content request so revocation takes effect on the next request; cached session
 claims are not current authorization.
 
-The pending runtime change should use `APP_CAPSULE_ID` to select app authority.
-Keep the storage namespace fixed to its configured storage coordinate and reject
-caller-selected namespaces that differ from that coordinate. A Capsule role
+The runtime guard uses `APP_CAPSULE_ID` to select app authority. With an App id,
+the storage namespace is fixed to `APP_WORKSPACE_ID` or standalone `TAKOS_SPACE_ID`;
+missing configuration fails closed and caller-selected overrides are rejected. A Capsule role
 must never authorize reading another namespace. `APP_WORKSPACE_ID` remains a
 compatibility input, not the new management authority.
 
@@ -48,21 +49,21 @@ Interface ID, binding ID, and positive resolved revision. Removing a Workspace
 requirement must preserve all those checks and the storage namespace pin. An
 Interface grant does not imply a browser app role.
 
-When integrating the policy, the owning runtime writer must add
-coverage for owner/member access across the root, docs, slide, and sheet APIs;
+`app/__tests__/office-runtime-auth.test.ts` covers owner/member access across
+the root, docs, slide, and sheet APIs through the actual Hono factories;
 ordinary users; cross-Capsule denial; app-role revocation; subject changes;
 legacy Workspace compatibility; workspace-less Interface OAuth; and namespace
-override rejection. The repository CI runs `bun run check`, including type
+override rejection. Server factories accept explicit UserInfo and object-service
+fetch dependencies and default to native fetch. The repository CI runs `bun run check`, including type
 checking, portable tests, builds, and worker size validation.
 
-Owner handoff after independent review: do not apply the previous runtime wiring
-patch embedded in TASK0118-E-COORDINATION.json. It was generated against the
-TASK-0117 owner's dirty shared checkout and is not a valid source patch for this
-branch. The owner must integrate from their current committed runtime source,
-reuse this corrected helper, and run the runtime regressions above. This PR
-continues to change only the helper, its tests, and documentation. The helper
-keeps private documents restricted to app owner/member or compatible legacy
-membership; any explicit public-share route must retain its own public policy.
+The earlier wiring proposal embedded in TASK0118-E-COORDINATION.json targeted a
+dirty shared checkout and was not adopted. Runtime integration was authored from
+committed public source and reuses the corrected helper. Private documents remain
+restricted to app owner/member or compatible legacy membership; any explicit
+public-share route must retain its own public policy. The separate problem of
+app-shared storage authority under Principal-scoped InterfaceBinding namespaces
+is not resolved by this sign-in integration.
 
 ## Follow-up rollout order
 

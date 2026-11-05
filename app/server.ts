@@ -25,7 +25,6 @@ import { createExcelAppFromEnv } from "./sheet/src/server.ts";
 
 import {
   createTakosStorageClient,
-  type ObjectStorageFetch,
 } from "./shared/lib/takos-storage.ts";
 import { TakosDocumentStore } from "./docs/src/document-store.ts";
 import { createPresentationStore } from "./slide/src/presentation-store.ts";
@@ -51,6 +50,7 @@ import {
   searchOfficeItems,
 } from "./office-items.ts";
 import { renderShellPage } from "./shell-page.ts";
+import type { OfficeServerFetchOptions } from "./shared/server-options.ts";
 import {
   bunLike,
   envFlagEnabled,
@@ -68,12 +68,11 @@ export type OfficeServerOptions = {
   shutdownGraceMs?: number;
 };
 
-export type OfficeAppOptions = {
+export type OfficeAppOptions = OfficeServerFetchOptions & {
   interfaceUserInfoFetch?: (
     input: RequestInfo | URL,
     init?: RequestInit,
   ) => Promise<Response>;
-  storageFetch?: ObjectStorageFetch;
 };
 
 function mcpResourceUri(publicUrl?: string): string | undefined {
@@ -93,7 +92,8 @@ export function createOfficeApp(
     ? {
         issuerUrl: envValue(env, "OIDC_ISSUER_URL"),
         expectedAudience: mcpAudience,
-        expectedWorkspaceId: envValue(env, "APP_WORKSPACE_ID"),
+        expectedWorkspaceId:
+          envValue(env, "APP_WORKSPACE_ID") ?? envValue(env, "TAKOS_SPACE_ID"),
         expectedCapsuleId: envValue(env, "APP_CAPSULE_ID"),
         ...(options.interfaceUserInfoFetch
           ? { fetchImpl: options.interfaceUserInfoFetch }
@@ -158,7 +158,9 @@ export function createOfficeApp(
   // UI/storage ownership is independent of whether MCP Interface OAuth is
   // enabled. A standalone bearer deployment may still be pinned to one
   // Workspace and must not accept a caller-selected alternate owner.
-  const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
+  // In App mode TAKOS_SPACE_ID is also a fixed data coordinate, never membership authority.
+  const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID") ??
+    (envValue(env, "APP_CAPSULE_ID") ? defaultSpaceId : undefined);
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
@@ -196,7 +198,7 @@ export function createOfficeApp(
       return c.json({ error: "workspace_owner_mismatch" }, 403);
     }
     const spaceId = resolveSpace(c);
-    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
+    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId, fetchImpl: options.appUserInfoFetch });
     if (unauthorized) return unauthorized;
     if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
@@ -210,7 +212,7 @@ export function createOfficeApp(
       return c.json({ error: "workspace_owner_mismatch" }, 403);
     }
     const spaceId = resolveSpace(c);
-    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId });
+    const unauthorized = await requireAppAuth(env, c.req.raw, { spaceId, fetchImpl: options.appUserInfoFetch });
     if (unauthorized) return unauthorized;
     if (!token) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
@@ -231,6 +233,9 @@ export function createOfficeApp(
   >();
 
   app.all("/mcp", (c) => {
+    if (envValue(env, "APP_CAPSULE_ID") && !managedWorkspaceId) {
+      return c.json({ error: "app_storage_namespace_not_configured" }, 503);
+    }
     const configError = mcpAuthMisconfigured(
       envValue(env, "MCP_AUTH_TOKEN"),
       envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
@@ -287,9 +292,9 @@ export function createOfficeApp(
   });
 
   // ---- Mount editor sub-apps (UI + /api/* + /files/:id under each prefix) ----
-  app.route("/docs", createDocsApp(env).app);
-  app.route("/slide", createSlideAppFromEnv(env));
-  app.route("/sheet", createExcelAppFromEnv(env));
+  app.route("/docs", createDocsApp(env, options).app);
+  app.route("/slide", createSlideAppFromEnv(env, options));
+  app.route("/sheet", createExcelAppFromEnv(env, options));
 
   return { app };
 }

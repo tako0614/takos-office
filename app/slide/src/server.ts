@@ -11,6 +11,7 @@ import {
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Presentation } from "./types/index.ts";
 import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
+import type { OfficeServerFetchOptions } from "../../shared/server-options.ts";
 import {
   envValue,
   type RuntimeEnv,
@@ -29,7 +30,10 @@ import {
   titlePatchSchema,
 } from "../../shared/office-schema.ts";
 
-export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
+export function createSlideAppFromEnv(
+  env: RuntimeEnv = runtimeEnv(),
+  options: OfficeServerFetchOptions = {},
+) {
   const apiUrl =
     envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
@@ -47,6 +51,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
         token!,
         spaceId,
         keyPrefix,
+        { fetchImpl: options.storageFetch },
       );
       store = createPresentationStore(client);
       stores.set(spaceId, store);
@@ -85,6 +90,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.use("/api/presentations", async (c, next) => {
     const unauthorized = await requireAppAuth(env, c.req.raw, {
       spaceId: requestSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();
@@ -92,6 +98,7 @@ export function createSlideAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
   app.use("/api/presentations/*", async (c, next) => {
     const unauthorized = await requireAppAuth(env, c.req.raw, {
       spaceId: requestSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();
