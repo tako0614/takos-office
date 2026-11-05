@@ -7,6 +7,7 @@ import {
 import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "./types/index.ts";
 import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
+import type { OfficeServerFetchOptions } from "../../shared/server-options.ts";
 import {
   envValue,
   type RuntimeEnv,
@@ -29,6 +30,7 @@ export function createServerApp(
   store: SpreadsheetStore | null,
   options: {
     env?: RuntimeEnv;
+    appUserInfoFetch?: OfficeServerFetchOptions["appUserInfoFetch"];
     storeForRequest?: (c: Context) => SpreadsheetStore | Response;
     requestSpaceId?: (c: Context) => string | null;
   } = {},
@@ -62,6 +64,7 @@ export function createServerApp(
   app.use("/api/spreadsheets", async (c, next) => {
     const unauthorized = await requireAppAuth(runtimeEnvValue, c.req.raw, {
       spaceId: resolveSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();
@@ -69,6 +72,7 @@ export function createServerApp(
   app.use("/api/spreadsheets/*", async (c, next) => {
     const unauthorized = await requireAppAuth(runtimeEnvValue, c.req.raw, {
       spaceId: resolveSpaceId(c),
+      fetchImpl: options.appUserInfoFetch,
     });
     if (unauthorized) return unauthorized;
     await next();
@@ -202,7 +206,10 @@ export function createServerApp(
   return app;
 }
 
-export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
+export function createExcelAppFromEnv(
+  env: RuntimeEnv = runtimeEnv(),
+  options: OfficeServerFetchOptions = {},
+) {
   const apiUrl =
     envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
@@ -220,6 +227,7 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
         token!,
         spaceId,
         keyPrefix,
+        { fetchImpl: options.storageFetch },
       );
       store = new SpreadsheetStore(client);
       stores.set(spaceId, store);
@@ -240,6 +248,7 @@ export function createExcelAppFromEnv(env: RuntimeEnv = runtimeEnv()) {
     defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
   return createServerApp(defaultStore, {
     env,
+    appUserInfoFetch: options.appUserInfoFetch,
     requestSpaceId,
     storeForRequest: (c) => {
       const requested = selectedSpaceId(c);

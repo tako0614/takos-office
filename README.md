@@ -24,10 +24,13 @@ bun run start      # run it locally
 ```
 
 Standalone HTTP storage needs `OBJECT_STORAGE_API_URL`,
-`OBJECT_STORAGE_ACCESS_TOKEN`, and a Workspace (`TAKOS_SPACE_ID`). A Takosumi
-host binding supplies short-lived `storage.object` authority instead of a
-standing storage token. See [Build](#build) for the full check and MCP
-authentication options.
+`OBJECT_STORAGE_ACCESS_TOKEN`, and a storage namespace (`TAKOS_SPACE_ID`). The
+default Worker currently uses that configured bearer for every object operation;
+it does not yet resolve a Takosumi storage InterfaceLink or obtain operation-specific
+invocation tokens. A short-lived, single-permission Interface token is therefore
+not a replacement for this standing storage credential. App-scoped sign-in is
+integrated separately; the managed storage consumer remains unfinished. See
+[Build](#build) for the full check and MCP authentication options.
 
 ## Layout
 
@@ -179,7 +182,8 @@ Managed `/mcp` calls use short-lived InterfaceBinding OAuth credentials with the
 revalidates current Interface and Binding state; the Worker then requires all of the following from the 200 response:
 
 - `token_use: "interface_oauth"`, a non-empty `sub`, exact `aud`, and exact single `scope`;
-- exact `takosumi.workspace_id` and `takosumi.capsule_id`;
+- exact `takosumi.capsule_id`; an optional `takosumi.workspace_id`, when present,
+  must match the configured namespace (`APP_WORKSPACE_ID` or `TAKOS_SPACE_ID`);
 - non-empty `interface_id` and `interface_binding_id`, plus a positive `interface_resolved_revision`.
 
 The check is fail-closed, follows no UserInfo redirects, and keeps no static Interface id/revision pin. An explicitly
