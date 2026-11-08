@@ -22,7 +22,7 @@ function stores(over: Partial<{
 }
 
 test("collectOfficeItems merges all three apps, newest first", async () => {
-  const items = await collectOfficeItems(stores({
+  const { items } = await collectOfficeItems(stores({
     docs: [{ id: "d1", title: "Doc", updatedAt: "2026-06-01T00:00:00Z" }],
     slides: [{ id: "p1", title: "Deck", updatedAt: "2026-06-03T00:00:00Z" }],
     sheets: [{ id: "s1", title: "Budget", updatedAt: "2026-06-02T00:00:00Z" }],
@@ -37,14 +37,14 @@ test("collectOfficeItems merges all three apps, newest first", async () => {
 test("collectOfficeItems falls back to Untitled and tolerates a failing store", async () => {
   const s = stores({ slides: [{ id: "p1", title: "  ", updatedAt: "2026-06-03T00:00:00Z" }] });
   s.docs.list = () => Promise.reject(new Error("boom"));
-  const items = await collectOfficeItems(s);
+  const { items } = await collectOfficeItems(s);
   expect(items).toEqual([
     { app: "slide", id: "p1", title: "Untitled", updatedAt: "2026-06-03T00:00:00Z" },
   ]);
 });
 
 test("searchOfficeItems uses docs.search and filters slide/sheet by title", async () => {
-  const items = await searchOfficeItems(
+  const { items } = await searchOfficeItems(
     stores({
       docsSearch: [{ id: "d1", title: "Report", updatedAt: "2026-06-01T00:00:00Z" }],
       slides: [
@@ -59,5 +59,25 @@ test("searchOfficeItems uses docs.search and filters slide/sheet by title", asyn
 });
 
 test("searchOfficeItems returns nothing for a blank query", async () => {
-  expect(await searchOfficeItems(stores({ docsSearch: [] }), "   ")).toEqual([]);
+  expect(await searchOfficeItems(stores({ docsSearch: [] }), "   ")).toEqual({ items: [], unavailableApps: [] });
+});
+
+
+test("all failed stores are unavailable, not a successful empty list", async () => {
+  const s = stores();
+  const fail = () => Promise.reject(new Error("private upstream detail"));
+  s.docs.list = s.docs.search = fail;
+  s.slide.list = s.sheet.listSpreadsheets = fail;
+  for (const result of [await collectOfficeItems(s), await searchOfficeItems(s, "report")]) {
+    expect(result).toEqual({ items: [], unavailableApps: ["docs", "slide", "sheet"] });
+  }
+});
+
+test("partial failures retain healthy records and identify incomplete results", async () => {
+  const s = stores({ slides: [{ id: "p1", title: "Report", updatedAt: "2026-06-03T00:00:00Z" }] });
+  s.docs.list = s.docs.search = () => Promise.reject(new Error("private detail"));
+  for (const result of [await collectOfficeItems(s), await searchOfficeItems(s, "report")]) {
+    expect(result.items.map((item) => item.id)).toEqual(["p1"]);
+    expect(result.unavailableApps).toEqual(["docs"]);
+  }
 });

@@ -98,13 +98,19 @@ One Cloudflare Worker, one Capsule install unit, three editor surfaces:
 
 | URL                          | Surface                                                         |
 | ---------------------------- | --------------------------------------------------------------- |
-| `/`                          | redirects directly to the Docs library                          |
+| `/`                          | suite home, recent files, and cross-editor search               |
 | `/docs`                      | document editor with `.docx` import/download                    |
 | `/slide`                     | presentation editor with `.pptx` import/download                |
 | `/sheet`                     | spreadsheet editor with `.xlsx` import/download                 |
 | `/api/office/{items,search}` | cross-app recent / search for host integrations                 |
 | `/mcp`                       | unified MCP (≈80 `docs_*`/`slide_*`/`sheet_*` tools)            |
 | `/healthz`                   | readiness probe                                                 |
+
+The suite recent/search APIs return `items`, plus `unavailableApps` when reads
+partially fail. Healthy editors
+remain visible if another editor cannot be read; the home page marks these results
+as incomplete and offers an explicit retry. If all three reads fail, the API
+returns 503 and the home page shows a load error instead of claiming there are no files.
 
 Each editor SPA is built with its own vite `base` (`/docs/`, `/slide/`, `/sheet/`) and SolidJS Router
 base, so assets and routes resolve under the subpath. Storage stays the object-storage HTTP API

@@ -75,3 +75,33 @@ test("only the root worker owns MCP and readiness routes", async () => {
     expect((await app.request(path)).status).toBe(404);
   }
 });
+
+
+test("Suite APIs expose storage failure without a successful empty collection", async () => {
+  const { app } = createOfficeApp(env, {
+    storageFetch: async () => { throw new Error("private upstream failure"); },
+  });
+  for (const path of ["/api/office/items", "/api/office/search?q=report"]) {
+    const response = await app.request(path);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "office_items_unavailable" });
+  }
+});
+
+test("Suite APIs distinguish healthy empty collections from unavailable data", async () => {
+  const { app } = createOfficeApp(env, {
+    storageFetch: async (input, init) => {
+      if (new URL(String(input)).searchParams.has("prefix")) {
+        return Response.json({ objects: [], truncated: false });
+      }
+      return init?.method === "PUT"
+        ? new Response(null, { status: 201, headers: { etag: '"empty-folder"' } })
+        : new Response(null, { status: 404 });
+    },
+  });
+  for (const path of ["/api/office/items", "/api/office/search?q=report"]) {
+    const response = await app.request(path);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [] });
+  }
+});

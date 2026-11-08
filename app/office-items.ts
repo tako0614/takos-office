@@ -48,38 +48,51 @@ function byUpdatedDesc(a: OfficeItem, b: OfficeItem): number {
   return tb - ta;
 }
 
-/** Merge and sort (newest first) the listings of all three editors. */
-export async function collectOfficeItems(
+export interface OfficeItemsResult {
+  items: OfficeItem[];
+  unavailableApps: OfficeApp[];
+}
+
+async function readOfficeItems(
+  readers: Record<OfficeApp, () => Promise<TitledRecord[]>>,
+): Promise<OfficeItemsResult> {
+  const apps: OfficeApp[] = ["docs", "slide", "sheet"];
+  const results = await Promise.all(apps.map(async (app) => {
+    try {
+      return { app, records: await readers[app](), unavailable: false };
+    } catch {
+      // Preserve healthy editors without disguising failed reads as empty data.
+      return { app, records: [] as TitledRecord[], unavailable: true };
+    }
+  }));
+  return {
+    items: results.flatMap(({ app, records }) => records.map((r) => toItem(app, r))).sort(byUpdatedDesc),
+    unavailableApps: results.filter((result) => result.unavailable).map(({ app }) => app),
+  };
+}
+
+/** Merge and sort (newest first), retaining incomplete-read information. */
+export function collectOfficeItems(
   stores: OfficeStores,
-): Promise<OfficeItem[]> {
-  const [docs, slides, sheets] = await Promise.all([
-    stores.docs.list().catch(() => []),
-    stores.slide.list().catch(() => []),
-    stores.sheet.listSpreadsheets().catch(() => []),
-  ]);
-  return [
-    ...docs.map((d) => toItem("docs", d)),
-    ...slides.map((s) => toItem("slide", s)),
-    ...sheets.map((s) => toItem("sheet", s)),
-  ].sort(byUpdatedDesc);
+): Promise<OfficeItemsResult> {
+  return readOfficeItems({
+    docs: () => stores.docs.list(),
+    slide: () => stores.slide.list(),
+    sheet: () => stores.sheet.listSpreadsheets(),
+  });
 }
 
 /** Cross-app title/content search; newest first. */
 export async function searchOfficeItems(
   stores: OfficeStores,
   query: string,
-): Promise<OfficeItem[]> {
+): Promise<OfficeItemsResult> {
   const q = query.trim().toLowerCase();
-  if (!q) return [];
+  if (!q) return { items: [], unavailableApps: [] };
   const matchesTitle = (r: TitledRecord) => r.title?.toLowerCase().includes(q);
-  const [docs, slides, sheets] = await Promise.all([
-    stores.docs.search(query).catch(() => []),
-    stores.slide.list().catch(() => []),
-    stores.sheet.listSpreadsheets().catch(() => []),
-  ]);
-  return [
-    ...docs.map((d) => toItem("docs", d)),
-    ...slides.filter(matchesTitle).map((s) => toItem("slide", s)),
-    ...sheets.filter(matchesTitle).map((s) => toItem("sheet", s)),
-  ].sort(byUpdatedDesc);
+  return readOfficeItems({
+    docs: () => stores.docs.search(query),
+    slide: async () => (await stores.slide.list()).filter(matchesTitle),
+    sheet: async () => (await stores.sheet.listSpreadsheets()).filter(matchesTitle),
+  });
 }
