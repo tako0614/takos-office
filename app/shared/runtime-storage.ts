@@ -50,7 +50,7 @@ export function createOfficeStorageClient(
     envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN") ?? "",
     spaceId,
     envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "",
-    { fetchImpl: options.storageFetch, authorizationForOperation, signal: request?.signal },
+    { fetchImpl: options.storageFetch, authorizationForOperation, signal: runtimeStorage ? request?.signal : undefined },
   );
 }
 

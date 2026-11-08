@@ -277,3 +277,35 @@ test("runtime browser mode does not invent MCP storage when explicit standalone 
   expect(response.status).toBe(503);
   expect(await response.json()).toEqual({ error: "object_storage_not_configured" });
 });
+
+
+test("a cached standalone client does not retain the first caller's cancellation", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const client = createOfficeStorageClient({
+    OBJECT_STORAGE_API_URL: "https://legacy.example/o", OBJECT_STORAGE_ACCESS_TOKEN: "synthetic-standing",
+  }, new Request("https://office.example/api/office/items", { signal: controller.signal }), "workspace", {
+    async storageFetch(input, init) {
+      calls++;
+      expect(new Request(input, init).signal.aborted).toBe(false);
+      return Response.json({ objects: [] });
+    },
+  });
+  await client.ready();
+  controller.abort();
+  await client.ready();
+  expect(calls).toBe(2);
+});
+
+
+test("a request-owned runtime client still stops before authority on caller cancellation", async () => {
+  const controller = new AbortController(); controller.abort();
+  let calls = 0;
+  const never = async () => { calls++; throw new Error("must not dispatch"); };
+  const client = createOfficeStorageClient({ TAKOSUMI_CONTROL_API_URL: "https://control.example" },
+    new Request("https://office.example/api/office/items", { signal: controller.signal }), "workspace", {
+      storageFetch: never, runtimeFetch: never, appUserInfoFetch: never,
+    });
+  await expect(client.ready()).rejects.toThrow();
+  expect(calls).toBe(0);
+});
