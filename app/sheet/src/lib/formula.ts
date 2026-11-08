@@ -156,14 +156,14 @@ export function evaluateSheet(
         updatedCells[addr] = { ...cell, computedSource: "stale" };
         continue;
       }
-      updatedCells[addr] = { ...cell, computed: formatHfResult(result), ...(cell.computedType === undefined ? {} : {
+      updatedCells[addr] = { ...cell, computed: formatHfResult(result),
         computedType: typeof result === "number" ? "number" as const : typeof result === "boolean" ? "boolean" as const : result !== null && typeof result === "object" ? "error" as const : "text" as const,
-      }) };
+      };
       delete updatedCells[addr].computedSource;
     } catch {
       updatedCells[addr] = cell.computedSource
         ? { ...cell, computedSource: "stale" }
-        : { ...cell, computed: "#ERROR!" };
+        : { ...cell, computed: "#ERROR!", computedType: "error" };
     }
   }
 

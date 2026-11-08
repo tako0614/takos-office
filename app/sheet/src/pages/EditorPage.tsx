@@ -153,7 +153,7 @@ export const EditorPage: Component = () => {
     setRecovering(false);
     setRecoveryError("");
     setSaveKind("clean");
-    setExporting(false);setExportFailed(false);setExportWarning(false);
+    setExporting(false);setExportFailed(false);setExportWarning(false);setNamedStructureBlocked(false);
     void loadSpreadsheetFromApi(id, { signal: controller.signal })
       .then((remote) => {
         if (owner !== binding) return;

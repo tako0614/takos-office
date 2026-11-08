@@ -5,7 +5,7 @@ import { getSpreadsheet, getSpreadsheetSaveState } from "../lib/storage.ts";
 import type { ImportedSpreadsheet } from "../lib/xlsx.ts";
 import { exportXlsx } from "../lib/xlsx.ts";
 import { setCellValue } from "../lib/formula.ts";
-import { deleteSheet, renameSheet, captureSpreadsheetWriter } from "../lib/storage.ts";
+import { addSheet, deleteSheet, renameSheet, captureSpreadsheetWriter } from "../lib/storage.ts";
 import { readOfficePackage, isOfficeRelationship } from "../../../shared/lib/office-package.ts";
 
 const converted: ImportedSpreadsheet = {
@@ -168,6 +168,44 @@ for (const operation of ["insertRows", "deleteRows", "insertColumns", "deleteCol
       else await expect(store[operation](original.id, sheetId, 0, 1)).rejects.toThrow("defined names");
       expect(await (await f.app.request("/api/spreadsheets/" + original.id + "?space_id=A")).json()).toEqual(original);
       expect(getSpreadsheet(original.id)).toEqual(original);
+    } finally { importer.retire(); await f.close(); }
+  });
+}
+
+for (const mutation of ["add", "delete", "rename"] as const) {
+  test(`local tab ${mutation} invalidates file caches before its ACK`, async () => {
+    const f = clientStoreFixture(), data = structuredClone(converted);
+    data.spreadsheet.sheets[0].cells.B1 = { value: "=SHEETS()", computed: "2", computedType: "number", computedSource: "file" };
+    data.spreadsheet.sheets.push({ id: "other", name: "Other", cells: {}, colWidths: {}, rowHeights: {} });
+    const importer = createSpreadsheetImporter(async () => data);
+    try {
+      const original = (await importer.importFile(input()))!.spreadsheet, held = f.holdNext("PUT");
+      const result = mutation === "add" ? addSheet(original.id, "Added") : mutation === "delete" ? deleteSheet(original.id, "other") : renameSheet(original.id, "other", "Renamed");
+      await held.started;
+      const local = getSpreadsheet(original.id)!;
+      expect(local.sheets[0].cells.B1.computedSource).toBe("stale");
+      const output = await exportXlsx(local), pkg = await readOfficePackage(new Uint8Array(await output.blob.arrayBuffer()));
+      const worksheet = [...pkg.relationships.get(pkg.mainPart)!.values()].find(rel => isOfficeRelationship(rel, "worksheet"))!;
+      const xml = pkg.xmlParts.get(worksheet.target)!, ns = xml.documentElement!.namespaceURI!;
+      const formula = Array.from(xml.getElementsByTagNameNS(ns, "c")).find(c => c.getAttribute("r") === "B1")!;
+      expect(formula.getElementsByTagNameNS(ns, "v")).toHaveLength(0);
+      held.release();await result.remote;
+      expect(getSpreadsheet(original.id)!.sheets[0].cells.B1.computedSource).toBe("stale");
+    } finally { importer.retire(); await f.close(); }
+  });
+}
+for (const [formula, type, value] of [['="123"', "str", "123"], ['=TRUE()', "b", "1"], ['=1/0', "e", "#DIV/0!"]] as const) {
+  test(`new formula ${formula} retains its real result type in the downloaded cache`, async () => {
+    const f = clientStoreFixture(), importer = createSpreadsheetImporter(async () => structuredClone(converted));
+    try {
+      const original = (await importer.importFile(input()))!.spreadsheet, draft = structuredClone(original);
+      draft.sheets[0].cells = setCellValue(draft.sheets[0], "B1", formula, draft.sheets);
+      const ack = (await captureSpreadsheetWriter(original.id)(draft))!;
+      const output = await exportXlsx(ack), pkg = await readOfficePackage(new Uint8Array(await output.blob.arrayBuffer()));
+      const worksheet = [...pkg.relationships.get(pkg.mainPart)!.values()].find(rel => isOfficeRelationship(rel, "worksheet"))!;
+      const xml = pkg.xmlParts.get(worksheet.target)!, ns = xml.documentElement!.namespaceURI!;
+      const cell = Array.from(xml.getElementsByTagNameNS(ns, "c")).find(c => c.getAttribute("r") === "B1")!;
+      expect(cell.getAttribute("t")).toBe(type); expect(cell.getElementsByTagNameNS(ns, "v").item(0)?.textContent).toBe(value);
     } finally { importer.retire(); await f.close(); }
   });
 }

@@ -347,8 +347,9 @@ export async function deleteSpreadsheet(id: string): Promise<void> {
 function changeSheet<T>(id: string, change: (record: Spreadsheet) => T, unchanged: T): LocalSaveResult<T> {
   const scope = api.capture(), records = loadAt(scope.cacheKey), index = records.findIndex((record) => record.id === id);
   if (index < 0) return { value: unchanged, remote: Promise.resolve() };
-  const base = records[index], draft = structuredClone(base), value = change(draft);
+  const base = records[index];let draft = structuredClone(base);const value = change(draft);
   if (value === false || value === undefined) return { value, remote: Promise.resolve() };
+  if (spreadsheetInputsChanged(base, draft)) draft = invalidateImportedFormulaCaches(draft);
   draft.updatedAt = nextEntityRevision(base.updatedAt);
   records[index] = draft;saveAt(scope.cacheKey, records);
   return { value, remote: queueSpreadsheetWrite(scope, draft, base.updatedAt) };
