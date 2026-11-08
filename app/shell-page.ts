@@ -184,7 +184,17 @@ export function renderShellPage(): string {
   [data-theme="dark"] .search input { background: #161a22; border-color: #2c323d; color: #e5e7eb; }
   [data-theme="dark"] li.item a:hover { background: #20262f; }
   [data-theme="dark"] .item-time, [data-theme="dark"] h2, [data-theme="dark"] .empty, [data-theme="dark"] .loading { color: #6b7280; }
-  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) {
+    .cards { grid-template-columns: 1fr; }
+    header { flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; }
+    .brand { flex: 1; min-height: 44px; }
+    header .spacer { display: none; }
+    header nav { order: 1; flex: 0 0 100%; }
+    header nav a {
+      display: flex; flex: 1; align-items: center; justify-content: center; min-height: 44px;
+    }
+    .theme-toggle { flex-shrink: 0; width: 44px; height: 44px; }
+  }
 </style>
 </head>
 <body>
