@@ -209,6 +209,30 @@ embedded objects and external resource relationships are refused before a new
 presentation is created. Keep the original PowerPoint file when layout fidelity
 matters.
 
+Sheets exposes Excel import in its library and an Excel download action in its
+editor. The same disposable Worker, bounded package admission, original
+Workspace capture and create-only acknowledgement rules apply. Literal text,
+numbers, booleans and errors keep their types; shared formulas, cached results,
+common font/fill/alignment and number formats, and row/column sizes are retained.
+1904 date workbooks normalize into the editor's existing date system. Defined
+names stay symbolic metadata and are retained for Excel rather than expanded into
+cell allocations during import. For workbooks with names, row/column insert or
+delete and sheet rename or delete are explicitly refused: use Excel for those
+structural edits until reference rewriting is supported. Values and formatting
+remain editable. Merge expansion is bounded before the codec;
+unsupported data validations are omitted before their ranges can be expanded.
+
+Opening or formatting an imported workbook keeps its saved formula results and
+shows that they came from the file. Explicit value or structural changes mark
+imported caches across sheets as out of date. The existing calculation engine
+recalculates supported formulas; unsupported formulas may need Excel. Stale
+caches are not written as current results, and exported workbooks request a full
+recalculation in Excel. Cached values are not evidence of a new calculation.
+Unsafe external/DDE/network formulas and unsafe hyperlink targets are refused.
+Custom fonts, theme colors, merged layouts, validation, charts, rich text and
+other advanced features may be simplified with a warning. Keep the original
+workbook for full fidelity; the JSON editing state is not a lossless Excel engine.
+
 ### OpenTofu outputs and first apply
 
 The four Interface source URLs are ordinary root-module outputs:

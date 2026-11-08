@@ -1,6 +1,11 @@
+export type CellValueType = "text" | "number" | "boolean" | "error";
+
 export interface CellData {
   value: string; // raw input (may be formula like "=SUM(A1:A10)")
   computed?: string; // computed display value
+  valueType?: CellValueType;
+  computedType?: CellValueType;
+  computedSource?: "file" | "stale";
   format?: CellFormat;
 }
 
@@ -57,4 +62,5 @@ export interface Spreadsheet {
   activeSheetId: string;
   createdAt: string;
   updatedAt: string;
+  definedNames?: { name: string; reference: string; localSheetId?: number; hidden?: boolean }[];
 }

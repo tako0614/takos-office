@@ -1,3 +1,4 @@
+import { assertNamedRangeStructureEditable, invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "./lib/imported-formula-cache.ts";
 /**
  * SpreadsheetStore backed by the Takos product storage API.
  *
@@ -224,7 +225,8 @@ export class SpreadsheetStore {
     }
   }
 
-  private touch(ss: Spreadsheet): void {
+  private touch(ss: Spreadsheet, changedInputs = false): void {
+    if (changedInputs) ss.sheets = invalidateImportedFormulaCaches(ss).sheets;
     ss.updatedAt = nextEntityRevision(ss.updatedAt);
   }
 
@@ -338,12 +340,13 @@ export class SpreadsheetStore {
           throw new SpreadsheetConflictError(latest.ss);
         }
       }
-      const updated = {
+      let updated = {
         ...spreadsheet,
         id: latest?.ss.id ?? spreadsheet.id,
         createdAt: latest?.ss.createdAt ?? spreadsheet.createdAt,
         updatedAt: nextEntityRevision(latest?.ss.updatedAt),
       };
+      if (latest && spreadsheetInputsChanged(latest.ss, updated)) updated = invalidateImportedFormulaCaches(updated);
       try {
         await this.client.putContent(
           fileId,
@@ -411,13 +414,14 @@ export class SpreadsheetStore {
       colWidths: {},
       rowHeights: {},
     });
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
     return sheetId;
   }
 
   async removeTab(spreadsheetId: string, sheetId: string): Promise<void> {
     const ss = await this.getSpreadsheet(spreadsheetId);
+    assertNamedRangeStructureEditable(ss);
     if (ss.sheets.length <= 1) {
       throw new Error("Cannot remove the last sheet tab");
     }
@@ -425,7 +429,7 @@ export class SpreadsheetStore {
     if (ss.activeSheetId === sheetId) {
       ss.activeSheetId = ss.sheets[0].id;
     }
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 
@@ -435,8 +439,9 @@ export class SpreadsheetStore {
     name: string,
   ): Promise<void> {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    assertNamedRangeStructureEditable(ss);
     sheet.name = name;
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 
@@ -471,7 +476,7 @@ export class SpreadsheetStore {
   ): Promise<void> {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
     sheet.cells = setCellValue(sheet, cell, value, ss.sheets);
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 
@@ -512,10 +517,13 @@ export class SpreadsheetStore {
           value: values[r][c],
           format: existing?.format,
         };
+        delete sheet.cells[addr].valueType;
+        delete sheet.cells[addr].computedType;
+        delete sheet.cells[addr].computedSource;
       }
     }
     sheet.cells = evaluateSheet(sheet, ss.sheets);
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 
@@ -533,7 +541,7 @@ export class SpreadsheetStore {
       }
     }
     sheet.cells = evaluateSheet(sheet, ss.sheets);
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 
@@ -546,6 +554,7 @@ export class SpreadsheetStore {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
     const existing = sheet.cells[cell];
     sheet.cells[cell] = {
+      ...existing,
       value: existing?.value ?? "",
       computed: existing?.computed,
       format: { ...(existing?.format ?? {}), ...format },
@@ -567,6 +576,7 @@ export class SpreadsheetStore {
         const addr = formatCellAddress(c, r);
         const existing = sheet.cells[addr];
         sheet.cells[addr] = {
+          ...existing,
           value: existing?.value ?? "",
           computed: existing?.computed,
           format: { ...(existing?.format ?? {}), ...format },
@@ -610,6 +620,7 @@ export class SpreadsheetStore {
     }
 
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
+    assertNamedRangeStructureEditable(ss);
     // shiftSheetStructure returns adjusted cells for EVERY sheet: the target's
     // data/formats shift, and any other sheet's cross-sheet formulas that
     // referenced the shifted area are re-pointed. Apply all of them before
@@ -719,7 +730,7 @@ export class SpreadsheetStore {
     }
     sheet.cells = sortRangeRows(sheet.cells, bounds, columnIndex, direction);
     sheet.cells = evaluateSheet(sheet, ss.sheets);
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
     return sheet;
   }
@@ -878,11 +889,14 @@ export class SpreadsheetStore {
           value: rows[r][c],
           format: existing?.format,
         };
+        delete sheet.cells[addr].valueType;
+        delete sheet.cells[addr].computedType;
+        delete sheet.cells[addr].computedSource;
       }
     }
 
     sheet.cells = evaluateSheet(sheet, ss.sheets);
-    this.touch(ss);
+    this.touch(ss, true);
     await this.persist(spreadsheetId);
   }
 

@@ -469,6 +469,7 @@ export const Grid: Component<GridProps> = (props) => {
             position: "sticky",
             height: `${HEADER_HEIGHT}px`,
             "margin-left": `${HEADER_WIDTH}px`,
+            "margin-top": `${-HEADER_HEIGHT}px`,
           }}
         >
           <For each={visibleColIndices()}>

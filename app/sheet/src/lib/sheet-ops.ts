@@ -182,6 +182,7 @@ export function rebuildCellsFromEngine(
     valueAt: (col: number, row: number) => unknown;
   },
   shiftedFormats: Record<string, CellFormat>,
+  shiftedCells: Record<string, CellData> = {},
 ): Record<string, CellData> {
   const result: Record<string, CellData> = {};
   for (let row = 0; row < read.height; row++) {
@@ -203,6 +204,13 @@ export function rebuildCellsFromEngine(
       }
       const format = shiftedFormats[addr];
       result[addr] = format ? { value, format } : { value };
+      const previous = shiftedCells[addr];
+      if (previous?.valueType !== undefined) result[addr].valueType = previous.valueType;
+      if (previous?.computedType !== undefined) result[addr].computedType = previous.computedType;
+      if (formula !== undefined && previous?.computedSource) {
+        result[addr].computed = previous.computed;
+        result[addr].computedSource = "stale";
+      }
     }
   }
   // Materialize format-only cells (empty value + format) that the engine left
@@ -210,6 +218,9 @@ export function rebuildCellsFromEngine(
   // but their shifted format must still follow the structural move.
   for (const [addr, format] of Object.entries(shiftedFormats)) {
     if (!result[addr]) result[addr] = { value: "", format };
+  }
+  for (const [addr, cell] of Object.entries(shiftedCells)) {
+    if (!result[addr] && cell.value === "" && cell.valueType !== undefined) result[addr] = { ...cell };
   }
   return result;
 }

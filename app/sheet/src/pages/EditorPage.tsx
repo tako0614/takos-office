@@ -35,6 +35,9 @@ import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import { exportXlsxFile } from "../lib/xlsx-worker.ts";
+import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
+import { invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "../lib/imported-formula-cache.ts";
 
 export const EditorPage: Component = () => {
   const params = useParams<{ id: string }>();
@@ -61,6 +64,29 @@ export const EditorPage: Component = () => {
   let writer: ReturnType<typeof captureSpreadsheetWriter> | undefined;
   let editVersion = 0;
   let recoveryController: AbortController | undefined;
+  const [exporting, setExporting] = createSignal(false);
+  const [exportFailed, setExportFailed] = createSignal(false);
+  const [exportWarning, setExportWarning] = createSignal(false);
+  const [namedStructureBlocked, setNamedStructureBlocked] = createSignal(false);
+  const blockNamedStructure = (book: Spreadsheet) => {
+    if (!book.definedNames?.length) return false;
+    setNamedStructureBlocked(true);return true;
+  };
+  let exportController: AbortController | undefined;
+  const handleExportXlsx = async () => {
+    const current = spreadsheet(), binding = owner;
+    if (!current || !binding || exporting()) return;
+    const snapshot = structuredClone(current), controller = new AbortController();
+    exportController = controller;setExporting(true);setExportFailed(false);setExportWarning(false);
+    try {
+      const result = await exportXlsxFile(snapshot, controller.signal);
+      if (owner !== binding || controller.signal.aborted) return;
+      downloadOfficeBlob(result.blob, `${sanitizeFilename(snapshot.title)}.xlsx`, controller.signal);
+      setExportWarning(result.hasUnsupportedContent);
+    } catch { if (owner === binding && !controller.signal.aborted) setExportFailed(true); }
+    finally { if (owner === binding) { setExporting(false);if (exportController === controller) exportController = undefined; } }
+  };
+
   const refreshSaveKind = (failed = false) => {
     try {
       const state = getSpreadsheetSaveState(params.id);
@@ -127,6 +153,7 @@ export const EditorPage: Component = () => {
     setRecovering(false);
     setRecoveryError("");
     setSaveKind("clean");
+    setExporting(false);setExportFailed(false);setExportWarning(false);
     void loadSpreadsheetFromApi(id, { signal: controller.signal })
       .then((remote) => {
         if (owner !== binding) return;
@@ -144,6 +171,7 @@ export const EditorPage: Component = () => {
     onCleanup(() => {
       controller.abort();
       recoveryController?.abort();
+      exportController?.abort();exportController = undefined;
       if (owner === binding) { owner = undefined; writer = undefined; }
     });
   });
@@ -155,7 +183,7 @@ export const EditorPage: Component = () => {
     const activeSheet = ss.sheets.find((s) => s.id === ss.activeSheetId) ??
       ss.sheets[0];
     if (activeSheet) {
-      activeSheet.cells = evaluateSheet(activeSheet, ss.sheets);
+      activeSheet.cells = evaluateSheet(activeSheet, ss.sheets, { preserveImportedCache: true });
       // Seed undo history with the initial state
       const mgr = getHistory(activeSheet.id);
       mgr.push(JSON.parse(JSON.stringify(activeSheet.cells)));
@@ -200,6 +228,8 @@ export const EditorPage: Component = () => {
 
   const save = (ss: Spreadsheet) => {
     if (!writer) return;
+    const current = spreadsheet();
+    if (current && spreadsheetInputsChanged(current, ss)) ss = invalidateImportedFormulaCaches(ss);
     editVersion++;
     setSpreadsheet({ ...ss });
     trackSave(writer(ss).then((ack) => {
@@ -418,6 +448,9 @@ export const EditorPage: Component = () => {
           value: rows[r][c],
           format: existing?.format,
         };
+        delete updatedCells[addr].valueType;
+        delete updatedCells[addr].computedType;
+        delete updatedCells[addr].computedSource;
       }
     }
     const evaluated = evaluateSheet({ ...sheet, cells: updatedCells }, spreadsheet()?.sheets);
@@ -429,7 +462,7 @@ export const EditorPage: Component = () => {
   const applyStructuralOp = (op: StructuralOp) => {
     const ss = spreadsheet();
     const sheet = activeSheet();
-    if (!ss || !sheet) return;
+    if (!ss || !sheet || blockNamedStructure(ss)) return;
     try {
       const { col, row } = parseCellAddress(selectedCell());
       const at = op === "insertRows" || op === "deleteRows" ? row : col;
@@ -569,7 +602,7 @@ export const EditorPage: Component = () => {
     // Evaluate formulas for the new sheet
     const newSheet = updated.sheets.find((s) => s.id === sheetId);
     if (newSheet) {
-      newSheet.cells = evaluateSheet(newSheet, updated.sheets);
+      newSheet.cells = evaluateSheet(newSheet, updated.sheets, { preserveImportedCache: true });
       // Seed undo history for this sheet if not already present
       const mgr = getHistory(sheetId);
       if (!mgr.canUndo() && !mgr.canRedo()) {
@@ -599,6 +632,7 @@ export const EditorPage: Component = () => {
   const handleRenameSheet = (sheetId: string, newName: string) => {
     const ss = spreadsheet();
     if (!ss) return;
+    if (blockNamedStructure(ss)) return;
     mutate(() => renameSheet(ss.id, sheetId, newName));
     const draft = getSpreadsheet(ss.id);
     if (draft) setSpreadsheet(draft);
@@ -606,7 +640,7 @@ export const EditorPage: Component = () => {
 
   const handleDeleteSheet = (sheetId: string) => {
     const ss = spreadsheet();
-    if (!ss || ss.sheets.length <= 1 || !confirm(t("deleteSheetConfirm"))) return;
+    if (!ss || ss.sheets.length <= 1 || blockNamedStructure(ss) || !confirm(t("deleteSheetConfirm"))) return;
     const changed = mutate(() => deleteSheet(ss.id, sheetId));
     if (changed) {
       const draft = getSpreadsheet(ss.id);
@@ -687,6 +721,12 @@ export const EditorPage: Component = () => {
               </div>
             </Show>
 
+            <Show when={exportFailed()}><p role="alert" class="px-4 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p></Show>
+            <Show when={exportWarning()}><p role="status" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p></Show>
+            <Show when={namedStructureBlocked()}><p role="alert" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("namedStructureBlocked")}</p></Show>
+            <Show when={ss().sheets.some(sheet => Object.values(sheet.cells).some(cell => cell.computedSource === "file" || cell.computedSource === "stale"))}>
+              <p role="status" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t(ss().sheets.some(sheet => Object.values(sheet.cells).some(cell => cell.computedSource === "stale")) ? "staleFormulaResults" : "savedFormulaResults")}</p>
+            </Show>
             {/* Toolbar */}
             <Toolbar
               format={selectedCellData()?.format}
@@ -695,6 +735,8 @@ export const EditorPage: Component = () => {
               onTitleChange={handleTitleChange}
               onNavigateHome={() => navigate(withCurrentSpaceId("/"))}
               onImportCsv={handleImportCsv}
+              onExportXlsx={() => void handleExportXlsx()}
+              exporting={exporting()}
               onUndo={handleUndo}
               onRedo={handleRedo}
               canUndo={canUndo()}

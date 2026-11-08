@@ -32,6 +32,15 @@ test("ISO date string is reformatted", () => {
   expect(applyNumberFormat("2026-01-05", "yyyy/mm/dd")).toBe("2026/01/05");
 });
 
+test("independent Excel month-name formats retain escaped literal spaces", () => {
+  expect(applyNumberFormat("41287", "mmmm\\ d\\ yyyy")).toBe("January 13 2013");
+  expect(applyNumberFormat("41287", '"On "ddd, mmm d, yyyy')).toBe("On Sun, Jan 13, 2013");
+});
+
+test("date/time tokens distinguish minutes from months and retain fractional serial time", () => {
+  expect(applyNumberFormat("41287.5", "yyyy-mm-dd hh:mm:ss")).toBe("2013-01-13 12:00:00");
+});
+
 test("non-numeric values pass through unformatted", () => {
   expect(applyNumberFormat("hello", "#,##0.00")).toBe("hello");
 });

@@ -13,6 +13,8 @@ interface ToolbarProps {
   onTitleChange: (title: string) => void;
   onNavigateHome: () => void;
   onImportCsv?: (content: string) => void;
+  onExportXlsx: () => void;
+  exporting: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -95,7 +97,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   );
 
   return (
-    <div class="flex items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800">
+    <div class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800">
       {/* Home button */}
       <button
         type="button"
@@ -208,6 +210,9 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       </ToolBtn>
 
       <Separator />
+
+      <button type="button" onClick={props.onExportXlsx} disabled={props.exporting} title={t("exportXlsx")}
+        class="shrink-0 rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:text-emerald-200">{t(props.exporting ? "exporting" : "exportXlsx")}</button>
 
       {/* Import CSV */}
       <ToolBtn
