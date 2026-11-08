@@ -61,9 +61,24 @@ The earlier wiring proposal embedded in TASK0118-E-COORDINATION.json targeted a
 dirty shared checkout and was not adopted. Runtime integration was authored from
 committed public source and reuses the corrected helper. Private documents remain
 restricted to app owner/member or compatible legacy membership; any explicit
-public-share route must retain its own public policy. The separate problem of
-app-shared storage authority under Principal-scoped InterfaceBinding namespaces
-is not resolved by this sign-in integration.
+public-share route must retain its own public policy. Browser storage may explicitly select `oauth2.app-data.v1` through a reviewed
+`storage.object` Link. With `TAKOSUMI_CONTROL_API_URL`, Office revalidates the
+signed-in app session and uses its server-side bearer to discover authorized
+storage and exchange a fresh exact-permission token per operation, requesting
+`dataScope: "app-shared.v1"`. Login and the root OIDC registration both request
+`capsules:read` in this mode. The individual Principal identity remains distinct;
+the trusted provider places objects in the explicit app-shared namespace.
+Stores and credentials in this mode belong to the incoming request, never a
+Workspace-wide cache. Invalid explicit configuration or failed current authority
+cannot use a standing-token fallback. MCP separately retains only its explicit
+legacy Storage configuration; enabling the browser route does not silently use
+its session credentials for a cookie-less MCP request. The legacy MCP namespace
+and app-shared browser namespace are not automatically migrated or unified.
+Anonymous runtime health validates configuration and labels backend Storage
+unprobed; it does not create a person token or report a successful object probe.
+This does not make an Interface invocation
+token a browser login, provide cookie-less MCP delegation, configure the portable
+module, migrate old Binding-scoped objects, or prove deployed integration.
 
 ## Follow-up rollout order
 

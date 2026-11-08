@@ -7,9 +7,14 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { DocumentConflictError, TakosDocumentStore } from "./document-store.ts";
-import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import {
+  createOfficeStorageClient,
+  hasOfficeStorage,
+  usesRuntimeStorage,
+  runtimeStorageErrorResponse,
+  type OfficeStorageOptions,
+} from "../../shared/runtime-storage.ts";
 import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
-import type { OfficeServerFetchOptions } from "../../shared/server-options.ts";
 import { serverLog } from "./server-log.ts";
 import {
   envValue,
@@ -31,30 +36,22 @@ import {
 
 export function createDocsApp(
   env: RuntimeEnv = runtimeEnv(),
-  options: OfficeServerFetchOptions = {},
+  options: OfficeStorageOptions = {},
 ) {
-  const apiUrl =
-    envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
+  const runtimeStorage = usesRuntimeStorage(env);
   const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
-  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
   const stores = new Map<string, TakosDocumentStore>();
-  const storeForSpace = (spaceId: string): TakosDocumentStore => {
-    let store = stores.get(spaceId);
+  const storeForSpace = (spaceId: string, request?: Request): TakosDocumentStore => {
+    let store = runtimeStorage ? undefined : stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(
-        apiUrl,
-        token!,
-        spaceId,
-        keyPrefix,
-        { fetchImpl: options.storageFetch },
-      );
+      const client = createOfficeStorageClient(env, request, spaceId, options);
       store = new TakosDocumentStore(client);
-      stores.set(spaceId, store);
+      if (!runtimeStorage) stores.set(spaceId, store);
     }
     return store;
   };
@@ -81,11 +78,11 @@ export function createDocsApp(
     if (!spaceId) {
       return c.json({ error: "space_id is required" }, 400);
     }
-    if (!token) return storageUnavailable(c);
-    return storeForSpace(spaceId);
+    if (!hasOfficeStorage(env)) return storageUnavailable(c);
+    return storeForSpace(spaceId, c.req.raw);
   };
   const defaultStore =
-    defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
+    !runtimeStorage && defaultSpaceId && token ? storeForSpace(defaultSpaceId) : null;
   const app = new Hono();
 
   registerAuthRoutes(app, env);
@@ -207,6 +204,8 @@ export function createDocsApp(
   });
 
   app.onError((err, c) => {
+    const runtime = runtimeStorageErrorResponse(err);
+    if (runtime) return runtime;
     const input = inputErrorResponse(err, c);
     if (input) return input;
     serverLog.error("takos-docs.server.request_error", { error: err });

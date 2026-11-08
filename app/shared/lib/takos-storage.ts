@@ -80,15 +80,37 @@ export type ObjectStorageFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export type ObjectStoragePermission =
+  | "storage.object.list"
+  | "storage.object.read"
+  | "storage.object.write"
+  | "storage.object.delete";
+
+export type ObjectStorageAuthorization = {
+  apiUrl: string;
+  accessToken: string;
+};
+
+export type ObjectStorageClientOptions = {
+  fetchImpl?: ObjectStorageFetch;
+  signal?: AbortSignal;
+  /** Obtain fresh authority for this operation; failures never use the static token. */
+  authorizationForOperation?: (
+    permission: ObjectStoragePermission,
+  ) => Promise<ObjectStorageAuthorization>;
+};
+
 export function createTakosStorageClient(
   apiUrl: string,
   token: string,
   spaceId: string,
   keyPrefix = "",
-  options: { fetchImpl?: ObjectStorageFetch } = {},
+  options: ObjectStorageClientOptions = {},
 ): TakosStorageClient {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const objectApiUrl = normalizeObjectApiUrl(apiUrl);
+  const objectApiUrl = options.authorizationForOperation
+    ? undefined
+    : normalizeObjectApiUrl(apiUrl);
   const recordsPrefix = [
     normalizeKeyPrefix(keyPrefix),
     RECORDS_PATH,
@@ -104,13 +126,30 @@ export function createTakosStorageClient(
 
   async function objectRequest(
     path: string,
-    options: RequestInit = {},
+    requestOptions: RequestInit = {},
   ): Promise<Response> {
-    const headers = new Headers(options.headers);
-    headers.set("authorization", `Bearer ${token}`);
-    const response = await fetchImpl(`${objectApiUrl}${path}`, {
-      ...options,
+    options.signal?.throwIfAborted();
+    const authorization = options.authorizationForOperation
+      ? await options.authorizationForOperation(
+          storagePermission(path, requestOptions.method ?? "GET"),
+        )
+      : { apiUrl: objectApiUrl!, accessToken: token };
+    if (
+      !authorization.accessToken ||
+      authorization.accessToken !== authorization.accessToken.trim() ||
+      /[\r\n]/u.test(authorization.accessToken)
+    ) {
+      throw new Error("Object storage authorization is invalid.");
+    }
+    const target = normalizeObjectApiUrl(authorization.apiUrl);
+    options.signal?.throwIfAborted();
+    const headers = new Headers(requestOptions.headers);
+    headers.set("authorization", `Bearer ${authorization.accessToken}`);
+    const response = await fetchImpl(`${target}${path}`, {
+      ...requestOptions,
       headers,
+      signal: requestOptions.signal ?? options.signal,
+      redirect: "manual",
     });
     if (!response.ok) {
       const body = await readBoundedText(response, MAX_ERROR_BODY_BYTES).catch(
@@ -490,6 +529,20 @@ export function createTakosStorageClient(
     rename,
     delete: del,
   };
+}
+
+function storagePermission(path: string, method: string): ObjectStoragePermission {
+  switch (method.toUpperCase()) {
+    case "GET":
+    case "HEAD":
+      return path.startsWith("?") ? "storage.object.list" : "storage.object.read";
+    case "PUT":
+      return "storage.object.write";
+    case "DELETE":
+      return "storage.object.delete";
+    default:
+      throw new Error("Unsupported object storage operation.");
+  }
 }
 
 export class ObjectStorageConflictError extends Error {

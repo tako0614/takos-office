@@ -177,6 +177,25 @@
               "ja": "現在のアプリ",
               "en": "Current app"
             }
+          },
+          {
+            "name": "takosumi_control_api_url",
+            "source": {
+              "kind": "user"
+            },
+            "type": "string",
+            "format": "url",
+            "required": false,
+            "advanced": false,
+            "label": {
+              "ja": "Takosumi API URL",
+              "en": "Takosumi API URL"
+            },
+            "helper": {
+              "ja": "TakosumiのStorage接続を使う場合は必須です。空欄は既存のself-host用Storage設定を維持します。AccountsやStorageのURLからは推測しません。",
+              "en": "Required for Takosumi-managed Storage. Leave empty only for existing standalone Storage configuration. Not inferred from Accounts or Storage."
+            },
+            "placeholder": "https://takosumi.example.com"
           }
         ],
         "requires": [
@@ -194,7 +213,8 @@
             "scopes": [
               "openid",
               "profile",
-              "email"
+              "email",
+              "capsules:read"
             ],
             "deliver": {
               "variables": {
@@ -203,6 +223,23 @@
                 "clientId": "takosumi_accounts_client_id",
                 "redirectUri": "takosumi_accounts_redirect_uri"
               }
+            }
+          },
+          {
+            "kind": "interface.consume",
+            "key": "storage",
+            "interface": {
+              "type": "storage.object",
+              "version": "1"
+            },
+            "permissions": [
+              "storage.object.list",
+              "storage.object.read",
+              "storage.object.write",
+              "storage.object.delete"
+            ],
+            "delivery": {
+              "type": "oauth2.app-data.v1"
             }
           }
         ],

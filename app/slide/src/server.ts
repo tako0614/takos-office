@@ -8,10 +8,15 @@ import {
   createPresentationStore,
   PresentationConflictError,
 } from "./presentation-store.ts";
-import { createTakosStorageClient } from "../../shared/lib/takos-storage.ts";
+import {
+  createOfficeStorageClient,
+  hasOfficeStorage,
+  usesRuntimeStorage,
+  runtimeStorageErrorResponse,
+  type OfficeStorageOptions,
+} from "../../shared/runtime-storage.ts";
 import type { Presentation } from "./types/index.ts";
 import { registerAuthRoutes, requireAppAuth } from "../../shared/app-auth.ts";
-import type { OfficeServerFetchOptions } from "../../shared/server-options.ts";
 import {
   envValue,
   type RuntimeEnv,
@@ -32,29 +37,20 @@ import {
 
 export function createSlideAppFromEnv(
   env: RuntimeEnv = runtimeEnv(),
-  options: OfficeServerFetchOptions = {},
+  options: OfficeStorageOptions = {},
 ) {
-  const apiUrl =
-    envValue(env, "OBJECT_STORAGE_API_URL") || "http://localhost:8787";
-  const token = envValue(env, "OBJECT_STORAGE_ACCESS_TOKEN");
-  const keyPrefix = envValue(env, "OBJECT_STORAGE_KEY_PREFIX") ?? "";
+  const runtimeStorage = usesRuntimeStorage(env);
   const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
   const managedWorkspaceId = envValue(env, "APP_WORKSPACE_ID");
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
   const stores = new Map<string, ReturnType<typeof createPresentationStore>>();
-  const storeForSpace = (spaceId: string) => {
-    let store = stores.get(spaceId);
+  const storeForSpace = (spaceId: string, request?: Request) => {
+    let store = runtimeStorage ? undefined : stores.get(spaceId);
     if (!store) {
-      const client = createTakosStorageClient(
-        apiUrl,
-        token!,
-        spaceId,
-        keyPrefix,
-        { fetchImpl: options.storageFetch },
-      );
+      const client = createOfficeStorageClient(env, request, spaceId, options);
       store = createPresentationStore(client);
-      stores.set(spaceId, store);
+      if (!runtimeStorage) stores.set(spaceId, store);
     }
     return store;
   };
@@ -81,8 +77,8 @@ export function createSlideAppFromEnv(
     if (mismatch) return mismatch;
     const spaceId = requestSpaceId(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
-    if (!token) return storageUnavailable(c);
-    return storeForSpace(spaceId);
+    if (!hasOfficeStorage(env)) return storageUnavailable(c);
+    return storeForSpace(spaceId, c.req.raw);
   };
   const app = new Hono();
 
@@ -208,6 +204,8 @@ export function createSlideAppFromEnv(
   });
 
   app.onError((error, c) => {
+    const runtime = runtimeStorageErrorResponse(error);
+    if (runtime) return runtime;
     const input = inputErrorResponse(error, c);
     if (input) return input;
     return c.json({ error: "internal_error" }, 500);
