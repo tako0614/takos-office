@@ -1,10 +1,11 @@
-import { createSignal, For, onMount, Show } from "solid-js";
-import { useNavigate } from "@solidjs/router";
-import { FileText, Plus, Search } from "lucide-solid";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { useLocation, useNavigate } from "@solidjs/router";
+import { FileText, Plus, Search, Upload } from "lucide-solid";
 import type { Document } from "../types";
 import {
   addDocument,
   loadDocumentsFromApi,
+  loadDocuments,
   removeDocument,
 } from "../lib/storage";
 import DocumentCard from "../components/DocumentCard";
@@ -13,13 +14,65 @@ import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+import { createDocumentImporter } from "../lib/document-import.ts";
+import { OfficeFileError } from "../../../shared/lib/office-file.ts";
 
 export default function DocumentListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useI18n();
   const [documents, setDocuments] = createSignal<Document[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [search, setSearch] = createSignal("");
+  const [importing, setImporting] = createSignal(false);
+  const [importSaving, setImportSaving] = createSignal(false);
+  const [importError, setImportError] = createSignal<"invalid" | "too-large" | "unsafe" | "unsupported" | "timeout" | "save" | null>(null);
+  const [imported, setImported] = createSignal<{document: Document; hasUnsupportedContent: boolean} | null>(null);
+  const importer = createDocumentImporter();
+  let fileInput!: HTMLInputElement;
+  let viewGeneration = 0, importGeneration = 0;
+
+  const cancelImport = () => {
+    importGeneration++;
+    importer.retire();
+    setImporting(false);
+    setImportSaving(false);
+  };
+  createEffect(() => {
+    // A→B→A is a new view even when the final Workspace id matches again.
+    void location.search;
+    const generation = ++viewGeneration;
+    cancelImport();
+    setImportError(null);
+    setImported(null);
+    setDocuments([]);
+    setIsLoading(true);
+    void loadDocumentsFromApi()
+      .then((docs) => { if (generation === viewGeneration) setDocuments(docs); })
+      .catch(() => undefined)
+      .finally(() => { if (generation === viewGeneration) setIsLoading(false); });
+  });
+  onCleanup(() => { viewGeneration++; cancelImport(); });
+
+  const handleImport = async (file: File) => {
+    const operation = ++importGeneration;
+    setImporting(true);
+    setImportSaving(false);
+    setImportError(null);
+    setImported(null);
+    try {
+      const result = await importer.importFile(file, () => { if (operation === importGeneration) setImportSaving(true); });
+      if (operation !== importGeneration || !result) return;
+      setDocuments(loadDocuments());
+      setImported(result);
+    } catch (error) {
+      if (operation !== importGeneration) return;
+      setDocuments(loadDocuments());
+      setImportError(error instanceof OfficeFileError ? error.code : "save");
+    } finally {
+      if (operation === importGeneration) setImporting(false);
+    }
+  };
 
   const handleCreate = () => {
     const now = new Date().toISOString();
@@ -38,11 +91,6 @@ export default function DocumentListPage() {
   };
 
   onMount(() => {
-    void loadDocumentsFromApi()
-      .then(setDocuments)
-      .catch(() => undefined)
-      .finally(() => setIsLoading(false));
-
     // Quick-create entry point from the Office shell: `?new=1` fires the same
     // blank-document create action as the create card, then strips the param so
     // a refresh doesn't create another document.
@@ -116,6 +164,7 @@ export default function DocumentListPage() {
           <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
             {t("startNewDocument")}
           </h2>
+          <div class="flex flex-wrap items-start gap-4">
           <button
             type="button"
             onClick={handleCreate}
@@ -128,6 +177,35 @@ export default function DocumentListPage() {
               {t("blankDocument")}
             </span>
           </button>
+          <div class="flex flex-col gap-2 max-w-sm">
+            <input ref={fileInput} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden" aria-label={t("importDocx")}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file) void handleImport(file);
+              }} />
+            <button type="button" disabled={importing()} onClick={() => fileInput.click()}
+              class="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-300 dark:border-neutral-600 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50">
+              <Upload size={18} />{t("importDocx")}
+            </button>
+            <p class="text-xs text-gray-500 dark:text-neutral-400">{t("fileImportHelp")}</p>
+            <Show when={importing()}>
+              <div role="status" aria-busy="true" class="text-sm">
+                {t(importSaving() ? "importSaving" : "importing")}
+                <Show when={!importSaving()}><button type="button" class="ml-3 underline" onClick={cancelImport}>{t("cancel")}</button></Show>
+              </div>
+            </Show>
+            <Show when={importError()}>{(code) => (
+              <p role="alert" class="text-sm text-red-700 dark:text-red-300">{t({invalid:"fileInvalid", "too-large":"fileTooLarge", unsafe:"fileUnsafe", unsupported:"fileUnsupported", timeout:"fileTimeout", save:"importSaveFailed"}[code()] as "fileInvalid" | "fileTooLarge" | "fileUnsafe" | "fileUnsupported" | "fileTimeout" | "importSaveFailed")}</p>
+            )}</Show>
+            <Show when={imported()}>{(result) => (
+              <div role="status" class="text-sm">
+                <p>{t(result().hasUnsupportedContent ? "fileFormattingWarning" : "importComplete")}</p>
+                <button type="button" class="mt-2 text-blue-700 dark:text-blue-300 underline" onClick={() => navigate(withCurrentSpaceId(`/${result().document.id}`))}>{t("openImportedDocument")}</button>
+              </div>
+            )}</Show>
+          </div>
+          </div>
         </div>
 
         {/* Recent documents */}

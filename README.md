@@ -177,6 +177,22 @@ objects, and other advanced Office constructs are not claimed as pixel-perfect;
 unsupported content is omitted or reduced to a safe fallback rather than
 silently being treated as lossless.
 
+Docs exposes Word import in its library and Word download in the editor's Export
+menu. A new import is created only after file conversion succeeds and opens only
+after the ordinary create-only API acknowledges it. Conversion and its eventual
+request/cache destination belong to the Workspace where the file was selected;
+leaving that view retires its UI result. An unconfirmed write retains the usual
+explicit draft recovery instead of silently retrying the import.
+
+Word conversion runs in a disposable browser Worker with a 15-second budget.
+Archives with encrypted content, macros, embedded executable objects, XML entity
+declarations, duplicate/aliased parts, broken checksums, or external image/resource
+relationships are rejected. Ordinary safe hyperlinks are retained without fetching
+them. XML/editor trees are bounded to 100,000 nodes and depth 128, and embedded
+raster dimensions are bounded to 32 million pixels in total. The original Word file is
+never executed or attached as HTML. Page layout, custom fonts and advanced Word
+features are not guaranteed to round-trip; keep the original file for fidelity.
+
 ### OpenTofu outputs and first apply
 
 The four Interface source URLs are ordinary root-module outputs:

@@ -1,4 +1,5 @@
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { useLocation } from "@solidjs/router";
 import type { Editor } from "@tiptap/core";
 import {
   AlignCenter,
@@ -113,6 +114,7 @@ interface ToolbarProps {
 
 export default function Toolbar(props: ToolbarProps) {
   const { t } = useI18n();
+  const location = useLocation();
   const [showLinkInput, setShowLinkInput] = createSignal(false);
   const [linkUrl, setLinkUrl] = createSignal("");
   const [showImageInput, setShowImageInput] = createSignal(false);
@@ -120,6 +122,21 @@ export default function Toolbar(props: ToolbarProps) {
   const [showTextColor, setShowTextColor] = createSignal(false);
   const [showHighlight, setShowHighlight] = createSignal(false);
   const [showExport, setShowExport] = createSignal(false);
+  const [exporting, setExporting] = createSignal(false);
+  const [exportError, setExportError] = createSignal(false);
+  const [exportWarning, setExportWarning] = createSignal(false);
+  let exportController: AbortController | undefined;
+  onCleanup(() => exportController?.abort());
+  createEffect(() => {
+    void location.pathname;
+    void location.search;
+    exportController?.abort();
+    exportController = undefined;
+    setExporting(false);
+    setExportError(false);
+    setExportWarning(false);
+    setShowExport(false);
+  });
 
   // Prefer the live editor's JSON (freshest, before autosave debounce) and fall
   // back to the persisted document content when the editor isn't ready yet.
@@ -129,9 +146,23 @@ export default function Toolbar(props: ToolbarProps) {
     return props.documentContent ?? "";
   };
 
-  const handleExport = (format: ExportFormat) => {
-    downloadDocument(format, props.documentTitle ?? "", currentContent());
+  const handleExport = async (format: ExportFormat) => {
+    if (exporting()) return;
+    const controller = new AbortController();
+    exportController = controller;
+    setExporting(true);
+    setExportError(false);
+    setExportWarning(false);
     setShowExport(false);
+    try {
+      const result = await downloadDocument(format, props.documentTitle ?? "", currentContent(), controller.signal);
+      if (!controller.signal.aborted) setExportWarning(result.hasUnsupportedContent);
+    } catch {
+      if (!controller.signal.aborted) setExportError(true);
+    } finally {
+      if (!controller.signal.aborted) setExporting(false);
+      if (exportController === controller) exportController = undefined;
+    }
   };
 
   const [, setTick] = createSignal(0);
@@ -589,17 +620,28 @@ export default function Toolbar(props: ToolbarProps) {
               setShowExport(next);
             }}
             title={t("export")}
+            disabled={exporting()}
+            aria-busy={exporting()}
             aria-haspopup="menu"
             aria-expanded={showExport()}
           >
             <Download size={16} />
-            <span class="hidden sm:inline">{t("export")}</span>
+            <span class="hidden sm:inline">{t(exporting() ? "exporting" : "export")}</span>
           </button>
           <Show when={showExport()}>
             <div
               class="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50 py-1 min-w-44"
               role="menu"
             >
+              <button
+                type="button"
+                role="menuitem"
+                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+                onClick={() => void handleExport("docx")}
+              >
+                <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
+                {t("exportDocx")}
+              </button>
               <button
                 type="button"
                 role="menuitem"
@@ -631,6 +673,13 @@ export default function Toolbar(props: ToolbarProps) {
           </Show>
         </div>
       </div>
+
+      <Show when={exportError()}>
+        <p role="alert" class="px-3 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p>
+      </Show>
+      <Show when={exportWarning()}>
+        <p role="status" class="px-3 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p>
+      </Show>
 
       {/* Link URL input */}
       <Show when={showLinkInput()}>

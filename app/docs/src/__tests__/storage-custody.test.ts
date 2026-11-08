@@ -1352,3 +1352,47 @@ test("a clean cached document is not reported as a successful load during a503",
     fixture.restore();
   }
 });
+
+test("a creator captured before file conversion keeps request, ACK and cache in A after moving to B", async () => {
+  const fixture = installFixture("import-A");
+  try {
+    const create = client.captureDocumentCreator();
+    fixture.setWorkspace("import-B");
+    client.saveDocuments([document("untouched-B", "B original bytes")]);
+    const beforeB = fixture.lastCacheSnapshot();
+    const input = document("imported-A", "converted file content");
+    const serverAck = { ...input, updatedAt: "2026-11-08T10:00:00.000Z" };
+    const urls: string[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+      urls.push(String(url));
+      expect(new Headers(init?.headers).get("If-None-Match")).toBe("*");
+      expect(new Headers(init?.headers).has("If-Match")).toBe(false);
+      return Response.json(serverAck);
+    }) as typeof fetch;
+    expect(await create(input)).toEqual(serverAck);
+    expect(urls).toEqual(["/api/documents/imported-A?space_id=import-A"]);
+    expect(fixture.cacheBytes(beforeB.key)).toBe(beforeB.bytes);
+    fixture.setWorkspace("import-A");
+    expect(client.getDocument(input.id)).toEqual(serverAck);
+    expect(client.getDocumentSaveState(input.id)).toBe("clean");
+  } finally {
+    fixture.restore();
+  }
+});
+
+test("an import creator cannot recreate a scope cleared while file conversion was pending", async () => {
+  const fixture = installFixture("retired-import-A");
+  try {
+    const create = client.captureDocumentCreator();
+    client.clearDocumentsCache();
+    fixture.setWorkspace("retired-import-B");
+    client.saveDocuments([document("untouched-retired-B", "B bytes")]);
+    const beforeB = fixture.lastCacheSnapshot();
+    await expect(create(document("must-not-create", "decoded too late"))).rejects.toThrow("cache was cleared");
+    expect(fixture.cacheBytes(beforeB.key)).toBe(beforeB.bytes);
+    fixture.setWorkspace("retired-import-A");
+    expect(client.loadDocuments()).toEqual([]);
+  } finally {
+    fixture.restore();
+  }
+});

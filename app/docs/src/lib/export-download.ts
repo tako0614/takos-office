@@ -8,8 +8,10 @@
 
 import { buildExportHtml, documentContentToPlainText } from "../mcp.ts";
 import { documentContentToMarkdown } from "./markdown.ts";
+import { exportDocxFile } from "./docx-worker.ts";
 
-export type ExportFormat = "markdown" | "text" | "html";
+export type TextExportFormat = "markdown" | "text" | "html";
+export type ExportFormat = TextExportFormat | "docx";
 
 interface ExportSpec {
   extension: string;
@@ -20,11 +22,12 @@ const EXPORT_SPECS: Record<ExportFormat, ExportSpec> = {
   markdown: { extension: "md", mimeType: "text/markdown;charset=utf-8" },
   text: { extension: "txt", mimeType: "text/plain;charset=utf-8" },
   html: { extension: "html", mimeType: "text/html;charset=utf-8" },
+  docx: { extension: "docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
 };
 
 /** Serialize the document content to the requested export format. */
 export function serializeDocument(
-  format: ExportFormat,
+  format: TextExportFormat,
   title: string,
   content: string,
 ): string {
@@ -61,16 +64,20 @@ export function exportFilename(format: ExportFormat, title: string): string {
  * Serialize and download the document in the given format via a temporary
  * anchor + object URL. No-op outside a browser (no document object).
  */
-export function downloadDocument(
+export async function downloadDocument(
   format: ExportFormat,
   title: string,
   content: string,
-): void {
+  signal?: AbortSignal,
+): Promise<{hasUnsupportedContent: boolean}> {
   const doc = globalThis.document;
-  if (!doc) return;
+  if (!doc) return {hasUnsupportedContent: false};
 
-  const data = serializeDocument(format, title, content);
-  const blob = new Blob([data], { type: EXPORT_SPECS[format].mimeType });
+  const result = format === "docx"
+    ? await exportDocxFile(title, content, signal)
+    : {blob: new Blob([serializeDocument(format, title, content)], {type: EXPORT_SPECS[format].mimeType}), hasUnsupportedContent: false};
+  signal?.throwIfAborted();
+  const {blob} = result;
   const url = URL.createObjectURL(blob);
   const anchor = doc.createElement("a");
   anchor.href = url;
@@ -80,4 +87,5 @@ export function downloadDocument(
   doc.body.removeChild(anchor);
   // Revoke on the next tick so the click has a chance to start the download.
   setTimeout(() => URL.revokeObjectURL(url), 0);
+  return {hasUnsupportedContent: result.hasUnsupportedContent};
 }
