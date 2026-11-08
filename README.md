@@ -263,3 +263,31 @@ are retired; their history lives in their own git remotes.
 ## Site deploy
 
 See [`site/DEPLOY.md`](site/DEPLOY.md).
+
+## Current-source Takoform Host module
+
+The **Takoform Host** source option selects `deploy/takoform-v1` and Provider
+4.0.0. It builds the selected Git source, stages `dist/worker.js`, and publishes
+one ModuleWorker/Bundle/Version/Deployment/Endpoint graph. It does not select the
+old v0.3.1 release pin. The older `deploy/takoform` module is kept unchanged; this
+is a separate module, not a state migration or an in-place provider upgrade.
+
+Enter the explicit Takosumi Core API URL. Current app and internal storage IDs
+come from the selected install context. Session-secret and OIDC binding names
+are compiled through the current runtime-binding v2 profile, with no credential
+values in HCL or public metadata. The host supplies the exact registered
+`OIDC_REDIRECT_URI` before activation; Office uses it for login/token exchange
+and derives the public MCP audience from that configured URI when `APP_URL` is
+absent. An invalid declared URI or conflicting explicit app origin returns 503;
+it never falls back to request Host. Owner-subject delivery does not add an
+owner-only content rule: current app owner/member authorization is preserved.
+
+`launch_url` is an ordinary endpoint output used by the reviewed launcher
+Interface. It is not fed into WorkerVersion or OIDC configuration, so it creates
+no post-apply URL cycle. A compatible Host, its private runtime inputs and an
+explicit policy permitting the Storage app-data profile remain necessary.
+Source/local tests are not proof of a configured Host, provider Plan/Apply, or
+installed service. This module advertises the Suite launcher only. MCP
+shared-data delegation is not implemented, so this module does not publish an
+MCP Interface or MCP endpoint output. Existing-object migration also remains
+open as described above.

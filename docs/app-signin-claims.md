@@ -86,3 +86,19 @@ Deploy the updated consuming apps first. Apply the Takosumi Accounts open-sign-i
 writer B change from PR #657 last. Self-host installs that have not received the
 app update must keep their configured `APP_WORKSPACE_ID` membership requirement
 until they update.
+
+## Registered runtime callback
+
+The source-built `deploy/takoform-v1` module requests the current binding-delivered
+OIDC profile and a generated session secret. `OIDC_REDIRECT_URI` is an exact
+registered HTTPS `/api/auth/callback` URI supplied by the Host, not a browser
+request field. When declared it supplies the callback for both authorization and
+code exchange; an absent explicit `APP_URL` may use its origin for the MCP
+resource audience. A blank, malformed, credential-bearing or mismatched declared
+URI fails closed even if another app URL is available. When both are declared,
+`APP_URL` must be the same HTTPS origin without a subpath, so its MCP audience
+matches the module's root `/mcp` endpoint. Legacy deployments that
+do not declare the binding retain their existing request-origin callback.
+`OIDC_OWNER_SUB` is delivered for profile compatibility, not read as membership
+or used to restrict content to the original owner. This does not qualify real
+client registration, runtime input delivery, deployment or sign-in.
