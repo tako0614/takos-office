@@ -24,13 +24,41 @@ bun run start      # run it locally
 ```
 
 Standalone HTTP storage needs `OBJECT_STORAGE_API_URL`,
-`OBJECT_STORAGE_ACCESS_TOKEN`, and a storage namespace (`TAKOS_SPACE_ID`). The
-default Worker currently uses that configured bearer for every object operation;
-it does not yet resolve a Takosumi storage InterfaceLink or obtain operation-specific
-invocation tokens. A short-lived, single-permission Interface token is therefore
-not a replacement for this standing storage credential. App-scoped sign-in is
-integrated separately; the managed storage consumer remains unfinished. See
-[Build](#build) for the full check and MCP authentication options.
+`OBJECT_STORAGE_ACCESS_TOKEN`, and a storage namespace (`TAKOS_SPACE_ID`).
+
+For browser storage managed by Takosumi, configure the explicit HTTPS
+`TAKOSUMI_CONTROL_API_URL`, app-scoped OIDC sign-in, `APP_CAPSULE_ID`, and a fixed
+`APP_WORKSPACE_ID`/`TAKOS_SPACE_ID`. The root manifest requests the four
+`storage.object.*` permissions using the explicit `oauth2.app-data.v1` delivery.
+Each request revalidates its signed-in person; every object operation obtains a
+new exact-permission token with `dataScope: "app-shared.v1"`. No invocation token
+is written into frontend storage or cached across people. Failed or invalid
+runtime configuration never falls back to the standalone bearer.
+
+The root module exposes `takosumi_control_api_url` as a visible explicit input.
+It retains an empty HCL default for existing standalone callers. An
+app-authenticated Worker without explicit standalone Storage is refused by a
+resource precondition until this URL is supplied, before resources can be changed. The URL is not inferred from Accounts, request Host, or outputs.
+An operator must explicitly permit these four storage permissions and this
+new delivery profile; the default launcher/MCP-only policy intentionally refuses
+it. Normal provider selection and approval remain required.
+
+Use an artifact built from this updated source. The existing `v0.3.1` release
+pin is unchanged and does not prove the new runtime consumer is deployed.
+Existing Binding-scoped objects are not copied into the new app namespace;
+changing a live connection needs an explicit data migration/cutover. Browser
+app-session delegation does not turn an incoming MCP invocation bearer into an
+Office app login: cookie-less MCP storage delegation and portable-module runtime
+configuration remain separate follow-ups. MCP retains its explicit standalone storage configuration even when browser
+runtime storage is enabled. It does not use the new app namespace: the two routes
+must not be assumed to see the same data without a separate migration/delegation
+plan. No managed/live readiness is claimed by the local proof.
+
+In runtime storage mode `/health` and `/healthz` validate configuration only and
+return `storage: "per_request_authorization", storageProbed: false`; anonymous
+probes never acquire person credentials or claim the backend is reachable. Each
+signed-in operation performs the actual authorization/storage checks. Standalone
+readiness retains its existing authenticated object-list probe.
 
 ## Layout
 
@@ -62,7 +90,7 @@ grant no access and do not create a launcher.
 | --------- | ---------------------------------------------------------------------------------------------- |
 | publish   | `mcp.server` at `/mcp`                                                                         |
 | publish   | `interface.ui.surface` at `/`, opening the Suite shell with Docs, Slides and Sheets links      |
-| consume   | `storage.object` via `OBJECT_STORAGE_API_URL`; bearer comes from `OBJECT_STORAGE_ACCESS_TOKEN` |
+| consume   | `storage.object` via explicit app-shared Link and per-operation authority, or standalone `OBJECT_STORAGE_API_URL` / `OBJECT_STORAGE_ACCESS_TOKEN` |
 
 ## How it serves
 

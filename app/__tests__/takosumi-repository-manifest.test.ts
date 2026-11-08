@@ -216,10 +216,16 @@ interface RepositoryModule {
     source: { kind: string };
     type?: string;
     advanced?: boolean;
+    required?: boolean;
     secret?: boolean;
   }>;
   requires?: Array<{
     kind: string;
+    scopes?: string[];
+    key?: string;
+    interface?: { type: string; version: string };
+    permissions?: string[];
+    delivery?: { type: string };
     deliver?: { variables?: Record<string, string> };
   }>;
   interfaces?: Array<{
@@ -240,3 +246,23 @@ interface RepositoryModule {
     }>;
   }>;
 }
+
+
+test("root requests app-shared storage with a runtime-read OAuth grant and explicit API URL", () => {
+  const module = manifest.install.modules["."]!;
+  expect(module.requires?.find(entry => entry.kind === "identity.oidc")?.scopes)
+    .toEqual(["openid", "profile", "email", "capsules:read"]);
+  expect(module.requires?.filter(entry => entry.kind === "interface.consume")).toEqual([{
+    kind: "interface.consume", key: "storage",
+    interface: { type: "storage.object", version: "1" },
+    permissions: ["storage.object.list", "storage.object.read", "storage.object.write", "storage.object.delete"],
+    delivery: { type: "oauth2.app-data.v1" },
+  }]);
+  expect(module.inputs).toContainEqual(expect.objectContaining({
+    name: "takosumi_control_api_url", source: { kind: "user" }, type: "string",
+    required: false, advanced: false,
+  }));
+  expect(variableBlock(moduleSources["."]!, "takosumi_control_api_url")).toMatch(/default\s+=\s+""/);
+  expect(moduleSources["."]).toContain('name = "TAKOSUMI_CONTROL_API_URL"');
+  expect(moduleSources["."]).toContain('text = local.takosumi_control_api_url');
+});

@@ -536,6 +536,33 @@ export async function requireAppAuth(
   return null;
 }
 
+/** Whether per-person runtime storage has a configured app sign-in boundary. */
+export function appRuntimeAuthConfigured(env: AppRuntimeEnv): boolean {
+  const config = authConfig(env);
+  return config.required && !!config.issuer && !!config.clientId &&
+    !!config.sessionSecret && !!envValue(env, "APP_CAPSULE_ID");
+}
+
+/** Server-side only: use the revalidated app session for runtime Interface calls. */
+export async function appRuntimeAccessToken(
+  env: AppRuntimeEnv,
+  request: Request,
+  options: RequireAppAuthOptions,
+): Promise<string | Response> {
+  const config = authConfig(env);
+  if (!config.required || !config.sessionSecret || !envValue(env, "APP_CAPSULE_ID") || !options.spaceId) {
+    return Response.json({ error: "storage_runtime_session_required" }, { status: 401 });
+  }
+  const denied = await requireAppAuth(env, request, options);
+  if (denied) return denied;
+  const raw = parseCookie(request.headers.get("Cookie"), SESSION_COOKIE);
+  const session = raw ? await unseal<AppSession>(raw, config.sessionSecret, "session") : null;
+  if (!session?.accessToken) {
+    return Response.json({ error: "storage_runtime_session_required" }, { status: 401 });
+  }
+  return session.accessToken;
+}
+
 export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
   app.get("/api/auth/login", async (c) => {
     const misconfigured = appAuthMisconfigured(env);
@@ -554,7 +581,9 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", config.clientId!);
     authUrl.searchParams.set("redirect_uri", callbackUrl(c.req.raw));
-    authUrl.searchParams.set("scope", "openid profile email");
+    authUrl.searchParams.set("scope", env.TAKOSUMI_CONTROL_API_URL !== undefined
+      ? "openid profile email capsules:read"
+      : "openid profile email");
     authUrl.searchParams.set("state", state.state);
     authUrl.searchParams.set(
       "code_challenge",

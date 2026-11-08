@@ -78,6 +78,17 @@ variable "cloudflare_workers_subdomain" {
   }
 }
 
+variable "takosumi_control_api_url" {
+  description = "Explicit HTTPS base URL of the Takosumi Core API used with the signed-in person's app bearer. Never inferred from the Accounts issuer or request Host. Empty retains standalone storage configuration."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.takosumi_control_api_url) == "" || can(regex("^https://[^/?#@[:space:]]+(/[^?#[:space:]]*)?$", var.takosumi_control_api_url))
+    error_message = "takosumi_control_api_url must be empty or a credential-free HTTPS base URL without query or fragment."
+  }
+}
+
 variable "object_storage_api_url" {
   description = "Base URL of the object-storage API this Office instance reads/writes (injected as OBJECT_STORAGE_API_URL). Leave empty when the runtime injects the storage binding."
   type        = string
@@ -168,6 +179,7 @@ variable "env" {
       !contains([
         "APP_URL",
         "OBJECT_STORAGE_API_URL",
+        "TAKOSUMI_CONTROL_API_URL",
         "OBJECT_STORAGE_ACCESS_TOKEN",
         "OBJECT_STORAGE_KEY_PREFIX",
         "TAKOS_SPACE_ID",
@@ -352,6 +364,7 @@ locals {
   workers_dev_url               = trimspace(var.cloudflare_workers_subdomain) != "" ? "https://${local.worker_name}.${trimspace(var.cloudflare_workers_subdomain)}.workers.dev" : null
   launch_url                    = trimspace(var.app_url) != "" ? trimspace(var.app_url) : local.workers_dev_url
   provided_mcp_auth_token       = trimspace(var.mcp_auth_token)
+  takosumi_control_api_url      = trimspace(var.takosumi_control_api_url)
   provided_storage_api_url      = trimspace(var.object_storage_api_url)
   provided_storage_access_token = trimspace(var.object_storage_access_token)
   provided_storage_key_prefix   = trimspace(var.object_storage_key_prefix)
@@ -438,6 +451,13 @@ resource "cloudflare_workers_script" "worker" {
         text = local.launch_url != null ? local.launch_url : ""
       },
     ],
+    local.takosumi_control_api_url != "" ? [
+      {
+        type = "plain_text"
+        name = "TAKOSUMI_CONTROL_API_URL"
+        text = local.takosumi_control_api_url
+      },
+    ] : [],
     local.provided_storage_api_url != "" ? [
       {
         type = "plain_text"
@@ -519,6 +539,15 @@ resource "cloudflare_workers_script" "worker" {
   )
 
   lifecycle {
+    precondition {
+      condition = !local.cloudflare_worker_enabled || !local.has_takosumi_accounts_oidc || (
+        local.takosumi_control_api_url != "" || (
+          local.provided_storage_api_url != "" && local.provided_storage_access_token != ""
+        )
+      )
+      error_message = "Set takosumi_control_api_url before deploying app-authenticated Office with a Takosumi Storage connection. Existing standalone deployments must supply their explicit object_storage_api_url and object_storage_access_token."
+    }
+
     precondition {
       condition     = !local.worker_bundle_release_tag_mode || local.worker_release_pin_is_valid
       error_message = "worker_release_tag is not a complete append-only pin in release.lock.json. Add and review the release pin before selecting it."
