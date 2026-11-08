@@ -39,5 +39,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-takos-office-
 
+      - name: Install Canvas build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
       - run: bun install --frozen-lockfile
       - run: bun run check
