@@ -208,6 +208,9 @@ export function renderShellPage(): string {
     <ul class="items" id="items"></ul>
     <div class="loading" id="loading">Loading…</div>
     <div class="empty" id="empty" hidden>Nothing here yet — open an app above to get started.</div>
+    <div id="load-error" role="alert" hidden>Couldn't load your files. Try again.</div>
+    <div id="partial" role="status" hidden>Some apps couldn't be loaded. Results may be incomplete.</div>
+    <button id="retry" type="button" hidden>Try again</button>
   </main>
 <script>
 (function () {
@@ -239,6 +242,10 @@ export function renderShellPage(): string {
   var itemsEl = document.getElementById("items");
   var loadingEl = document.getElementById("loading");
   var emptyEl = document.getElementById("empty");
+  var errorEl = document.getElementById("load-error");
+  var partialEl = document.getElementById("partial");
+  var retryEl = document.getElementById("retry");
+  var loadSequence = 0;
   var headingEl = document.getElementById("list-heading");
   var input = document.getElementById("q");
 
@@ -258,10 +265,15 @@ export function renderShellPage(): string {
     sheet: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>',
   };
 
-  function render(items) {
+  function render(data) {
+    var items = data.items;
+    if (!Array.isArray(items)) throw new Error("Invalid files response");
+    var incomplete = Array.isArray(data.unavailableApps) && data.unavailableApps.length > 0;
+    partialEl.hidden = !incomplete;
+    retryEl.hidden = !incomplete;
     loadingEl.hidden = true;
     itemsEl.innerHTML = "";
-    if (!items || !items.length) { emptyEl.hidden = false; return; }
+    if (!items.length) { emptyEl.hidden = incomplete; return; }
     emptyEl.hidden = true;
     items.forEach(function (it) {
       var li = document.createElement("li");
@@ -275,29 +287,47 @@ export function renderShellPage(): string {
   }
 
   function load(url, heading) {
+    var sequence = ++loadSequence;
     loadingEl.hidden = false;
     emptyEl.hidden = true;
+    errorEl.hidden = true;
+    partialEl.hidden = true;
+    retryEl.hidden = true;
     itemsEl.innerHTML = "";
     headingEl.textContent = heading;
     fetch(withSpace(url), { credentials: "same-origin" }).then(function (r) {
+      if (sequence !== loadSequence) return null;
       if (r.status === 401) {
         location.href = "/docs/api/auth/login?return_to=" + encodeURIComponent(location.pathname + location.search);
         return null;
       }
-      return r.ok ? r.json() : { items: [] };
-    }).then(function (data) { if (data) render(data.items); })
-      .catch(function () { loadingEl.hidden = true; emptyEl.hidden = false; });
+      if (!r.ok) throw new Error("Files unavailable");
+      return r.json();
+    }).then(function (data) {
+      if (sequence === loadSequence && data) render(data);
+    }).catch(function () {
+      if (sequence !== loadSequence) return;
+      loadingEl.hidden = true;
+      emptyEl.hidden = true;
+      errorEl.hidden = false;
+      retryEl.hidden = false;
+    });
   }
 
   var timer;
-  input.addEventListener("input", function () {
+  function loadCurrent() {
     clearTimeout(timer);
     var q = input.value.trim();
-    timer = setTimeout(function () {
-      if (!q) load("/api/office/items", "Recent");
-      else load("/api/office/search?q=" + encodeURIComponent(q), "Results");
-    }, 200);
+    if (!q) load("/api/office/items", "Recent");
+    else load("/api/office/search?q=" + encodeURIComponent(q), "Results");
+  }
+  input.addEventListener("input", function () {
+    // Retire the previous query immediately, including the debounce window.
+    ++loadSequence;
+    clearTimeout(timer);
+    timer = setTimeout(loadCurrent, 200);
   });
+  retryEl.addEventListener("click", loadCurrent);
 
   load("/api/office/items", "Recent");
 })();

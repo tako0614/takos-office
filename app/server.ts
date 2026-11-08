@@ -53,6 +53,7 @@ import {
 } from "./shared/app-auth.ts";
 import {
   collectOfficeItems,
+  type OfficeItemsResult,
   type OfficeStores,
   searchOfficeItems,
 } from "./office-items.ts";
@@ -179,6 +180,16 @@ export function createOfficeApp(
   const storageUnavailable = (c: Context) =>
     c.json({ error: "object_storage_not_configured" }, 503);
 
+  const officeItemsResponse = (c: Context, result: OfficeItemsResult) => {
+    if (result.unavailableApps.length === 3) {
+      return c.json({ error: "office_items_unavailable" }, 503);
+    }
+    return c.json({
+      items: result.items.slice(0, 500),
+      ...(result.unavailableApps.length > 0 ? { unavailableApps: result.unavailableApps } : {}),
+    });
+  };
+
   // ---- Office shell cross-editor APIs (recent + search) ----
   const officeStores = new Map<string, OfficeStores>();
   const storesForSpace = (spaceId: string, request: Request): OfficeStores => {
@@ -211,9 +222,7 @@ export function createOfficeApp(
     if (unauthorized) return unauthorized;
     if (!hasOfficeStorage(env)) return storageUnavailable(c);
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
-    return c.json({
-      items: (await collectOfficeItems(storesForSpace(spaceId, c.req.raw))).slice(0, 500),
-    });
+    return officeItemsResponse(c, await collectOfficeItems(storesForSpace(spaceId, c.req.raw)));
   });
 
   app.get("/api/office/search", async (c) => {
@@ -227,12 +236,7 @@ export function createOfficeApp(
     if (!spaceId) return c.json({ error: "space_id is required" }, 400);
     const q = c.req.query("q") ?? "";
     if (q.length > 512) return c.json({ error: "query_too_long" }, 400);
-    return c.json({
-      items: (await searchOfficeItems(storesForSpace(spaceId, c.req.raw), q)).slice(
-        0,
-        500,
-      ),
-    });
+    return officeItemsResponse(c, await searchOfficeItems(storesForSpace(spaceId, c.req.raw), q));
   });
 
   // ---- Unified office MCP (docs + slide + sheet) ----
