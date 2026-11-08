@@ -15,6 +15,8 @@ import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
+import { createPresentationImporter } from "../lib/presentation-import.ts";
+import { OfficeFileError } from "../../../shared/lib/office-file.ts";
 
 export default function PresentationListPage() {
   const navigate = useNavigate();
@@ -26,6 +28,14 @@ export default function PresentationListPage() {
   let active = true;
   onCleanup(() => { active = false; });
   const [creating, setCreating] = createSignal(false);
+  const [importing, setImporting] = createSignal(false);
+  const [importSaving, setImportSaving] = createSignal(false);
+  const [importError, setImportError] = createSignal<OfficeFileError["code"] | "save" | null>(null);
+  const [imported, setImported] = createSignal<{presentation: Presentation; hasUnsupportedContent: boolean} | null>(null);
+  const importer = createPresentationImporter();
+  let importGeneration = 0, fileInput!: HTMLInputElement;
+  const cancelImport = () => {importGeneration++;importer.retire();setImporting(false);setImportSaving(false);};
+  onCleanup(() => importer.retire());
   const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
   const creationReceipt = () => {
     routeScope();
@@ -57,10 +67,24 @@ export default function PresentationListPage() {
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal(t("untitledPresentation"));
 
+  const handleImport = async (file: File) => {
+    const operation = ++importGeneration;
+    setImporting(true);setImportSaving(false);setImportError(null);setImported(null);
+    try {
+      const result = await importer.importFile(file, () => {if(operation===importGeneration)setImportSaving(true);});
+      if (!result || operation!==importGeneration || !active) return;
+      setPresentations(loadPresentations());setImported(result);
+    } catch (error) {
+      if (operation!==importGeneration || !active) return;
+      setPresentations(loadPresentations());
+      setImportError(error instanceof OfficeFileError ? error.code : "save");
+    } finally {if(operation===importGeneration && active)setImporting(false);}
+  };
+
   // Create a presentation and navigate into it. Shared by the dialog's
   // "Create" button and the `?new=1` quick-create entry from the Office shell.
   const createAndOpen = async (title: string) => {
-    if (creating() || creationError()) return;
+    if (creating() || importing() || creationError()) return;
     const scope = routeScope();
     const receipt = creationReceipt();
     setCreating(true);
@@ -88,6 +112,7 @@ export default function PresentationListPage() {
 
   createEffect(() => {
     const scope = routeScope();
+    cancelImport();setImportError(null);setImported(null);
     setIsLoading(true);setPresentations([]);setDeleteError("");setDeleting(new Set<string>());
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
@@ -155,7 +180,7 @@ export default function PresentationListPage() {
             <button
               type="button"
               class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
-              disabled={creating() || !!creationError()}
+              disabled={creating() || importing() || !!creationError()}
               onClick={openNewDialog}
             >
               {t("newPresentationButton")}
@@ -166,6 +191,22 @@ export default function PresentationListPage() {
 
       {/* Content */}
       <main class="max-w-6xl mx-auto px-6 py-8">
+        <div class="mb-6 flex flex-col items-start gap-2">
+          <input ref={fileInput} type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden" aria-label={t("importPptx")}
+            onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
+          <button type="button" disabled={creating() || importing() || !!creationError()} onClick={() => fileInput.click()}
+            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800">{t("importPptx")}</button>
+          <p class="max-w-xl text-xs text-gray-500 dark:text-gray-400">{t("fileImportHelp")}</p>
+          <Show when={importing()}><div role="status" aria-busy="true" class="text-sm text-gray-700 dark:text-gray-200">
+            {t(importSaving() ? "importSaving" : "importing")}
+            <Show when={!importSaving()}><button type="button" class="ml-3 underline" onClick={cancelImport}>{t("cancel")}</button></Show>
+          </div></Show>
+          <Show when={importError()}>{(code) => <p role="alert" class="text-sm text-red-700 dark:text-red-300">{t({invalid:"fileInvalid","too-large":"fileTooLarge",unsafe:"fileUnsafe",unsupported:"fileUnsupported",timeout:"fileTimeout",save:"importSaveFailed"}[code()] as "fileInvalid" | "fileTooLarge" | "fileUnsafe" | "fileUnsupported" | "fileTimeout" | "importSaveFailed")}</p>}</Show>
+          <Show when={imported()}>{(result) => <div role="status" class="text-sm text-gray-800 dark:text-gray-100">
+            <p>{t(result().hasUnsupportedContent ? "fileFormattingWarning" : "importComplete")}</p>
+            <button type="button" class="mt-2 text-blue-700 underline dark:text-blue-300" onClick={() => navigate(withCurrentSpaceId(`/${result().presentation.id}`))}>{t("openImportedPresentation")}</button>
+          </div>}</Show>
+        </div>
         <Show when={deleteError()}>
           <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-gray-100">
             <p>{deleteError()}</p>
@@ -226,7 +267,7 @@ export default function PresentationListPage() {
                 <button
                   type="button"
                   class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
-                  disabled={creating() || !!creationError()}
+                  disabled={creating() || importing() || !!creationError()}
               onClick={openNewDialog}
                 >
                   {t("createPresentation")}
@@ -282,7 +323,7 @@ export default function PresentationListPage() {
               <button
                 type="button"
                 class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
-                disabled={creating() || !!creationError()}
+                disabled={creating() || importing() || !!creationError()}
                 onClick={handleCreate}
               >
                 {t("create")}

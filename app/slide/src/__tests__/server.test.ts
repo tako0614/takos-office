@@ -428,3 +428,71 @@ test("presentation API allows spaces in the subject's membership", async () => {
   expect(allowed.status).toEqual(200);
   expect(await allowed.json()).toEqual({ authenticated: true });
 });
+
+test("presentation physical size survives conditional save/read while legacy records and stale CAS remain intact", async () => {
+  const now = "2026-04-30T00:00:00.000Z";
+  const legacy = {id:"pres-1",title:"Legacy deck",slides:[{id:"slide-1",elements:[],background:"#ffffff"}],createdAt:now,updatedAt:now};
+  const records = seedPresentationRecords(now,legacy,"Physical size.takosslide");
+  const mock = installObjectStorageMock(records);
+  try {
+    const app = createSlideAppFromEnv({...env,TAKOS_SPACE_ID:undefined});
+    const endpoint = "/api/presentations/file-1?space_id=space-q";
+    const old = await app.request(endpoint);
+    expect(old.status).toBe(200);
+    expect(await old.json()).toEqual(legacy);
+    const size = {widthEmu:9144000,heightEmu:6858000}; // ten by seven-and-a-half inches, 4:3
+    const saved = await app.request(new Request("http://localhost"+endpoint,{method:"PUT",headers:{"content-type":"application/json","if-match":now},body:JSON.stringify({...legacy,slideSize:size})}));
+    expect(saved.status).toBe(200);
+    const ack = await saved.json();
+    expect(ack.slideSize).toEqual(size);
+    expect(saved.headers.get("etag")).toBe(`"${ack.updatedAt}"`);
+    const reread = await app.request(endpoint);
+    expect(reread.status).toBe(200);
+    expect((await reread.json()).slideSize).toEqual(size);
+    const writes = mock.calls.filter(call => call.method === "PUT").length;
+    const stale = await app.request(new Request("http://localhost"+endpoint,{method:"PUT",headers:{"content-type":"application/json","if-match":now},body:JSON.stringify({...legacy,slideSize:{widthEmu:9144000,heightEmu:5143500}})}));
+    expect(stale.status).toBe(409);
+    expect(mock.calls.filter(call => call.method === "PUT").length).toBe(writes);
+    expect((await (await app.request(endpoint)).json()).slideSize).toEqual(size);
+  } finally { mock.restore(); }
+});
+
+test("an admitted independent PowerPoint raster survives the real presentation API save and reload", async () => {
+  const { importPptx } = await import("../lib/pptx-import.ts");
+  const input = new Uint8Array(await Bun.file(new URL("./fixtures/pptx/shp-pos-and-size.pptx",import.meta.url)).arrayBuffer());
+  const imported = await importPptx(input);
+  const now = "2026-04-30T00:00:00.000Z";
+  const legacy = {id:"pres-1",title:"Imported deck",slides:[{id:"slide-1",elements:[],background:"#ffffff"}],createdAt:now,updatedAt:now};
+  const records = seedPresentationRecords(now,legacy,"Imported.takosslide");
+  const mock = installObjectStorageMock(records);
+  try {
+    const app = createSlideAppFromEnv({...env,TAKOS_SPACE_ID:undefined});
+    const endpoint = "/api/presentations/file-1?space_id=space-q";
+    const saved = await app.request(new Request("http://localhost"+endpoint,{method:"PUT",headers:{"content-type":"application/json","if-match":now},body:JSON.stringify({...legacy,slides:imported.slides,slideSize:imported.slideSize})}));
+    expect(saved.status).toBe(200);
+    const ack = await saved.json();
+    expect(ack.slides[1].elements.find((element: {type:string}) => element.type==="image").imageUrl).toBe(imported.slides[1].elements.find(element => element.type==="image")!.imageUrl);
+    const read = await app.request(endpoint);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual(ack);
+  } finally { mock.restore(); }
+});
+
+test("many individually short valid raster data URLs share the API deck pixel budget", async () => {
+  const { createCanvas } = await import("canvas");
+  const canvas = createCanvas(256,256), context = canvas.getContext("2d");
+  const elements = Array.from({length:489},(_,index) => {
+    context.fillStyle=`rgb(${index%256},${Math.floor(index/256)},90)`;context.fillRect(0,0,256,256);
+    const imageUrl=canvas.toDataURL("image/png");
+    expect(imageUrl.length).toBeLessThanOrEqual(2048);
+    return {id:`small-${index}`,type:"image",x:0,y:0,width:256,height:256,rotation:0,imageUrl};
+  }); // 489 distinct 256² rasters = 32,047,104 pixels, independent of compression size.
+  const now="2026-04-30T00:00:00.000Z", legacy={id:"pres-1",title:"Pixel budget",slides:[{id:"s",elements:[],background:"#ffffff"}],createdAt:now,updatedAt:now};
+  const records=seedPresentationRecords(now,legacy,"Budget.takosslide"), mock=installObjectStorageMock(records);
+  try {
+    const app=createSlideAppFromEnv({...env,TAKOS_SPACE_ID:undefined});
+    const response=await app.request(new Request("http://localhost/api/presentations/file-1?space_id=space-q",{method:"PUT",headers:{"content-type":"application/json","if-match":now},body:JSON.stringify({...legacy,slides:[{id:"s",elements,background:"#ffffff"}]})}));
+    expect(response.status).toBe(400);
+    expect(mock.calls.filter(call=>call.method==="PUT")).toHaveLength(0);
+  } finally {mock.restore();}
+});

@@ -1,7 +1,7 @@
 import type { Slide, SlideElement } from "../types/index.ts";
 import { elementCenter, rotatePoint, toElementLocal } from "./geometry.ts";
 
-const SLIDE_ASPECT = 16 / 9;
+import { logicalSlideSize, type SlideSize } from "../../../shared/lib/slide-size.ts";
 
 /**
  * Module-level cache of decoded images keyed by their source URL.
@@ -19,11 +19,50 @@ const SLIDE_ASPECT = 16 / 9;
  * load for the same URL while one is pending.
  */
 type CachedImage =
-  | { status: "loading"; promise: Promise<void> }
+  | { status: "loading"; promise: Promise<void>; cancel: () => void }
   | { status: "ready"; image: HTMLImageElement }
   | { status: "error" };
 
 const imageCache = new Map<string, CachedImage>();
+const imageOwners = new Set<{ urls: Set<string>; redraw: () => void }>();
+const imageReferences = new Map<string, number>();
+
+function releaseImage(url: string): void {
+  const remaining = (imageReferences.get(url) ?? 1) - 1;
+  if (remaining > 0) { imageReferences.set(url, remaining); return; }
+  imageReferences.delete(url);
+  const image = imageCache.get(url);
+  imageCache.delete(url);
+  if (image?.status === "loading") image.cancel();
+}
+
+/** A drawing owner replaces its current URLs atomically and retires on cleanup. */
+export function observeSlideImages(redraw: () => void): {
+  update: (slides: readonly Slide[]) => void;
+  close: () => void;
+} {
+  const owner = { urls: new Set<string>(), redraw };
+  imageOwners.add(owner);
+  return {
+    update(slides) {
+      if (!imageOwners.has(owner)) return;
+      const urls = new Set(slides.flatMap((slide) => slide.elements.flatMap(
+        (element) => element.type === "image" && element.imageUrl ? [element.imageUrl] : [],
+      )));
+      for (const url of urls) {
+        if (!owner.urls.has(url)) imageReferences.set(url, (imageReferences.get(url) ?? 0) + 1);
+      }
+      const previous = owner.urls;
+      owner.urls = urls;
+      for (const url of previous) if (!urls.has(url)) releaseImage(url);
+    },
+    close() {
+      if (!imageOwners.delete(owner)) return;
+      for (const url of owner.urls) releaseImage(url);
+      owner.urls.clear();
+    },
+  };
+}
 
 /**
  * Begin decoding an image for `url`, populating the cache. Returns a promise
@@ -40,18 +79,31 @@ function loadImage(url: string): Promise<void> {
   const img = new Image();
   img.crossOrigin = "anonymous";
 
-  const promise = new Promise<void>((resolve) => {
-    img.onload = () => {
-      imageCache.set(url, { status: "ready", image: img });
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  const entry: CachedImage = {
+    status: "loading", promise,
+    cancel() {
+      img.onload = null;
+      img.onerror = null;
+      img.src = "";
       resolve();
-    };
-    img.onerror = () => {
-      imageCache.set(url, { status: "error" });
-      resolve();
-    };
-  });
-
-  imageCache.set(url, { status: "loading", promise });
+    },
+  };
+  const finish = (value: CachedImage) => {
+    if (imageCache.get(url) !== entry) return;
+    img.onload = null;
+    img.onerror = null;
+    imageCache.set(url, value);
+    resolve();
+    // A fresh complete draw preserves scale/rotation and current owner state.
+    for (const owner of [...imageOwners]) {
+      if (imageOwners.has(owner) && owner.urls.has(url)) owner.redraw();
+    }
+  };
+  img.onload = () => finish({ status: "ready", image: img });
+  img.onerror = () => finish({ status: "error" });
+  imageCache.set(url, entry);
   img.src = url;
   return promise;
 }
@@ -401,17 +453,19 @@ function drawSelectionHandles(
 export function renderThumbnail(
   slide: Slide,
   thumbWidth = 192,
+  slideSize?: SlideSize,
 ): HTMLCanvasElement {
-  const thumbHeight = thumbWidth / SLIDE_ASPECT;
+  const logical = logicalSlideSize(slideSize);
+  const thumbHeight = Math.max(1, thumbWidth * logical.height / logical.width);
   const canvas = document.createElement("canvas");
   canvas.width = thumbWidth;
   canvas.height = thumbHeight;
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
 
-  // The slide coordinates are in a 960x540 space
-  const scaleX = thumbWidth / 960;
-  const scaleY = thumbHeight / 540;
+  // Legacy records resolve to the original 960×540 coordinate space.
+  const scaleX = thumbWidth / logical.width;
+  const scaleY = thumbHeight / logical.height;
 
   ctx.save();
   ctx.clearRect(0, 0, thumbWidth, thumbHeight);

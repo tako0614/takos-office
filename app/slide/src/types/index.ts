@@ -1,3 +1,6 @@
+import type { SlideSize } from "../../../shared/lib/slide-size.ts";
+export type { SlideSize } from "../../../shared/lib/slide-size.ts";
+
 export type SlideElementType = "text" | "shape" | "image";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +68,8 @@ export interface Presentation {
   id: string;
   title: string;
   slides: Slide[];
+  /** Absent in legacy records, whose logical coordinate space is 960×540. */
+  slideSize?: SlideSize;
   createdAt: string;
   updatedAt: string;
 }

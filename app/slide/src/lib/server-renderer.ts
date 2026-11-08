@@ -8,10 +8,8 @@
 import { createCanvas, type Image, loadImage } from "canvas";
 import type { Slide, SlideElement } from "../types/index.ts";
 import { loadImageForExport } from "./image-loader.ts";
+import { logicalSlideSize, type SlideSize } from "../../../shared/lib/slide-size.ts";
 
-/** The canonical slide coordinate space (matches the browser editor). */
-const SLIDE_WIDTH = 960;
-const SLIDE_HEIGHT = 540;
 
 /** A map of slide-element id -> decoded image (only successfully loaded ones). */
 type ImageMap = Map<string, Image>;
@@ -45,20 +43,28 @@ export async function renderSlideToBuffer(
   slide: Slide,
   width = 1280,
   height = 720,
+  slideSize?: SlideSize,
 ): Promise<Uint8Array> {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  const scaleX = width / SLIDE_WIDTH;
-  const scaleY = height / SLIDE_HEIGHT;
+  const logical = logicalSlideSize(slideSize);
+  const fit = Math.min(width / logical.width, height / logical.height);
+  // Existing field-absent callers retain their rectangle convention. Imported
+  // physical pages fit the requested output without stretching their content.
+  const scaleX = slideSize ? fit : width / logical.width;
+  const scaleY = slideSize ? fit : height / logical.height;
+  const offsetX = slideSize ? (width - logical.width * fit) / 2 : 0;
+  const offsetY = slideSize ? (height - logical.height * fit) / 2 : 0;
   const images = await loadSlideImages(slide);
 
   // Background
   ctx.fillStyle = slide.background;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(offsetX, offsetY, logical.width * scaleX, logical.height * scaleY);
 
   // Scale to fit
   ctx.save();
+  ctx.translate(offsetX, offsetY);
   ctx.scale(scaleX, scaleY);
 
   for (const element of slide.elements) {

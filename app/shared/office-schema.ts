@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { isValidSlideSize } from "./lib/slide-size.ts";
+import { MAX_OFFICE_EDITOR_BYTES } from "./lib/office-file.ts";
+import { readRasterDataUrl, MAX_RASTER_PIXELS } from "./lib/office-raster.ts";
 
 const id = z.string().trim().min(1).max(256);
 const title = z.string().max(512);
@@ -46,6 +49,9 @@ const transitionSchema = z
   })
   .strict();
 
+const embeddedRasterPattern = /^data:image\/(?:png|jpeg|gif|bmp);base64,[A-Za-z0-9+/]*={0,2}$/i;
+const imageSourceSchema = z.union([z.string().max(2_048), z.string().max(MAX_OFFICE_EDITOR_BYTES).regex(embeddedRasterPattern)]);
+
 const elementSchema = z
   .object({
     id,
@@ -66,7 +72,7 @@ const elementSchema = z
     fillColor: css.optional(),
     strokeColor: css.optional(),
     strokeWidth: finite.optional(),
-    imageUrl: z.string().max(2_048).optional(),
+    imageUrl: imageSourceSchema.optional(),
   })
   .strict();
 
@@ -86,15 +92,38 @@ export const presentationCreateSchema = z
   })
   .strict();
 
+const slideSizeSchema = z.object({widthEmu: z.number(), heightEmu: z.number()}).strict().refine(isValidSlideSize);
+
 export const presentationSchema = z
   .object({
     id,
     title,
     slides: z.array(slideSchema).min(1).max(1_000),
+    slideSize: slideSizeSchema.optional(),
     createdAt: timestamp,
     updatedAt: timestamp,
   })
-  .strict();
+  .strict()
+  .superRefine((presentation, context) => {
+    // Ordinary URLs retain their previous 2048-character limit. Every
+    // supported embedded raster shares the deck budget, even a short data URI.
+    const images = presentation.slides.flatMap(slide => slide.elements).map(element => element.imageUrl).filter((value): value is string => typeof value === "string");
+    if (!images.some(value => embeddedRasterPattern.test(value))) return;
+    let encoded = 0, bytes = 0, pixels = 0;
+    try {
+      for (const value of images) {
+        if (!embeddedRasterPattern.test(value)) continue;
+        encoded += value.length;
+        if (encoded > MAX_OFFICE_EDITOR_BYTES) throw new Error("Embedded image budget exceeded");
+        const raster = readRasterDataUrl(value);
+        bytes += raster.bytes.byteLength;
+        pixels += raster.width * raster.height;
+        if (bytes > 5 * 1024 * 1024 || pixels > MAX_RASTER_PIXELS) throw new Error("Embedded image budget exceeded");
+      }
+    } catch {
+      context.addIssue({code:z.ZodIssueCode.custom,path:["slides"],message:"Invalid or oversized embedded raster images"});
+    }
+  });
 
 const cellFormatSchema = z
   .object({
