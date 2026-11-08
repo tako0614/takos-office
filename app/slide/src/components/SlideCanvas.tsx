@@ -1,19 +1,19 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import type { Slide, SlideElement } from "../types";
+import type { Slide, SlideElement, SlideSize } from "../types";
 import {
   hitTestElements,
   hitTestHandles,
+  observeSlideImages,
   renderSlide,
   type ResizeHandle,
 } from "../lib/canvas-renderer";
 import { resizeRotatedBox } from "../lib/geometry";
 
-// Internal slide coordinate space
-const SLIDE_W = 960;
-const SLIDE_H = 540;
+import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 interface SlideCanvasProps {
   slide: Slide;
+  slideSize?: SlideSize;
   selectedElementId: string | null;
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (element: SlideElement) => void;
@@ -34,7 +34,8 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     h: 0,
   });
 
-  const scale = () => canvasSize().w / SLIDE_W;
+  const logicalSize = () => logicalSlideSize(props.slideSize);
+  const scale = () => canvasSize().w / logicalSize().width;
 
   const toSlideCoords = (clientX: number, clientY: number) => {
     if (!canvasRef) return { x: 0, y: 0 };
@@ -70,11 +71,14 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     if (!containerRef) return;
     const containerW = containerRef.clientWidth - 32; // padding
     const containerH = containerRef.clientHeight - 32;
-    const scaleW = containerW / SLIDE_W;
-    const scaleH = containerH / SLIDE_H;
+    const logical = logicalSize();
+    const scaleW = containerW / logical.width;
+    const scaleH = containerH / logical.height;
     const s = Math.min(scaleW, scaleH, 1.5);
-    setCanvasSize({ w: Math.floor(SLIDE_W * s), h: Math.floor(SLIDE_H * s) });
+    setCanvasSize({ w: Math.max(1, Math.floor(logical.width * s)), h: Math.max(1, Math.floor(logical.height * s)) });
   };
+
+  createEffect(() => { props.slideSize; updateSize(); });
 
   onMount(() => {
     updateSize();
@@ -83,8 +87,11 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     onCleanup(() => observer.disconnect());
   });
 
+  const images = observeSlideImages(redraw);
+  onCleanup(() => images.close());
   createEffect(() => {
     // Track reactive dependencies
+    images.update([props.slide]);
     props.slide;
     props.selectedElementId;
     canvasSize();
@@ -193,7 +200,7 @@ export default function SlideCanvas(props: SlideCanvasProps) {
   return (
     <div
       ref={containerRef}
-      class="flex-1 flex items-center justify-center bg-gray-200 dark:bg-gray-900 p-4 overflow-hidden"
+      class="min-w-0 flex-1 flex items-center justify-center bg-gray-200 dark:bg-gray-900 p-4 overflow-hidden"
     >
       <canvas
         ref={canvasRef}

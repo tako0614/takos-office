@@ -8,14 +8,7 @@
 import { jsPDF } from "jspdf";
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
 import { loadImageForExport } from "./image-loader.ts";
-
-/** The canonical slide coordinate space. */
-const SLIDE_WIDTH = 960;
-const SLIDE_HEIGHT = 540;
-
-/** PDF page dimensions in mm (landscape, matching 16:9 ratio). */
-const PAGE_W = 297; // A4 landscape width
-const PAGE_H = PAGE_W * (SLIDE_HEIGHT / SLIDE_WIDTH); // ~167mm
+import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 /** Slide-element id -> embeddable image (only successfully loaded ones). */
 type PdfImageMap = Map<string, { dataUrl: string; format: string }>;
@@ -28,18 +21,20 @@ type PdfImageMap = Map<string, { dataUrl: string; format: string }>;
 export async function exportPresentationToPdf(
   presentation: Presentation,
 ): Promise<Uint8Array> {
-  const doc = new jsPDF({
-    orientation: "landscape",
-    unit: "mm",
-    format: [PAGE_W, PAGE_H],
-  });
+  const logical = logicalSlideSize(presentation.slideSize);
+  // Imported page dimensions are exact EMUs (36,000 per mm). Field-absent
+  // decks retain the original 297 mm-wide PDF convention.
+  const pageWidth = presentation.slideSize ? presentation.slideSize.widthEmu / 36_000 : 297;
+  const pageHeight = presentation.slideSize ? presentation.slideSize.heightEmu / 36_000 : pageWidth * logical.height / logical.width;
+  const orientation = pageWidth >= pageHeight ? "landscape" : "portrait";
+  const doc = new jsPDF({ orientation, unit: "mm", format: [pageWidth, pageHeight] });
 
-  const scaleX = PAGE_W / SLIDE_WIDTH;
-  const scaleY = PAGE_H / SLIDE_HEIGHT;
+  const scaleX = pageWidth / logical.width;
+  const scaleY = pageHeight / logical.height;
   const images = await loadPresentationImages(presentation);
 
   for (let i = 0; i < presentation.slides.length; i++) {
-    if (i > 0) doc.addPage([PAGE_W, PAGE_H], "landscape");
+    if (i > 0) doc.addPage([pageWidth, pageHeight], orientation);
     renderSlideToPdf(doc, presentation.slides[i], scaleX, scaleY, images);
   }
 
@@ -78,7 +73,7 @@ function renderSlideToPdf(
   // Background
   const bg = parseColor(slide.background) ?? { r: 255, g: 255, b: 255 };
   doc.setFillColor(bg.r, bg.g, bg.b);
-  doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+  doc.rect(0, 0, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), "F");
 
   // Elements (render in order so later elements are on top)
   for (const element of slide.elements) {

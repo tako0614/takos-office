@@ -9,6 +9,8 @@
 import { buildExportHtml, documentContentToPlainText } from "../mcp.ts";
 import { documentContentToMarkdown } from "./markdown.ts";
 import { exportDocxFile } from "./docx-worker.ts";
+import { sanitizeFilename, downloadOfficeBlob } from "../../../shared/lib/office-download.ts";
+export { sanitizeFilename } from "../../../shared/lib/office-download.ts";
 
 export type TextExportFormat = "markdown" | "text" | "html";
 export type ExportFormat = TextExportFormat | "docx";
@@ -45,16 +47,6 @@ export function serializeDocument(
  * Turn a document title into a filesystem-friendly base name. Falls back to
  * "document" when the title is empty or strips to nothing.
  */
-export function sanitizeFilename(title: string): string {
-  const base = title
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, "") // characters illegal in common filesystems
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-  return base.length > 0 ? base : "document";
-}
-
 /** Build the download filename for a title + format. */
 export function exportFilename(format: ExportFormat, title: string): string {
   return `${sanitizeFilename(title)}.${EXPORT_SPECS[format].extension}`;
@@ -77,15 +69,6 @@ export async function downloadDocument(
     ? await exportDocxFile(title, content, signal)
     : {blob: new Blob([serializeDocument(format, title, content)], {type: EXPORT_SPECS[format].mimeType}), hasUnsupportedContent: false};
   signal?.throwIfAborted();
-  const {blob} = result;
-  const url = URL.createObjectURL(blob);
-  const anchor = doc.createElement("a");
-  anchor.href = url;
-  anchor.download = exportFilename(format, title);
-  doc.body.appendChild(anchor);
-  anchor.click();
-  doc.body.removeChild(anchor);
-  // Revoke on the next tick so the click has a chance to start the download.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  downloadOfficeBlob(result.blob, exportFilename(format, title), signal);
   return {hasUnsupportedContent: result.hasUnsupportedContent};
 }

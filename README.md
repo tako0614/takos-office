@@ -193,6 +193,22 @@ raster dimensions are bounded to 32 million pixels in total. The original Word f
 never executed or attached as HTML. Page layout, custom fonts and advanced Word
 features are not guaranteed to round-trip; keep the original file for fidelity.
 
+Slides exposes PowerPoint import in its library and a PowerPoint download button
+in the editor. Conversion uses the same disposable Worker deadline, safe package
+admission, Workspace capture, and create-only acknowledgement rules as Word.
+Imported page dimensions are retained as exact EMUs through save/reload, editor
+and thumbnail rendering, presentation mode, PNG, PDF, and PPTX export. Decks
+without this metadata retain the previous 16:9 editing space and PDF convention.
+Embedded PNG, JPEG, GIF, and BMP images share a 5 MiB decoded-byte and 32 million
+pixel budget per deck; remote images are never fetched during PPTX conversion.
+Slides accepts at most 1,000 slides, 10,000 elements per slide, and 50,000 elements
+in total. Common text, basic shapes, raster images, backgrounds, and speaker notes
+are converted; rich text, theme/layout detail, charts, groups, transitions and
+other advanced constructs can be simplified or omitted with a warning. Unsafe
+embedded objects and external resource relationships are refused before a new
+presentation is created. Keep the original PowerPoint file when layout fidelity
+matters.
+
 ### OpenTofu outputs and first apply
 
 The four Interface source URLs are ordinary root-module outputs:

@@ -131,6 +131,16 @@ function saveInScope(scope: ApiClientScope, snapshot: Presentation): { value: Pr
 export function savePresentation(snapshot: Presentation) {
   return saveInScope(api.capture(), snapshot);
 }
+/** Capture a new import's destination before reading or converting its file. */
+export function capturePresentationCreator(lifetime: {isActive?: () => boolean} = {}) {
+  const scope = api.capture(lifetime), capturedEpoch = epoch(scope);
+  return (presentation: Presentation): Promise<Presentation> => {
+    if (epoch(scope) !== capturedEpoch) return Promise.reject(new Error("Presentation cache was cleared"));
+    if (loadAt(scope.cacheKey).some(record => record.id === presentation.id)) return Promise.reject(new Error("Presentation already exists locally"));
+    return saveInScope(scope,presentation).remote;
+  };
+}
+
 /** Keep delayed editor handlers tied to their original Workspace. */
 export function capturePresentationWriter(id: string) {
   const scope = api.capture(), capturedEpoch = epoch(scope);

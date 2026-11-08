@@ -2,12 +2,11 @@ import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import type { Presentation, SlideTransition } from "../types";
 import { getPresentation, loadPresentationFromApi } from "../lib/storage";
-import { renderSlide } from "../lib/canvas-renderer";
+import { observeSlideImages, renderSlide } from "../lib/canvas-renderer";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 
-const SLIDE_W = 960;
-const SLIDE_H = 540;
+import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 export default function PresentPage() {
   const params = useParams<{ id: string }>();
@@ -196,23 +195,24 @@ export default function PresentPage() {
   // Render current slide
   const redraw = () => {
     const pres = presentation();
-    if (!pres || !canvasRef) return;
-    const slide = pres.slides[currentIndex()];
-    if (!slide) return;
+    const slide = pres?.slides[currentIndex()];
+    images.update(slide ? [slide] : []);
+    if (!pres || !slide || !canvasRef) return;
 
     const ctx = canvasRef.getContext("2d");
     if (!ctx) return;
 
-    // Calculate optimal size to fill the screen while maintaining 16:9
+    // Fit the saved physical page aspect; legacy records remain 16:9.
+    const logical = logicalSlideSize(pres.slideSize);
     const screenW = globalThis.innerWidth;
     const screenH = globalThis.innerHeight;
-    const scaleW = screenW / SLIDE_W;
-    const scaleH = screenH / SLIDE_H;
+    const scaleW = screenW / logical.width;
+    const scaleH = screenH / logical.height;
     const scale = Math.min(scaleW, scaleH);
     const pixelRatio = globalThis.devicePixelRatio || 1;
 
-    const canvasW = Math.floor(SLIDE_W * scale);
-    const canvasH = Math.floor(SLIDE_H * scale);
+    const canvasW = Math.max(1, Math.floor(logical.width * scale));
+    const canvasH = Math.max(1, Math.floor(logical.height * scale));
 
     canvasRef.width = canvasW * pixelRatio;
     canvasRef.height = canvasH * pixelRatio;
@@ -227,6 +227,8 @@ export default function PresentPage() {
     });
   };
 
+  const images = observeSlideImages(redraw);
+  onCleanup(() => images.close());
   createEffect(redraw);
 
   // Resize handler

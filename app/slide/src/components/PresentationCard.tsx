@@ -1,7 +1,8 @@
-import { createEffect, createSignal, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import type { Presentation } from "../types";
-import { renderThumbnail } from "../lib/canvas-renderer";
+import { observeSlideImages, renderThumbnail } from "../lib/canvas-renderer";
 import { dateLocale, useI18n } from "../i18n";
+import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 interface PresentationCardProps {
   presentation: Presentation;
@@ -15,11 +16,12 @@ export default function PresentationCard(props: PresentationCardProps) {
   const [hovered, setHovered] = createSignal(false);
 
   const updateThumbnail = () => {
+    const slide = props.presentation.slides[0];
+    images.update(slide ? [slide] : []);
     if (!thumbnailRef) return;
     thumbnailRef.innerHTML = "";
-    const slide = props.presentation.slides[0];
     if (slide) {
-      const canvas = renderThumbnail(slide, 280);
+      const canvas = renderThumbnail(slide, 280, props.presentation.slideSize);
       canvas.style.width = "100%";
       canvas.style.height = "100%";
       canvas.style.objectFit = "cover";
@@ -28,6 +30,8 @@ export default function PresentationCard(props: PresentationCardProps) {
     }
   };
 
+  const images = observeSlideImages(updateThumbnail);
+  onCleanup(() => images.close());
   onMount(updateThumbnail);
   createEffect(updateThumbnail);
 
@@ -53,7 +57,7 @@ export default function PresentationCard(props: PresentationCardProps) {
       <div
         ref={thumbnailRef}
         class="w-full bg-gray-100 dark:bg-gray-700"
-        style={{ "aspect-ratio": "16/9" }}
+        style={{ "aspect-ratio": `${logicalSlideSize(props.presentation.slideSize).width}/${logicalSlideSize(props.presentation.slideSize).height}` }}
       />
       <div class="p-4">
         <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">

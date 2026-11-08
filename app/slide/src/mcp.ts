@@ -1,3 +1,4 @@
+import { logicalSlideSize } from "../../shared/lib/slide-size.ts";
 /**
  * MCP Server for takos-slide presentation editing.
  *
@@ -743,7 +744,7 @@ export function registerSlideTools(
         .min(MIN_SCREENSHOT_HEIGHT)
         .max(MAX_SCREENSHOT_HEIGHT)
         .optional()
-        .describe("Image height in pixels (default: 720)"),
+        .describe("Image height in pixels (default: saved page aspect; 720 for legacy decks)"),
     },
     async ({
       presentationId,
@@ -771,19 +772,23 @@ export function registerSlideTools(
       }
 
       try {
+        const logical = logicalSlideSize(p.slideSize);
+        const aspect = logical.width / logical.height;
+        const outputWidth = width ?? (p.slideSize && height !== undefined ? height * aspect : 1280);
+        const outputHeight = height ?? (p.slideSize ? outputWidth / aspect : 720);
         const safeWidth = Math.min(
           MAX_SCREENSHOT_WIDTH,
-          Math.max(MIN_SCREENSHOT_WIDTH, Math.trunc(width ?? 1280)),
+          Math.max(MIN_SCREENSHOT_WIDTH, Math.trunc(outputWidth)),
         );
         const safeHeight = Math.min(
           MAX_SCREENSHOT_HEIGHT,
-          Math.max(MIN_SCREENSHOT_HEIGHT, Math.trunc(height ?? 720)),
+          Math.max(MIN_SCREENSHOT_HEIGHT, Math.trunc(outputHeight)),
         );
         const rendererModule = "./lib/server-renderer.ts";
         const { renderSlideToBuffer } = await import(
           rendererModule
         ) as typeof import("./lib/server-renderer.ts");
-        const buf = await renderSlideToBuffer(slide, safeWidth, safeHeight);
+        const buf = await renderSlideToBuffer(slide, safeWidth, safeHeight, p.slideSize);
         const base64 = bytesToBase64(buf);
         return {
           content: [

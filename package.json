@@ -52,6 +52,7 @@
     "jspdf": "^2.5.0",
     "lucide-solid": "^0.554.0",
     "mammoth": "1.13.0",
+    "pptxgenjs": "4.0.1",
     "solid-js": "^1.9.3",
     "zod": "^3.25.32"
   },

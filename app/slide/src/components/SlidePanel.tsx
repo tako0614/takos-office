@@ -1,10 +1,12 @@
-import { createEffect, For, onMount } from "solid-js";
-import type { Slide } from "../types";
-import { renderThumbnail } from "../lib/canvas-renderer";
+import { createEffect, For, onCleanup, onMount } from "solid-js";
+import type { Slide, SlideSize } from "../types";
+import { observeSlideImages, renderThumbnail } from "../lib/canvas-renderer";
 import { t, useI18n } from "../i18n";
+import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 interface SlidePanelProps {
   slides: Slide[];
+  slideSize?: SlideSize;
   selectedIndex: number;
   onSelectSlide: (index: number) => void;
   onAddSlide: () => void;
@@ -14,6 +16,7 @@ interface SlidePanelProps {
 
 function SlideThumbnail(props: {
   slide: Slide;
+  slideSize?: SlideSize;
   index: number;
   selected: boolean;
   onClick: () => void;
@@ -25,15 +28,18 @@ function SlideThumbnail(props: {
   let thumbRef: HTMLDivElement | undefined;
 
   const updateThumb = () => {
+    images.update([props.slide]);
     if (!thumbRef) return;
     thumbRef.innerHTML = "";
-    const canvas = renderThumbnail(props.slide, 192);
+    const canvas = renderThumbnail(props.slide, 192, props.slideSize);
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.style.borderRadius = "4px";
     thumbRef.appendChild(canvas);
   };
 
+  const images = observeSlideImages(updateThumb);
+  onCleanup(() => images.close());
   onMount(updateThumb);
   createEffect(updateThumb);
 
@@ -57,7 +63,7 @@ function SlideThumbnail(props: {
         <div
           ref={thumbRef}
           class="flex-1 rounded overflow-hidden border border-gray-300 dark:border-gray-600"
-          style={{ "aspect-ratio": "16/9" }}
+          style={{ "aspect-ratio": `${logicalSlideSize(props.slideSize).width}/${logicalSlideSize(props.slideSize).height}` }}
         />
       </div>
       {/* Delete button */}
@@ -101,6 +107,7 @@ export default function SlidePanel(props: SlidePanelProps) {
           {(slide, i) => (
             <SlideThumbnail
               slide={slide}
+              slideSize={props.slideSize}
               index={i()}
               selected={i() === props.selectedIndex}
               onClick={() => props.onSelectSlide(i())}

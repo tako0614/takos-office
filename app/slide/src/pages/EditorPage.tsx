@@ -26,6 +26,8 @@ import OfficeNav from "../components/OfficeNav";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import { exportPptxFile } from "../lib/pptx-worker.ts";
+import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
@@ -44,6 +46,8 @@ export default function EditorPage() {
   const [redoStack, setRedoStack] = createSignal<Presentation[]>([]);
   const [editingTextId, setEditingTextId] = createSignal<string | null>(null);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [mobilePanel, setMobilePanel] = createSignal<"slides" | "properties" | null>(null);
+  let mobilePanelButton: HTMLButtonElement | undefined;
 
   const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getPresentationSaveState>>("clean");
   const [recovering, setRecovering] = createSignal(false);
@@ -52,6 +56,10 @@ export default function EditorPage() {
   let writer: ReturnType<typeof capturePresentationWriter> | undefined;
   let editVersion = 0;
   let recoveryController: AbortController | undefined;
+  const [exporting, setExporting] = createSignal(false);
+  const [exportFailed, setExportFailed] = createSignal(false);
+  const [exportWarning, setExportWarning] = createSignal(false);
+  let exportController: AbortController | undefined;
   const refreshSaveKind = (failed = false) => {
     try {
       const state = getPresentationSaveState(params.id);
@@ -71,11 +79,13 @@ export default function EditorPage() {
     setSelectedSlideIndex(0);
     setSelectedElementId(null);
     setEditingTextId(null);
+    setMobilePanel(null);
     setUndoStack([]);
     setRedoStack([]);
     setRecovering(false);
     setRecoveryError("");
     setSaveKind("clean");
+    setExporting(false);setExportFailed(false);setExportWarning(false);
     void loadPresentationFromApi(id, { signal: controller.signal }).then((remote) => {
       if (owner !== binding) return;
       setPresentation(remote);
@@ -87,7 +97,7 @@ export default function EditorPage() {
       else navigate(withCurrentSpaceId("/"));
     });
     onCleanup(() => {
-      controller.abort();recoveryController?.abort();
+      controller.abort();recoveryController?.abort();exportController?.abort();exportController=undefined;
       if (owner === binding) { owner = undefined;writer = undefined; }
     });
   });
@@ -322,6 +332,25 @@ export default function EditorPage() {
     navigate(withCurrentSpaceId(`/${id}/present`));
   };
 
+  const handleExportPptx = async () => {
+    const current = presentation(), binding = owner;
+    if (!current || !binding || exporting()) return;
+    const snapshot = structuredClone(current), controller = new AbortController();
+    exportController = controller;
+    setExporting(true);setExportFailed(false);setExportWarning(false);
+    try {
+      const result = await exportPptxFile(snapshot,controller.signal);
+      if (owner!==binding || controller.signal.aborted) return;
+      downloadOfficeBlob(result.blob,`${sanitizeFilename(snapshot.title)}.pptx`,controller.signal);
+      setExportWarning(result.hasUnsupportedContent);
+    } catch {
+      if (owner===binding && !controller.signal.aborted) setExportFailed(true);
+    } finally {
+      if (owner===binding && !controller.signal.aborted) setExporting(false);
+      if (exportController===controller) exportController=undefined;
+    }
+  };
+
   const handleEditText = (elementId: string) => {
     setEditingTextId(elementId);
     setSelectedElementId(elementId);
@@ -329,6 +358,12 @@ export default function EditorPage() {
 
   // Keyboard shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && mobilePanel()) {
+      e.preventDefault();
+      setMobilePanel(null);
+      mobilePanelButton?.focus();
+      return;
+    }
     // Don't handle if editing text in an input
     if (
       e.target instanceof HTMLInputElement ||
@@ -415,30 +450,46 @@ export default function EditorPage() {
           onUndo={handleUndo}
           onRedo={handleRedo}
           onPresent={handlePresent}
+          onExportPptx={() => void handleExportPptx()}
+          exporting={exporting()}
           onShowHelp={() => setShowShortcuts(true)}
           canUndo={undoStack().length > 0}
           canRedo={redoStack().length > 0}
           hasSelection={selectedElementId() !== null}
         />
+        <Show when={exportFailed()}><p role="alert" class="px-4 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p></Show>
+        <Show when={exportWarning()}><p role="status" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p></Show>
 
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex shrink-0 gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-800 md:hidden">
+          <button type="button" class="rounded border px-3 py-1 text-sm text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-navigation-panel" aria-expanded={mobilePanel() === "slides"}
+            onClick={(event) => { mobilePanelButton = event.currentTarget;setMobilePanel(mobilePanel() === "slides" ? null : "slides"); }}>{t("slides")}</button>
+          <button type="button" class="rounded border px-3 py-1 text-sm text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-properties-panel" aria-expanded={mobilePanel() === "properties"}
+            onClick={(event) => { mobilePanelButton = event.currentTarget;setMobilePanel(mobilePanel() === "properties" ? null : "properties"); }}>{t("properties")}</button>
+        </div>
+
+        <div class="relative min-h-0 flex-1 flex overflow-hidden">
           {/* Left Panel - Slide thumbnails */}
+          <div id="slide-navigation-panel" class="absolute inset-y-0 left-0 z-10 shrink-0 md:static md:block" classList={{ hidden: mobilePanel() !== "slides" }}>
           <SlidePanel
             slides={presentation()!.slides}
+            slideSize={presentation()!.slideSize}
             selectedIndex={selectedSlideIndex()}
             onSelectSlide={(i) => {
               setSelectedSlideIndex(i);
               setSelectedElementId(null);
+              setMobilePanel(null);
             }}
             onAddSlide={handleAddSlide}
             onDeleteSlide={handleDeleteSlide}
             onReorderSlide={handleReorderSlide}
           />
+          </div>
 
           {/* Center - Main canvas */}
           <Show when={currentSlide()}>
             <SlideCanvas
               slide={currentSlide()!}
+              slideSize={presentation()!.slideSize}
               selectedElementId={selectedElementId()}
               onSelectElement={setSelectedElementId}
               onUpdateElement={handleUpdateElement}
@@ -447,6 +498,7 @@ export default function EditorPage() {
           </Show>
 
           {/* Right Panel - Properties */}
+          <div id="slide-properties-panel" class="absolute inset-y-0 right-0 z-10 shrink-0 md:static md:block" classList={{ hidden: mobilePanel() !== "properties" }}>
           <PropertyPanel
             element={selectedElement()}
             onUpdateElement={handleUpdateElement}
@@ -454,6 +506,7 @@ export default function EditorPage() {
             onUpdateBackground={handleUpdateBackground}
             onReorderElement={handleReorderElement}
           />
+          </div>
         </div>
 
         {/* Inline text editor overlay */}

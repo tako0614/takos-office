@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   // Mounted under the unified Takos Office worker at /slide.
   base: "/slide/",
+  worker: { format: "es" },
   plugins: [solid(), tailwindcss()],
   server: {
     // Wave M-C: LAN listen for hostname-based dev access (= takosumi
