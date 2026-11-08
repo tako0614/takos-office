@@ -202,13 +202,27 @@ function queueDocumentWrite(
     .finally(() => queues.release(scope.cacheKey, doc.id, queue));
 }
 
-export function addDocument(doc: Document): Promise<Document> {
-  const scope = api.capture();
+function createInScope(scope: ApiClientScope, doc: Document): Promise<Document> {
   const docs = loadAt(scope.cacheKey);
   if (docs.some((entry) => entry.id === doc.id))
     return Promise.reject(new Error("Document already exists locally"));
   saveAt(scope.cacheKey, [...docs, doc]);
   return queueDocumentWrite(scope, doc);
+}
+
+/** Capture before reading/converting an import file, never after an await. */
+export function captureDocumentCreator(lifetime: { isActive?: () => boolean } = {}) {
+  const scope = api.capture(lifetime);
+  const capturedEpoch = epoch(scope);
+  return (doc: Document): Promise<Document> => {
+    if (epoch(scope) !== capturedEpoch)
+      return Promise.reject(new Error("Document cache was cleared"));
+    return createInScope(scope, doc);
+  };
+}
+
+export function addDocument(doc: Document): Promise<Document> {
+  return captureDocumentCreator()(doc);
 }
 
 export async function updateDocumentInStorage(

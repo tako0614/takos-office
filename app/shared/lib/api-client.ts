@@ -28,7 +28,7 @@ export interface ApiClient {
   /** Absolute API path: BASE_PATH + the given suffix (e.g. "/docs/api/documents"). */
   apiPath: string;
   /** Freeze the Workspace and cache destination before asynchronous work. */
-  capture(): ApiClientScope;
+  capture(lifetime?: { isActive?: () => boolean }): ApiClientScope;
   /** Drop this editor's localStorage cache entry. */
   clearCache(): void;
   /** Current Workspace-scoped localStorage cache key. */
@@ -72,14 +72,15 @@ export function createApiClient(
     const returnTo = `${location.pathname}${location.search}${location.hash}`;
     location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
   }
-  function capture(): ApiClientScope {
+  function capture(lifetime: { isActive?: () => boolean } = {}): ApiClientScope {
+    const isActive = lifetime.isActive;
     const workspaceId = currentWorkspaceId();
     const key = workspaceStorageKey(storageKey, workspaceId);
     const origin = globalThis.location?.origin;
     const scope: ApiClientScope = Object.freeze({
       workspaceId,
       cacheKey: key,
-      isCurrent: () => currentWorkspaceId() === workspaceId,
+      isCurrent: () => currentWorkspaceId() === workspaceId && (isActive?.() ?? true),
       clearCache: () => {
         localStorage.removeItem(key);
         options.onClear?.(scope);
@@ -99,7 +100,9 @@ export function createApiClient(
           credentials: "same-origin",
         });
         if (response.status === 401) {
-          scope.clearCache();
+          // A retired UI operation must not erase a newer view's draft/journal.
+          // Ordinary/current scopes retain the existing authorization refusal.
+          if (isActive?.() !== false) scope.clearCache();
           scope.redirectToLogin();
         }
         return response;
