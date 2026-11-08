@@ -47,6 +47,7 @@
     "@zip.js/zip.js": "2.20.0",
     "canvas": "^3.1.0",
     "docx": "9.7.2",
+    "exceljs": "4.4.0",
     "hono": "^4.12.9",
     "hyperformula": "^2.7.0",
     "jspdf": "^2.5.0",

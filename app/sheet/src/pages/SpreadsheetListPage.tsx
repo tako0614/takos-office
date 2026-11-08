@@ -14,6 +14,8 @@ import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 import type { Spreadsheet } from "../types";
+import { createSpreadsheetImporter } from "../lib/spreadsheet-import.ts";
+import { OfficeFileError } from "../../../shared/lib/office-file.ts";
 
 export const SpreadsheetListPage: Component = () => {
   const navigate = useNavigate();
@@ -25,6 +27,15 @@ export const SpreadsheetListPage: Component = () => {
   let active = true;
   onCleanup(() => { active = false; });
   const [creating, setCreating] = createSignal(false);
+  const [importing, setImporting] = createSignal(false);
+  const [importSaving, setImportSaving] = createSignal(false);
+  const [importError, setImportError] = createSignal<OfficeFileError["code"] | "save" | null>(null);
+  const [imported, setImported] = createSignal<{spreadsheet: Spreadsheet;hasUnsupportedContent: boolean} | null>(null);
+  const importer = createSpreadsheetImporter();
+  let importGeneration = 0, fileInput!: HTMLInputElement;
+  const cancelImport = () => { importGeneration++;importer.retire();setImporting(false);setImportSaving(false); };
+  onCleanup(() => importer.retire());
+
   const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
   const creationReceipt = () => {
     routeScope();
@@ -57,8 +68,21 @@ export const SpreadsheetListPage: Component = () => {
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
 
+  const handleImport = async (file: File) => {
+    const operation = ++importGeneration;
+    setImporting(true);setImportSaving(false);setImportError(null);setImported(null);
+    try {
+      const result = await importer.importFile(file, () => { if (operation === importGeneration) setImportSaving(true); });
+      if (!result || operation !== importGeneration || !active) return;
+      setSpreadsheets(loadSpreadsheets());setImported(result);
+    } catch (error) {
+      if (operation !== importGeneration || !active) return;
+      setSpreadsheets(loadSpreadsheets());setImportError(error instanceof OfficeFileError ? error.code : "save");
+    } finally { if (operation === importGeneration && active) setImporting(false); }
+  };
+
   const handleCreate = async () => {
-    if (creating() || creationError()) return;
+    if (creating() || importing() || creationError()) return;
     const scope = routeScope();
     const receipt = creationReceipt();
     setCreating(true);
@@ -83,6 +107,7 @@ export const SpreadsheetListPage: Component = () => {
 
   createEffect(() => {
     const scope = routeScope();
+    cancelImport();setImported(null);setImportError(null);
     setIsLoading(true);
     setSpreadsheets([]);
     setDeleteError("");
@@ -155,7 +180,7 @@ export const SpreadsheetListPage: Component = () => {
             <button
               type="button"
               class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
-              disabled={creating() || !!creationError()}
+              disabled={creating() || importing() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
             >
               <svg
@@ -180,6 +205,23 @@ export const SpreadsheetListPage: Component = () => {
 
       {/* Content */}
       <main class="mx-auto max-w-5xl px-6 py-6">
+        <div class="mb-6 flex flex-col items-start gap-2">
+          <input ref={fileInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" aria-label={t("importXlsx")}
+            onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
+          <button type="button" disabled={creating() || importing() || !!creationError()} onClick={() => fileInput.click()}
+            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-800">{t("importXlsx")}</button>
+          <p class="max-w-xl text-xs text-gray-500 dark:text-neutral-400">{t("fileImportHelp")}</p>
+          <Show when={importing()}><div role="status" aria-busy="true" class="text-sm text-gray-700 dark:text-neutral-200">
+            {t(importSaving() ? "importSaving" : "importing")}
+            <Show when={!importSaving()}><button type="button" class="ml-3 underline" onClick={cancelImport}>{t("cancel")}</button></Show>
+          </div></Show>
+          <Show when={importError()}>{(code) => <p role="alert" class="text-sm text-red-700 dark:text-red-300">{t({invalid:"fileInvalid","too-large":"fileTooLarge",unsafe:"fileUnsafe",unsupported:"fileUnsupported",timeout:"fileTimeout",save:"importSaveFailed"}[code()] as "fileInvalid" | "fileTooLarge" | "fileUnsafe" | "fileUnsupported" | "fileTimeout" | "importSaveFailed")}</p>}</Show>
+          <Show when={imported()}>{(result) => <div role="status" class="text-sm text-gray-800 dark:text-neutral-100">
+            <p>{t(result().hasUnsupportedContent ? "fileFormattingWarning" : "importComplete")}</p>
+            <button type="button" class="mt-2 text-emerald-700 underline dark:text-emerald-300" onClick={() => navigate(withCurrentSpaceId(`/${result().spreadsheet.id}`))}>{t("openImportedSpreadsheet")}</button>
+          </div>}</Show>
+        </div>
+
         <Show when={deleting().size > 0}><p role="status" class="mb-3 text-sm">{t("deletePending")}</p></Show>
         <Show when={deleteError()}>
           <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-neutral-100">
@@ -267,7 +309,7 @@ export const SpreadsheetListPage: Component = () => {
                 <button
                   type="button"
                   class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500"
-                  disabled={creating() || !!creationError()}
+                  disabled={creating() || importing() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
                 >
                   {t("createSpreadsheet")}
@@ -326,7 +368,7 @@ export const SpreadsheetListPage: Component = () => {
               <button
                 type="button"
                 class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-                disabled={creating() || !!creationError()}
+                disabled={creating() || importing() || !!creationError()}
                 onClick={handleCreate}
               >
                 {t("create")}

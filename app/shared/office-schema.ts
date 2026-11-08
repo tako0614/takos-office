@@ -142,6 +142,9 @@ const cellSchema = z
   .object({
     value: z.string().max(1_000_000),
     computed: z.string().max(1_000_000).optional(),
+    valueType: z.enum(["text", "number", "boolean", "error"]).optional(),
+    computedType: z.enum(["text", "number", "boolean", "error"]).optional(),
+    computedSource: z.enum(["file", "stale"]).optional(),
     format: cellFormatSchema.optional(),
   })
   .strict();
@@ -199,6 +202,7 @@ export const spreadsheetSchema = z
     title,
     sheets: z.array(sheetSchema).min(1).max(256),
     activeSheetId: id,
+    definedNames: z.array(z.object({ name: z.string().min(1).max(256), reference: z.string().max(8192), localSheetId: z.number().int().min(0).max(255).optional(), hidden: z.boolean().optional() }).strict()).max(1000).optional(),
     createdAt: timestamp,
     updatedAt: timestamp,
   })

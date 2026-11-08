@@ -3,6 +3,7 @@ import { spreadsheetSchema } from "../../../shared/office-schema.ts";
 import { ApiRequestError, createApiClient, type ApiClientScope } from "../../../shared/lib/api-client.ts";
 import { nextEntityRevision } from "../../../shared/lib/entity-revision.ts";
 import { ScopedRevisionWriteQueues } from "../../../shared/lib/revision-write-queue.ts";
+import { assertNamedRangeStructureEditable, invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "./imported-formula-cache.ts";
 
 const api = createApiClient("/api/spreadsheets", "takos-excel-spreadsheets", {
   onClear: invalidateWrites,
@@ -126,11 +127,23 @@ export function createSpreadsheet(title: string, defaultSheetName = "Sheet1"): L
   saveAt(scope.cacheKey, [...loadAt(scope.cacheKey), spreadsheet]);
   return { value: spreadsheet, remote: queueSpreadsheetWrite(scope, spreadsheet) };
 }
+/** Capture the originating Workspace before file conversion crosses an await. */
+export function captureSpreadsheetCreator(lifetime: { isActive: () => boolean }) {
+  const scope = api.capture(), capturedEpoch = epoch(scope);
+  return async (spreadsheet: Spreadsheet): Promise<Spreadsheet> => {
+    if (!lifetime.isActive() || epoch(scope) !== capturedEpoch) throw new Error("Spreadsheet creation was retired");
+    const records = loadAt(scope.cacheKey);
+    if (records.some(record => record.id === spreadsheet.id)) throw new Error("Spreadsheet identity already exists");
+    saveAt(scope.cacheKey, [...records, spreadsheet]);
+    return queueSpreadsheetWrite(scope, spreadsheet);
+  };
+}
 async function updateInScope(scope: ApiClientScope, spreadsheet: Spreadsheet): Promise<Spreadsheet | undefined> {
   const records = loadAt(scope.cacheKey), index = records.findIndex((record) => record.id === spreadsheet.id);
   if (index < 0) return undefined;
   const base = records[index];
-  const draft = { ...structuredClone(spreadsheet), id: base.id, createdAt: base.createdAt, updatedAt: nextEntityRevision(base.updatedAt) };
+  let draft = { ...structuredClone(spreadsheet), id: base.id, createdAt: base.createdAt, updatedAt: nextEntityRevision(base.updatedAt) };
+  if (spreadsheetInputsChanged(base, draft)) draft = invalidateImportedFormulaCaches(draft);
   records[index] = draft;
   saveAt(scope.cacheKey, records);
   return queueSpreadsheetWrite(scope, draft, base.updatedAt);
@@ -334,8 +347,9 @@ export async function deleteSpreadsheet(id: string): Promise<void> {
 function changeSheet<T>(id: string, change: (record: Spreadsheet) => T, unchanged: T): LocalSaveResult<T> {
   const scope = api.capture(), records = loadAt(scope.cacheKey), index = records.findIndex((record) => record.id === id);
   if (index < 0) return { value: unchanged, remote: Promise.resolve() };
-  const base = records[index], draft = structuredClone(base), value = change(draft);
+  const base = records[index];let draft = structuredClone(base);const value = change(draft);
   if (value === false || value === undefined) return { value, remote: Promise.resolve() };
+  if (spreadsheetInputsChanged(base, draft)) draft = invalidateImportedFormulaCaches(draft);
   draft.updatedAt = nextEntityRevision(base.updatedAt);
   records[index] = draft;saveAt(scope.cacheKey, records);
   return { value, remote: queueSpreadsheetWrite(scope, draft, base.updatedAt) };
@@ -349,6 +363,7 @@ export function addSheet(spreadsheetId: string, sheetName?: string): LocalSaveRe
 export function deleteSheet(spreadsheetId: string, sheetId: string): LocalSaveResult<boolean> {
   return changeSheet(spreadsheetId, (record) => {
     if (record.sheets.length <= 1 || !record.sheets.some((sheet) => sheet.id === sheetId)) return false;
+    assertNamedRangeStructureEditable(record);
     record.sheets = record.sheets.filter((sheet) => sheet.id !== sheetId);
     if (record.activeSheetId === sheetId) record.activeSheetId = record.sheets[0].id;
     return true;
@@ -357,6 +372,7 @@ export function deleteSheet(spreadsheetId: string, sheetId: string): LocalSaveRe
 export function renameSheet(spreadsheetId: string, sheetId: string, newName: string): LocalSaveResult<boolean> {
   return changeSheet(spreadsheetId, (record) => {
     const sheet = record.sheets.find((entry) => entry.id === sheetId);if (!sheet) return false;
+    assertNamedRangeStructureEditable(record);
     sheet.name = newName;return true;
   }, false);
 }

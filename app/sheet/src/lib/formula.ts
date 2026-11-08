@@ -41,7 +41,7 @@ const MAX_ENGINE_ROWS = 1000;
 const MAX_ENGINE_COLS = 100;
 
 /** Build the dense 2D value array HyperFormula expects from a sheet's cells. */
-function buildSheetData(sheet: Sheet): (string | number | null)[][] {
+function buildSheetData(sheet: Sheet): (string | number | boolean | null)[][] {
   let dataMaxRow = 0;
   let dataMaxCol = 0;
   for (const addr of Object.keys(sheet.cells)) {
@@ -56,14 +56,16 @@ function buildSheetData(sheet: Sheet): (string | number | null)[][] {
 
   const rows = Math.min(Math.max(dataMaxRow + 1, 1), MAX_ENGINE_ROWS);
   const cols = Math.min(Math.max(dataMaxCol + 1, 1), MAX_ENGINE_COLS);
-  const data: (string | number | null)[][] = [];
+  const data: (string | number | boolean | null)[][] = [];
   for (let r = 0; r < rows; r++) {
-    const row: (string | number | null)[] = [];
+    const row: (string | number | boolean | null)[] = [];
     for (let c = 0; c < cols; c++) {
       const cell = sheet.cells[`${columnToLetter(c)}${r + 1}`];
       if (cell) {
         const v = cell.value;
-        if (v.startsWith("=")) row.push(v);
+        if (cell.valueType === "text") row.push("'" + v);
+        else if (cell.valueType === "boolean") row.push(v === "TRUE");
+        else if (v.startsWith("=")) row.push(v);
         else if (looksNumeric(v)) row.push(Number(v));
         else row.push(v || null);
       } else {
@@ -117,6 +119,7 @@ function buildEngine(sheets: Sheet[]): {
 export function evaluateSheet(
   sheet: Sheet,
   allSheets: Sheet[] = [sheet],
+  options?: { preserveImportedCache?: boolean },
 ): Record<string, CellData> {
   // The passed `sheet` is authoritative for the target — override any stale
   // same-id copy in `allSheets` so we evaluate its current cells.
@@ -130,6 +133,10 @@ export function evaluateSheet(
   for (
     const [addr, cell] of Object.entries(sheet.cells) as [string, CellData][]
   ) {
+    if (options?.preserveImportedCache && cell.computedSource === "file" && cell.computed !== undefined) {
+      updatedCells[addr] = { ...cell };
+      continue;
+    }
     if (!cell.value) {
       updatedCells[addr] = { ...cell, computed: "" };
       continue;
@@ -137,7 +144,7 @@ export function evaluateSheet(
 
     // Literal (non-formula) cells display exactly what the user typed. Only
     // formulas are evaluated, so "007"/"+1555..." etc. are never coerced.
-    if (!cell.value.startsWith("=")) {
+    if (cell.valueType === "text" || !cell.value.startsWith("=")) {
       updatedCells[addr] = { ...cell, computed: cell.value };
       continue;
     }
@@ -145,9 +152,18 @@ export function evaluateSheet(
     try {
       const { col, row } = parseCellAddress(addr);
       const result = hf.getCellValue({ sheet: sheetId, row, col });
-      updatedCells[addr] = { ...cell, computed: formatHfResult(result) };
+      if (cell.computedSource && result !== null && typeof result === "object") {
+        updatedCells[addr] = { ...cell, computedSource: "stale" };
+        continue;
+      }
+      updatedCells[addr] = { ...cell, computed: formatHfResult(result),
+        computedType: typeof result === "number" ? "number" as const : typeof result === "boolean" ? "boolean" as const : result !== null && typeof result === "object" ? "error" as const : "text" as const,
+      };
+      delete updatedCells[addr].computedSource;
     } catch {
-      updatedCells[addr] = { ...cell, computed: "#ERROR!" };
+      updatedCells[addr] = cell.computedSource
+        ? { ...cell, computedSource: "stale" }
+        : { ...cell, computed: "#ERROR!", computedType: "error" };
     }
   }
 
@@ -193,6 +209,9 @@ export function setCellValue(
     value,
     format: existing?.format,
   };
+  delete updatedCells[address].valueType;
+  delete updatedCells[address].computedType;
+  delete updatedCells[address].computedSource;
 
   const updatedSheet = { ...sheet, cells: updatedCells };
   const siblings = allSheets
@@ -289,6 +308,7 @@ export function shiftSheetStructure(
         valueAt: (col, row) => hf.getCellValue({ sheet: sheetId, col, row }),
       },
       shiftedFormats,
+      shiftCells(sheet.cells, axis, at, delta),
     ),
   );
 
@@ -301,7 +321,7 @@ export function shiftSheetStructure(
     if (otherHfId === undefined) continue;
     const updated: Record<string, CellData> = {};
     for (const [addr, cell] of Object.entries(other.cells)) {
-      if (!cell.value.startsWith("=")) {
+      if (cell.valueType === "text" || !cell.value.startsWith("=")) {
         updated[addr] = cell;
         continue;
       }
