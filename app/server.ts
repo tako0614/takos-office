@@ -17,6 +17,7 @@
  */
 
 import { Hono } from "hono";
+import { officePublicUrl } from "./shared/public-url.ts";
 import type { Context } from "hono";
 
 import { createDocsApp } from "./docs/src/server.ts";
@@ -92,7 +93,11 @@ export function createOfficeApp(
   options: OfficeAppOptions = {},
 ) {
   const app = new Hono();
-  const mcpAudience = mcpResourceUri(envValue(env, "APP_URL"));
+  let publicUrl: string | undefined;
+  try { publicUrl = officePublicUrl(env); } catch {
+    // Auth/configuration routes report the invalid declaration; do not infer a replacement.
+  }
+  const mcpAudience = mcpResourceUri(publicUrl);
   const interfaceOAuth = mcpAudience
     ? {
         issuerUrl: envValue(env, "OIDC_ISSUER_URL"),

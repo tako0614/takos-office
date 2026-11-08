@@ -9,3 +9,5 @@ crash.log
 .env.*
 !.env.example
 *.tsbuildinfo
+
+deploy/takoform-v1/.generated/

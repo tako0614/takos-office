@@ -2,6 +2,7 @@
 // worker, so this is the single source for all Office surfaces.
 
 import type { Hono } from "hono";
+import { registeredOfficeCallback } from "./public-url.ts";
 import {
   canAccessOfficeContent,
   officeAppRole,
@@ -90,6 +91,9 @@ function authMissing(env: AppRuntimeEnv): string[] {
 }
 
 export function appAuthMisconfigured(env: AppRuntimeEnv): Response | null {
+  try { registeredOfficeCallback(env); } catch {
+    return Response.json({ error: "registered_callback_invalid" }, { status: 503 });
+  }
   const missing = authMissing(env);
   if (missing.length === 0) return null;
   return Response.json(
@@ -261,7 +265,9 @@ function appBaseUrl(request: Request): string {
   return `${url.protocol}//${url.host}`;
 }
 
-function callbackUrl(request: Request): string {
+function callbackUrl(request: Request, env: AppRuntimeEnv): string {
+  const registered = registeredOfficeCallback(env);
+  if (registered) return registered;
   return new URL("/api/auth/callback", appBaseUrl(request)).toString();
 }
 
@@ -294,7 +300,7 @@ async function exchangeCode(
     grant_type: "authorization_code",
     code,
     client_id: config.clientId!,
-    redirect_uri: callbackUrl(request),
+    redirect_uri: callbackUrl(request, env),
     code_verifier: codeVerifier,
   });
   if (config.clientSecret) body.set("client_secret", config.clientSecret);
@@ -580,7 +586,7 @@ export function registerAuthRoutes(app: Hono, env: AppRuntimeEnv): void {
     );
     authUrl.searchParams.set("response_type", "code");
     authUrl.searchParams.set("client_id", config.clientId!);
-    authUrl.searchParams.set("redirect_uri", callbackUrl(c.req.raw));
+    authUrl.searchParams.set("redirect_uri", callbackUrl(c.req.raw, env));
     authUrl.searchParams.set("scope", env.TAKOSUMI_CONTROL_API_URL !== undefined
       ? "openid profile email capsules:read"
       : "openid profile email");

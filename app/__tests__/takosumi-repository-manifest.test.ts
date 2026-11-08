@@ -11,6 +11,7 @@ const options = JSON.parse(
   await readFile(new URL("install-options.json", root), "utf8"),
 ) as { options: Array<{ source: { path: string } }> };
 const moduleSources: Record<string, string> = {
+  "deploy/takoform-v1": await readFile(new URL("deploy/takoform-v1/main.tf", root), "utf8"),
   ".": await readFile(new URL("main.tf", root), "utf8"),
   "deploy/takoform": await readFile(
     new URL("deploy/takoform/main.tf", root),
@@ -18,6 +19,7 @@ const moduleSources: Record<string, string> = {
   ),
 };
 const moduleOutputs: Record<string, string> = {
+  "deploy/takoform-v1": await readFile(new URL("deploy/takoform-v1/outputs.tf", root), "utf8"),
   ".": await readFile(new URL("outputs.tf", root), "utf8"),
   "deploy/takoform": await readFile(
     new URL("deploy/takoform/outputs.tf", root),
@@ -39,6 +41,7 @@ test("Takos Office publishes a closed Repository manifest", () => {
   expect(Object.keys(manifest.install.modules)).toEqual([
     ".",
     "deploy/takoform",
+    "deploy/takoform-v1",
   ]);
   for (const option of options.options) {
     expect(manifest.install.modules[option.source.path]).toBeDefined();
@@ -226,7 +229,7 @@ interface RepositoryModule {
     interface?: { type: string; version: string };
     permissions?: string[];
     delivery?: { type: string };
-    deliver?: { variables?: Record<string, string> };
+    deliver?: { variables?: Record<string, string>; bindings?: Record<string, string> };
   }>;
   interfaces?: Array<{
     spec: {
@@ -265,4 +268,18 @@ test("root requests app-shared storage with a runtime-read OAuth grant and expli
   expect(variableBlock(moduleSources["."]!, "takosumi_control_api_url")).toMatch(/default\s+=\s+""/);
   expect(moduleSources["."]).toContain('name = "TAKOSUMI_CONTROL_API_URL"');
   expect(moduleSources["."]).toContain('text = local.takosumi_control_api_url');
+});
+
+
+test("the current Host option declares a source-built module with private runtime binding names", () => {
+  expect(options.options.some(option => option.source.path === "deploy/takoform-v1")).toBe(true);
+  const module = manifest.install.modules["deploy/takoform-v1"]!;
+  expect(module.interfaces?.map(entry => entry.spec.type)).toEqual(["interface.ui.surface"]);
+  expect(moduleOutputs["deploy/takoform-v1"]).not.toMatch(/output\s+"mcp_url"/);
+  expect(module.requires?.find(entry => entry.kind === "identity.oidc")).toMatchObject({
+    scopes: ["openid", "profile", "email", "capsules:read"],
+    deliver: { bindings: { issuerUrl: "OIDC_ISSUER_URL", clientId: "OIDC_CLIENT_ID", ownerSubject: "OIDC_OWNER_SUB", redirectUri: "OIDC_REDIRECT_URI" } },
+  });
+  expect(module.inputs.filter(input => ["capsule_id", "workspace_id"].includes(input.source.kind))
+    .map(input => [input.name, input.source.kind])).toEqual([["app_capsule_id", "capsule_id"], ["app_workspace_id", "workspace_id"]]);
 });
