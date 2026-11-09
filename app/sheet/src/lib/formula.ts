@@ -90,25 +90,30 @@ function buildEngine(sheets: Sheet[]): {
   idBySheetId: Map<string, number>;
 } {
   const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const idBySheetId = new Map<string, number>();
-  const usedNames = new Set<string>();
+  try {
+    const idBySheetId = new Map<string, number>();
+    const usedNames = new Set<string>();
 
-  // Create every sheet first so cross-sheet references (`=Sheet2!A1`) resolve
-  // before any sheet's formulas are loaded, then fill content in a second pass.
-  for (const sheet of sheets) {
-    // HyperFormula sheet names must be unique; fall back to the id on collision.
-    let name = sheet.name;
-    if (usedNames.has(name)) name = `${sheet.name}__${sheet.id}`;
-    usedNames.add(name);
-    const actual = hf.addSheet(name);
-    const hfId = hf.getSheetId(actual);
-    if (hfId !== undefined) idBySheetId.set(sheet.id, hfId);
+    // Create every sheet first so cross-sheet references (`=Sheet2!A1`) resolve
+    // before any sheet's formulas are loaded, then fill content in a second pass.
+    for (const sheet of sheets) {
+      // HyperFormula sheet names must be unique; fall back to the id on collision.
+      let name = sheet.name;
+      if (usedNames.has(name)) name = `${sheet.name}__${sheet.id}`;
+      usedNames.add(name);
+      const actual = hf.addSheet(name);
+      const hfId = hf.getSheetId(actual);
+      if (hfId !== undefined) idBySheetId.set(sheet.id, hfId);
+    }
+    for (const sheet of sheets) {
+      const hfId = idBySheetId.get(sheet.id);
+      if (hfId !== undefined) hf.setSheetContent(hfId, buildSheetData(sheet));
+    }
+    return { hf, idBySheetId };
+  } catch (error) {
+    hf.destroy();
+    throw error;
   }
-  for (const sheet of sheets) {
-    const hfId = idBySheetId.get(sheet.id);
-    if (hfId !== undefined) hf.setSheetContent(hfId, buildSheetData(sheet));
-  }
-  return { hf, idBySheetId };
 }
 
 /**

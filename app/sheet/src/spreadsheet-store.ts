@@ -1,4 +1,5 @@
 import { assertNamedRangeStructureEditable, invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "./lib/imported-formula-cache.ts";
+import { refreshWorkbookReadView } from "./lib/workbook-view.ts";
 /**
  * SpreadsheetStore backed by the Takos product storage API.
  *
@@ -201,7 +202,7 @@ export class SpreadsheetStore {
 
   /** Full spreadsheets from a single loadAll pass (for the list endpoint). */
   async listSpreadsheetsFull(): Promise<Spreadsheet[]> {
-    return (await this.loadAll()).map((e) => e.ss);
+    return (await this.loadAll()).map((e) => refreshWorkbookReadView(e.ss));
   }
 
   private async persist(id: string): Promise<void> {
@@ -291,6 +292,7 @@ export class SpreadsheetStore {
       this.working.delete(id);
       throw new Error(`Spreadsheet not found: ${id}`);
     }
+    entry.ss = refreshWorkbookReadView(entry.ss);
     this.working.set(id, entry);
     this.working.set(entry.ss.id, entry);
     return entry.ss;
