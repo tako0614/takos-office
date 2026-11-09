@@ -200,7 +200,7 @@ export async function importXlsx(bytes: Uint8Array): Promise<ImportedSpreadsheet
       if (worksheet.state !== "visible") unsupported = true;
       sheets.push(sheet);
     }
-    const now = new Date().toISOString(), active = workbook.views[0]?.activeTab ?? 0;
+    const now = new Date().toISOString(), active = workbook.views?.[0]?.activeTab ?? 0;
     const spreadsheet: Spreadsheet = { id: crypto.randomUUID(), title: (workbook.title ?? "").trim().slice(0, 512), sheets, activeSheetId: sheets[active]?.id ?? sheets[0]?.id, createdAt: now, updatedAt: now };
     if (definedNames.length) spreadsheet.definedNames = definedNames;
     if (new TextEncoder().encode(JSON.stringify(spreadsheet)).length > MAX_OFFICE_EDITOR_BYTES) throw new OfficeFileError("too-large");

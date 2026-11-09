@@ -11,7 +11,6 @@ import {
   getSpreadsheetSaveState,
   retrySpreadsheetAfterConflict,
   type LocalSaveResult,
-  updateSpreadsheet,
 } from "../lib/storage";
 import {
   evaluateSheet,
@@ -26,7 +25,7 @@ import {
 } from "../lib/cell-utils";
 import { sortRangeRows } from "../lib/sheet-ops";
 import { parseCsv } from "../lib/csv-parser";
-import { UndoRedoManager } from "../lib/history";
+import { WorkbookHistory } from "../lib/history";
 import { Grid } from "../components/Grid";
 import { Toolbar } from "../components/Toolbar";
 import { FormulaBar } from "../components/FormulaBar";
@@ -95,31 +94,15 @@ export const EditorPage: Component = () => {
   };
 
 
-  // Undo/redo managers keyed by sheet id
-  const historyManagers = new Map<
-    string,
-    UndoRedoManager<Record<string, CellData>>
-  >();
+  // Structural edits change references in every sheet. Keep chronological
+  // workbook checkpoints so undoing one cannot leave another sheet shifted.
+  const history = new WorkbookHistory();
   const [canUndo, setCanUndo] = createSignal(false);
   const [canRedo, setCanRedo] = createSignal(false);
 
-  const getHistory = (
-    sheetId: string,
-  ): UndoRedoManager<Record<string, CellData>> => {
-    let mgr = historyManagers.get(sheetId);
-    if (!mgr) {
-      mgr = new UndoRedoManager<Record<string, CellData>>(50);
-      historyManagers.set(sheetId, mgr);
-    }
-    return mgr;
-  };
-
   const refreshUndoRedo = () => {
-    const ss = spreadsheet();
-    if (!ss) return;
-    const mgr = getHistory(ss.activeSheetId);
-    setCanUndo(mgr.canUndo());
-    setCanRedo(mgr.canRedo());
+    setCanUndo(history.canUndo());
+    setCanRedo(history.canRedo());
   };
 
   /**
@@ -129,11 +112,6 @@ export const EditorPage: Component = () => {
    */
   const commitCells = (cells: Record<string, CellData>) => {
     updateCells(cells);
-    const ss = spreadsheet();
-    if (!ss) return;
-    const mgr = getHistory(ss.activeSheetId);
-    mgr.push(JSON.parse(JSON.stringify(cells)));
-    refreshUndoRedo();
   };
 
   createEffect(() => {
@@ -146,7 +124,7 @@ export const EditorPage: Component = () => {
     editVersion++;
     setIsEditing(false);
     setEditingInFormulaBar(false);
-    historyManagers.clear();
+    history.reset();
     setCanUndo(false);
     setCanRedo(false);
     setSpreadsheet(null);
@@ -184,10 +162,9 @@ export const EditorPage: Component = () => {
       ss.sheets[0];
     if (activeSheet) {
       activeSheet.cells = evaluateSheet(activeSheet, ss.sheets, { preserveImportedCache: true });
-      // Seed undo history with the initial state
-      const mgr = getHistory(activeSheet.id);
-      mgr.push(JSON.parse(JSON.stringify(activeSheet.cells)));
     }
+    // A reload or explicit save recovery starts from the adopted workbook.
+    history.reset(ss);
     setSpreadsheet(ss);
     refreshUndoRedo();
   };
@@ -226,12 +203,14 @@ export const EditorPage: Component = () => {
     });
   };
 
-  const save = (ss: Spreadsheet) => {
+  const save = (ss: Spreadsheet, recordHistory = true) => {
     if (!writer) return;
     const current = spreadsheet();
     if (current && spreadsheetInputsChanged(current, ss)) ss = invalidateImportedFormulaCaches(ss);
     editVersion++;
     setSpreadsheet({ ...ss });
+    if (recordHistory) history.push(ss);
+    refreshUndoRedo();
     trackSave(writer(ss).then((ack) => {
       if (!ack) throw new Error("Spreadsheet is no longer available");
       return ack;
@@ -243,6 +222,9 @@ export const EditorPage: Component = () => {
       const result = operation();
       if (result.value === false || result.value === undefined) return result.value;
       editVersion++;
+      const draft = getSpreadsheet(params.id);
+      if (draft) history.push(draft);
+      refreshUndoRedo();
       trackSave(result.remote);
       return result.value;
     } catch {
@@ -410,25 +392,19 @@ export const EditorPage: Component = () => {
 
   // Undo
   const handleUndo = () => {
-    const ss = spreadsheet();
-    if (!ss) return;
-    const mgr = getHistory(ss.activeSheetId);
-    const prev = mgr.undo();
+    const prev = history.undo();
     if (prev) {
-      updateCells(JSON.parse(JSON.stringify(prev)));
-      refreshUndoRedo();
+      save(prev, false);
+      setSelectedCell("A1");setEditValue("");setIsEditing(false);setEditingInFormulaBar(false);
     }
   };
 
   // Redo
   const handleRedo = () => {
-    const ss = spreadsheet();
-    if (!ss) return;
-    const mgr = getHistory(ss.activeSheetId);
-    const next = mgr.redo();
+    const next = history.redo();
     if (next) {
-      updateCells(JSON.parse(JSON.stringify(next)));
-      refreshUndoRedo();
+      save(next, false);
+      setSelectedCell("A1");setEditValue("");setIsEditing(false);setEditingInFormulaBar(false);
     }
   };
 
@@ -480,14 +456,6 @@ export const EditorPage: Component = () => {
         cells: evaluateSheet(s, applied),
       }));
       save({ ...ss, sheets: evaluatedSheets });
-      // Record undo history for the active sheet (undo is per active sheet).
-      const active = evaluatedSheets.find((s) => s.id === ss.activeSheetId);
-      if (active) {
-        getHistory(ss.activeSheetId).push(
-          JSON.parse(JSON.stringify(active.cells)),
-        );
-        refreshUndoRedo();
-      }
     } catch {
       // Out-of-bounds selection: no-op.
     }
@@ -603,13 +571,9 @@ export const EditorPage: Component = () => {
     const newSheet = updated.sheets.find((s) => s.id === sheetId);
     if (newSheet) {
       newSheet.cells = evaluateSheet(newSheet, updated.sheets, { preserveImportedCache: true });
-      // Seed undo history for this sheet if not already present
-      const mgr = getHistory(sheetId);
-      if (!mgr.canUndo() && !mgr.canRedo()) {
-        mgr.push(JSON.parse(JSON.stringify(newSheet.cells)));
-      }
     }
-    save(updated);
+    // Tab navigation is not an edit and must not consume Undo or erase Redo.
+    save(updated, false);
     setSelectedCell("A1");
     setEditValue("");
     setIsEditing(false);
