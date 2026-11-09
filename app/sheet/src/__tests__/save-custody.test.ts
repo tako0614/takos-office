@@ -8,6 +8,65 @@ import {
 import { workspaceStorageKey } from "../../../shared/lib/space-id.ts";
 import { clientStoreFixture } from "./save-custody-fixture.ts";
 
+test("the existing MCP renameTab store callee persists rewritten references and a same-name retry has effect0", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");await loadSpreadsheetFromApi(initial.id);
+    const target = { ...initial.sheets[0], name: "Sheet1", cells: { A1: { value: "10" } } };
+    await updateSpreadsheet({ ...initial, sheets: [target, {
+      id: "dependent", name: "Sheet2", cells: { A1: { value: "=Sheet1!A1" } }, colWidths: {}, rowHeights: {},
+    }] });
+    const store = f.store("A");await store.renameTab(initial.id, target.id, "Inputs");
+    const saved = await store.getSpreadsheet(initial.id);
+    expect(saved.sheets[1].cells.A1.value).toBe("=Inputs!A1");
+    expect(saved.sheets[1].cells.A1.computed).toBe("10");
+    await store.renameTab(initial.id, target.id, "Inputs");
+    expect(await store.getSpreadsheet(initial.id)).toEqual(saved);
+    expect(await loadSpreadsheetFromApi(initial.id)).toEqual(saved);
+  } finally { await f.close(); }
+});
+
+test("renaming a sheet preserves cross-sheet references through real save ACKs and reload", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");await loadSpreadsheetFromApi(initial.id);
+    const target = { ...initial.sheets[0], name: "Sheet1", cells: { A1: { value: "10" } } };
+    await updateSpreadsheet({ ...initial, sheets: [target, {
+      id: "dependent", name: "Sheet2", cells: { A1: { value: "=Sheet1!A1" } }, colWidths: {}, rowHeights: {},
+    }] });
+    await renameSheet(initial.id, target.id, "Inputs").remote;
+    const saved = await f.store("A").getSpreadsheet(initial.id);
+    expect(saved.sheets[0].name).toBe("Inputs");
+    expect(saved.sheets[1].cells.A1.value).toBe("=Inputs!A1");
+    expect(saved.sheets[1].cells.A1.computed).toBe("10");
+    const repeated = renameSheet(initial.id, target.id, "Inputs");
+    expect(repeated.value).toBe(false);await repeated.remote;
+    expect(getSpreadsheet(initial.id)).toEqual(saved);
+    expect(await loadSpreadsheetFromApi(initial.id)).toEqual(saved);
+    await updateSpreadsheet({ ...getSpreadsheet(initial.id)!, title: "After rename" });
+    expect(f.calls.filter(call => call.method === "PUT").map(call => call.status)).toEqual([200, 200, 200]);
+  } finally { await f.close(); }
+});
+
+test("duplicate-name and defined-name rename refusals leave the actual cache and saved workbook intact", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");await loadSpreadsheetFromApi(initial.id);
+    const added = addSheet(initial.id, "Second");await added.remote;
+    const before = getSpreadsheet(initial.id)!, cacheBytes = JSON.stringify([...f.values]), writes = f.calls.filter(call => call.method === "PUT").length;
+    expect(() => renameSheet(initial.id, initial.sheets[0].id, "Second")).toThrow();
+    expect(JSON.stringify([...f.values])).toBe(cacheBytes);
+    expect(await f.store("A").getSpreadsheet(initial.id)).toEqual(before);
+    expect(f.calls.filter(call => call.method === "PUT")).toHaveLength(writes);
+    const named = await updateSpreadsheet({ ...before, definedNames: [{ name: "Area", reference: "Sheet1!$A$1" }] });
+    const namedBytes = JSON.stringify([...f.values]), namedWrites = f.calls.filter(call => call.method === "PUT").length;
+    expect(() => renameSheet(initial.id, initial.sheets[0].id, "Renamed")).toThrow("defined names");
+    expect(JSON.stringify([...f.values])).toBe(namedBytes);
+    expect(await f.store("A").getSpreadsheet(initial.id)).toEqual(named!);
+    expect(f.calls.filter(call => call.method === "PUT")).toHaveLength(namedWrites);
+  } finally { await f.close(); }
+});
+
 test("sequential saves adopt real canonical ACKs without an intervening read", async () => {
   const f = clientStoreFixture();
   try {

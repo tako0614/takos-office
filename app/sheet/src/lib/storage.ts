@@ -4,6 +4,7 @@ import { ApiRequestError, createApiClient, type ApiClientScope } from "../../../
 import { nextEntityRevision } from "../../../shared/lib/entity-revision.ts";
 import { ScopedRevisionWriteQueues } from "../../../shared/lib/revision-write-queue.ts";
 import { assertNamedRangeStructureEditable, invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "./imported-formula-cache.ts";
+import { renameSheetReferences } from "./formula.ts";
 
 const api = createApiClient("/api/spreadsheets", "takos-excel-spreadsheets", {
   onClear: invalidateWrites,
@@ -373,6 +374,7 @@ export function renameSheet(spreadsheetId: string, sheetId: string, newName: str
   return changeSheet(spreadsheetId, (record) => {
     const sheet = record.sheets.find((entry) => entry.id === sheetId);if (!sheet) return false;
     assertNamedRangeStructureEditable(record);
-    sheet.name = newName;return true;
+    if (sheet.name === newName) return false;
+    record.sheets = renameSheetReferences(record.sheets, sheetId, newName);return true;
   }, false);
 }
