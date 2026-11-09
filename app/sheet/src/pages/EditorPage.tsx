@@ -615,7 +615,7 @@ export const EditorPage: Component = () => {
   };
 
   // Column width change
-  const handleColWidthChange = (colIndex: number, width: number) => {
+  const handleColWidthChange = (colIndex: number, width: number, commit: boolean) => {
     const ss = spreadsheet();
     if (!ss) return;
     const updated = {
@@ -626,7 +626,13 @@ export const EditorPage: Component = () => {
           : s
       ),
     };
-    save(updated);
+    if (commit) save(updated);
+    else {
+      // Preview a drag without filling the save queue or the 50-edit history.
+      // A previous save ACK must not replace this newer preview.
+      editVersion++;
+      setSpreadsheet(updated);
+    }
   };
 
   return (
