@@ -33,6 +33,7 @@ import {
   evaluateSheet,
   setCellValue,
   shiftSheetStructure,
+  renameSheetReferences,
   type StructuralOp,
 } from "./lib/formula.ts";
 import { sortRangeRows } from "./lib/sheet-ops.ts";
@@ -440,7 +441,8 @@ export class SpreadsheetStore {
   ): Promise<void> {
     const { ss, sheet } = await this.getSheet(spreadsheetId, sheetId);
     assertNamedRangeStructureEditable(ss);
-    sheet.name = name;
+    if (sheet.name === name) return;
+    ss.sheets = renameSheetReferences(ss.sheets, sheetId, name);
     this.touch(ss, true);
     await this.persist(spreadsheetId);
   }

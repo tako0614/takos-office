@@ -340,3 +340,26 @@ export function shiftSheetStructure(
 
   return result;
 }
+
+/** Rename through the existing engine so references, quoted names and literals
+ * retain their meaning. The input workbook is untouched if the name is refused. */
+export function renameSheetReferences(sheets: Sheet[], targetId: string, name: string): Sheet[] {
+  const { hf, idBySheetId } = buildEngine(sheets);
+  try {
+    const target = idBySheetId.get(targetId);
+    if (target === undefined) throw new Error("Sheet not found");
+    hf.renameSheet(target, name);
+    const renamed = sheets.map(sheet => ({
+      ...sheet,
+      name: sheet.id === targetId ? name : sheet.name,
+      cells: Object.fromEntries(Object.entries(sheet.cells).map(([address, cell]) => {
+        if (cell.valueType === "text" || !cell.value.startsWith("=")) return [address, cell];
+        const { col, row } = parseCellAddress(address);
+        const formula = hf.getCellFormula({ sheet: idBySheetId.get(sheet.id)!, col, row });
+        return [address, formula === undefined ? cell : { ...cell, value: formula }];
+      })),
+    }));
+    // The store still marks imported file caches stale for this structural edit.
+    return renamed.map(sheet => ({ ...sheet, cells: evaluateSheet(sheet, renamed, { preserveImportedCache: true }) }));
+  } finally { hf.destroy(); }
+}

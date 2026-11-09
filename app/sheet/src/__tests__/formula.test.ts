@@ -5,8 +5,37 @@ import {
   looksNumeric,
   setCellValue,
   shiftSheetStructure,
+  renameSheetReferences,
 } from "../lib/formula.ts";
 import type { Sheet } from "../types/index.ts";
+
+test("sheet rename rewrites references and quotes names without rewriting literals or metadata", () => {
+  const first: Sheet = { id: "first", name: "Sheet1", cells: { A1: { value: "10", format: { bold: true } } }, colWidths: { 0: 180 }, rowHeights: { 0: 40 } };
+  const second: Sheet = { id: "second", name: "Sheet2", cells: {
+    A1: { value: "=Sheet1!$A$1+Sheet1!A1" },
+    A2: { value: '=\"Sheet1!A1\"' },
+    A3: { value: "=Sheet1!A1", valueType: "text" },
+    A4: { value: "Sheet1!A1" },
+  }, colWidths: {}, rowHeights: {} };
+  const original = structuredClone([first, second]);
+  const renamed = renameSheetReferences([first, second], first.id, "Bob's inputs");
+  expect(renamed[0].name).toBe("Bob's inputs");
+  expect(renamed[1].cells.A1.value).toBe("='Bob''s inputs'!$A$1+'Bob''s inputs'!A1");
+  expect(renamed[1].cells.A1.computed).toBe("20");
+  expect(renamed[1].cells.A2).toMatchObject({ value: '=\"Sheet1!A1\"', computed: "Sheet1!A1" });
+  expect(renamed[1].cells.A3).toMatchObject({ value: "=Sheet1!A1", valueType: "text" });
+  expect(renamed[1].cells.A4.value).toBe("Sheet1!A1");
+  expect(renamed[0]).toMatchObject({ id: first.id, colWidths: first.colWidths, rowHeights: first.rowHeights, cells: { A1: { format: { bold: true } } } });
+  expect([first, second]).toEqual(original);
+});
+
+test("refused duplicate sheet name cannot mutate any workbook input", () => {
+  const first: Sheet = { id: "first", name: "First", cells: { A1: { value: "10" } }, colWidths: {}, rowHeights: {} };
+  const second: Sheet = { ...structuredClone(first), id: "second", name: "Second" };
+  const original = structuredClone([first, second]);
+  expect(() => renameSheetReferences([first, second], first.id, "Second")).toThrow();
+  expect([first, second]).toEqual(original);
+});
 
 function sheetWith(cells: Record<string, string>): Sheet {
   return {
