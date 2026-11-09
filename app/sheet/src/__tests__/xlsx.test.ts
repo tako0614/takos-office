@@ -4,8 +4,19 @@ import { exportXlsx, importXlsx } from "../lib/xlsx.ts";
 import { readOfficePackage, isOfficeRelationship } from "../../../shared/lib/office-package.ts";
 import { readOfficeArchive, writeOfficeArchive } from "../../../shared/lib/office-archive.ts";
 import { applyNumberFormat } from "../lib/number-format.ts";
+import ExcelJS from "exceljs";
 
 const fixture = (name: string) => readFile(new URL(`./fixtures/xlsx/${name}`, import.meta.url));
+
+test("a valid workbook without optional book views opens its first sheet", async () => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.addWorksheet("First").getCell("A1").value = 10;
+  workbook.addWorksheet("Second").getCell("A1").value = { formula: "First!A1", result: 10 };
+  const { spreadsheet } = await importXlsx(new Uint8Array(await workbook.xlsx.writeBuffer()));
+  expect(spreadsheet.sheets.map(sheet => sheet.name)).toEqual(["First", "Second"]);
+  expect(spreadsheet.activeSheetId).toBe(spreadsheet.sheets[0].id);
+  expect(spreadsheet.sheets[1].cells.A1.value).toBe("=First!A1");
+});
 
 async function withCells(rows: string, date1904 = false) {
   const parts = await readOfficeArchive(new Uint8Array(await fixture("tutorial03.xlsx")));

@@ -39,7 +39,7 @@ interface GridProps {
   onCancelEdit: () => void;
   onTabEdit: (shiftKey: boolean) => void;
   onSelectionRange: (range: { start: string; end: string } | null) => void;
-  onColWidthChange: (colIndex: number, width: number) => void;
+  onColWidthChange: (colIndex: number, width: number, commit: boolean) => void;
 }
 
 export const Grid: Component<GridProps> = (props) => {
@@ -373,11 +373,16 @@ export const Grid: Component<GridProps> = (props) => {
     if (col === null) return;
     const diff = e.clientX - resizeStartX();
     const newWidth = Math.max(30, resizeStartWidth() + diff);
-    props.onColWidthChange(col, newWidth);
+    props.onColWidthChange(col, newWidth, false);
   };
 
   const handleResizeMouseUp = () => {
+    const col = resizingCol();
+    if (col === null) return;
     setResizingCol(null);
+    if (getColWidth(col) !== resizeStartWidth()) {
+      props.onColWidthChange(col, getColWidth(col), true);
+    }
   };
 
   // Editor position

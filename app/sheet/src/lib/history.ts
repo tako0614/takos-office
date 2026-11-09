@@ -1,3 +1,5 @@
+import type { Spreadsheet } from "../types/index.ts";
+
 /**
  * Generic undo/redo manager that stores state snapshots.
  *
@@ -47,4 +49,31 @@ export class UndoRedoManager<T> {
   canRedo(): boolean {
     return this.pointer < this.stack.length - 1;
   }
+}
+
+/** Row/column edits rewrite references across sheets: one edit is one workbook. */
+export class WorkbookHistory {
+  private states = new UndoRedoManager<Spreadsheet>(50);
+
+  reset(initial?: Spreadsheet): void {
+    this.states = new UndoRedoManager<Spreadsheet>(50);
+    if (initial) this.push(initial);
+  }
+
+  push(book: Spreadsheet): void {
+    this.states.push(structuredClone(book));
+  }
+
+  undo(): Spreadsheet | null {
+    const book = this.states.undo();
+    return book ? structuredClone(book) : null;
+  }
+
+  redo(): Spreadsheet | null {
+    const book = this.states.redo();
+    return book ? structuredClone(book) : null;
+  }
+
+  canUndo(): boolean { return this.states.canUndo(); }
+  canRedo(): boolean { return this.states.canRedo(); }
 }

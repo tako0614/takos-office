@@ -1,5 +1,69 @@
 import { expect, test } from "bun:test";
-import { UndoRedoManager } from "../lib/history.ts";
+import { UndoRedoManager, WorkbookHistory } from "../lib/history.ts";
+import { evaluateSheet, shiftSheetStructure, type StructuralOp } from "../lib/formula.ts";
+import type { Spreadsheet } from "../types/index.ts";
+
+function workbook(): Spreadsheet {
+  return {
+    id: "workbook", title: "Related sheets", activeSheetId: "first", createdAt: "created", updatedAt: "revision",
+    sheets: [
+      { id: "first", name: "First", cells: { B2: { value: "10" } }, colWidths: {}, rowHeights: {} },
+      { id: "second", name: "Second", cells: { A1: { value: "=First!B2" } }, colWidths: {}, rowHeights: {} },
+    ],
+  };
+}
+
+for (const operation of ["insertRows", "deleteRows", "insertColumns", "deleteColumns"] satisfies StructuralOp[]) {
+  test(`workbook Undo/Redo restores all references after ${operation}`, () => {
+    const before = workbook(), history = new WorkbookHistory();
+    history.reset(before);
+    const shifted = shiftSheetStructure(before.sheets[0], operation, 0, 1, before.sheets);
+    const applied = before.sheets.map(sheet => ({ ...sheet, cells: shifted.get(sheet.id)! }));
+    const after = { ...before, sheets: applied.map(sheet => ({ ...sheet, cells: evaluateSheet(sheet, applied) })) };
+    expect(after.sheets[1].cells.A1.value).not.toBe(before.sheets[1].cells.A1.value);
+    history.push(after);
+    expect(history.undo()).toEqual(before);
+    expect(history.redo()).toEqual(after);
+  });
+}
+
+test("edits on another sheet are undone before an older structural change", () => {
+  const original = workbook(), history = new WorkbookHistory();history.reset(original);
+  const shifted = shiftSheetStructure(original.sheets[0], "insertRows", 0, 1, original.sheets);
+  const inserted = { ...original, sheets: original.sheets.map(sheet => ({ ...sheet, cells: shifted.get(sheet.id)! })) };
+  history.push(inserted);
+  const later = structuredClone(inserted);later.activeSheetId = "second";later.sheets[1].cells.B1 = { value: "new draft" };
+  history.push(later);
+  const undoneEdit = history.undo()!;
+  expect(undoneEdit).toEqual(inserted);
+  expect(undoneEdit.sheets[1].cells.A1.value).toBe("=First!B3");
+  expect(history.undo()).toEqual(original);
+  expect(history.redo()).toEqual(inserted);
+  expect(history.redo()).toEqual(later);
+});
+
+test("workbook checkpoints are isolated from later evaluation and returned snapshot mutation", () => {
+  const original = workbook(), expected = structuredClone(original), history = new WorkbookHistory();history.reset(original);
+  const edited = structuredClone(original);edited.sheets[0].cells.B2.value = "20";history.push(edited);
+  original.sheets[1].cells.A1.value = "changed after capture";
+  edited.sheets[0].cells.B2.value = "changed after edit";
+  const restored = history.undo()!;expect(restored).toEqual(expected);
+  restored.sheets.length = 0;
+  expect(history.redo()!.sheets[0].cells.B2.value).toBe("20");
+  expect(history.undo()).toEqual(expected);
+});
+
+test("sheet creation, metadata and edits share one chronological history; a new edit retires Redo", () => {
+  const original = workbook(), history = new WorkbookHistory();history.reset(original);
+  const appended = structuredClone(original);appended.sheets.push({ id: "third", name: "Third", cells: {}, colWidths: {}, rowHeights: {} });appended.activeSheetId = "third";history.push(appended);
+  const renamed = structuredClone(appended);renamed.title = "Renamed book";renamed.sheets[0].name = "Renamed sheet";renamed.sheets[0].colWidths[0] = 200;history.push(renamed);
+  expect(history.undo()).toEqual(appended);
+  expect(history.undo()).toEqual(original);
+  history.push({ ...original, title: "new branch" });
+  expect(history.canRedo()).toBe(false);expect(history.redo()).toBeNull();
+  history.reset({ ...original, id: "other book" });
+  expect(history.canUndo()).toBe(false);expect(history.canRedo()).toBe(false);
+});
 
 test("new manager has nothing to undo or redo", () => {
   const mgr = new UndoRedoManager<string>();
