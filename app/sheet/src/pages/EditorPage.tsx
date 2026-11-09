@@ -395,7 +395,7 @@ export const EditorPage: Component = () => {
     const prev = history.undo();
     if (prev) {
       save(prev, false);
-      setSelectedCell("A1");setEditValue("");setIsEditing(false);setEditingInFormulaBar(false);
+      setSelectedCell("A1");setEditValue(activeSheet()?.cells.A1?.value ?? "");setIsEditing(false);setEditingInFormulaBar(false);
     }
   };
 
@@ -404,7 +404,7 @@ export const EditorPage: Component = () => {
     const next = history.redo();
     if (next) {
       save(next, false);
-      setSelectedCell("A1");setEditValue("");setIsEditing(false);setEditingInFormulaBar(false);
+      setSelectedCell("A1");setEditValue(activeSheet()?.cells.A1?.value ?? "");setIsEditing(false);setEditingInFormulaBar(false);
     }
   };
 
