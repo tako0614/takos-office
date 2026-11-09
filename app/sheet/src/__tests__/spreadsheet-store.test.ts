@@ -9,6 +9,81 @@ import type {
   TakosStorageClient,
 } from "../../../shared/lib/takos-storage.ts";
 import type { Spreadsheet } from "../types/index.ts";
+import { createServerApp } from "../server.ts";
+
+function legacyCalculatedWorkbook(): Spreadsheet {
+  // Legacy input shape; the old-Worker producer is independently exercised by
+  // the retained native code-update regression, not simulated as an ACK here.
+  return makeSpreadsheet({ id: "legacy-calculated", activeSheetId: "input", sheets: [
+    { id: "input", name: "Input", cells: { A1: { value: "20", computed: "20" }, A2: { value: "007", valueType: "text" } }, colWidths: {}, rowHeights: {} },
+    { id: "result", name: "Result", cells: { A1: { value: "=Input!A1", computed: "10", computedType: "number" } }, colWidths: {}, rowHeights: {} },
+    { id: "last", name: "Last", cells: { A1: { value: "=Result!A1*2", computed: "20", computedType: "number" } }, colWidths: {}, rowHeights: {} },
+  ] });
+}
+
+for (const read of ["get", "list", "cell", "api"] as const) {
+  test(`legacy calculated results refresh through ${read} without changing bytes or revisions`, async () => {
+    const storage = createMemoryStorage(), folder = storage.makeFile("takos-excel", "folder");
+    const original = legacyCalculatedWorkbook(), file = storage.makeFile(`${original.id}.takossheet`, "file", folder.id);
+    storage.files.set(file.id, { ...file, revision: "7" });
+    const bytes = JSON.stringify(original);storage.content.set(file.id, bytes);
+    const metadata = JSON.stringify([...storage.files]);let writes = 0;
+    const store = new SpreadsheetStore({ ...storage.client, async putContent() { writes++;throw new Error("a read must not write"); } });
+    if (read === "cell") expect((await store.getCell(original.id, "result", "A1")).computed).toBe("20");
+    else {
+      let view: Spreadsheet;
+      if (read === "get") view = await store.getSpreadsheet(original.id);
+      else if (read === "list") view = (await store.listSpreadsheetsFull())[0];
+      else {
+        const app = createServerApp(store, { env: { ALLOW_UNAUTHENTICATED_ACCESS: "1", TAKOS_NATIVE_RENDERING: "0" } });
+        const response = await app.request("/api/spreadsheets/" + original.id);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("etag")).toBe('"' + original.updatedAt + '"');
+        view = await response.json();
+      }
+      expect(view.sheets[1].cells.A1.computed).toBe("20");
+      expect(view.sheets[2].cells.A1.computed).toBe("40");
+      expect(view.sheets[0].cells.A2).toEqual(original.sheets[0].cells.A2);
+      expect(view.updatedAt).toBe(original.updatedAt);
+    }
+    expect(storage.content.get(file.id)).toBe(bytes);
+    expect(JSON.stringify([...storage.files])).toBe(metadata);
+    expect(writes).toBe(0);
+  });
+}
+
+test("a read-derived view keeps the real revision usable for writes and still rejects a stale conditional write", async () => {
+  const storage = createMemoryStorage(), folder = storage.makeFile("takos-excel", "folder"), original = legacyCalculatedWorkbook();
+  const file = storage.makeFile(`${original.id}.takossheet`, "file", folder.id);storage.files.set(file.id, { ...file, revision: "7" });
+  storage.content.set(file.id, JSON.stringify(original));let writes = 0;
+  const store = new SpreadsheetStore({ ...storage.client, async putContent(id, content, mime, options) {
+    expect(options?.expectedRevision).toBe(storage.files.get(id)!.revision);writes++;
+    await storage.client.putContent(id, content, mime, options);
+    storage.files.set(id, { ...storage.files.get(id)!, revision: String(Number(storage.files.get(id)!.revision) + 1) });
+  } });
+  const app = createServerApp(store, { env: { ALLOW_UNAUTHENTICATED_ACCESS: "1", TAKOS_NATIVE_RENDERING: "0" } });
+  const first = await app.request("/api/spreadsheets/" + original.id), tag = first.headers.get("etag")!, view = await first.json();
+  await store.setCell(original.id, "input", "A1", "30");
+  const persisted = storage.content.get(file.id)!;
+  expect(JSON.parse(persisted).sheets[1].cells.A1.computed).toBe("30");
+  const stale = await app.request("/api/spreadsheets/" + original.id, {
+    method: "PUT", headers: { "Content-Type": "application/json", "If-Match": tag }, body: JSON.stringify({ ...view, title: "stale write" }),
+  });
+  expect(stale.status).toBe(409);expect(writes).toBe(1);expect(storage.content.get(file.id)).toBe(persisted);
+});
+
+test("an incompatible legacy graph is still an existing readable API object, with calculation errors and no write", async () => {
+  const storage = createMemoryStorage(), folder = storage.makeFile("takos-excel", "folder"), original = legacyCalculatedWorkbook();
+  original.sheets.push({ id: "collision", name: "input", cells: {}, colWidths: {}, rowHeights: {} });
+  const file = storage.makeFile(`${original.id}.takossheet`, "file", folder.id), bytes = JSON.stringify(original);storage.content.set(file.id, bytes);
+  const store = new SpreadsheetStore({ ...storage.client, async putContent() { throw new Error("read-only"); } });
+  const app = createServerApp(store, { env: { ALLOW_UNAUTHENTICATED_ACCESS: "1", TAKOS_NATIVE_RENDERING: "0" } });
+  const response = await app.request("/api/spreadsheets/" + original.id);
+  expect(response.status).toBe(200);
+  const view = await response.json();expect(view.sheets[1].cells.A1.computed).toBe("#ERROR!");
+  expect(view.sheets[1].cells.A1.computedType).toBe("error");
+  expect(view.sheets[0].cells.A1.value).toBe("20");expect(storage.content.get(file.id)).toBe(bytes);
+});
 
 function makeSpreadsheet(overrides: Partial<Spreadsheet> = {}): Spreadsheet {
   const now = "2026-04-30T00:00:00.000Z";

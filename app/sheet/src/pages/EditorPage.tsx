@@ -38,6 +38,7 @@ import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import { exportXlsxFile } from "../lib/xlsx-worker.ts";
 import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 import { invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "../lib/imported-formula-cache.ts";
+import { prepareSpreadsheetForEditing } from "../lib/workbook-view.ts";
 
 export const EditorPage: Component = () => {
   const params = useParams<{ id: string }>();
@@ -158,15 +159,10 @@ export const EditorPage: Component = () => {
   onMount(() => document.addEventListener("keydown", handleGlobalKeyDown));
 
   const setSpreadsheetForEditing = (ss: Spreadsheet) => {
-    // Evaluate all formulas on load
-    const activeSheet = ss.sheets.find((s) => s.id === ss.activeSheetId) ??
-      ss.sheets[0];
-    if (activeSheet) {
-      activeSheet.cells = evaluateSheet(activeSheet, ss.sheets, { preserveImportedCache: true });
-    }
+    const view = prepareSpreadsheetForEditing(ss);
     // A reload or explicit save recovery starts from the adopted workbook.
-    history.reset(ss);
-    setSpreadsheet(ss);
+    history.reset(view);
+    setSpreadsheet(view);
     refreshUndoRedo();
   };
 
