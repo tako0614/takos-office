@@ -6,8 +6,53 @@ import {
   setCellValue,
   shiftSheetStructure,
   renameSheetReferences,
+  recalculateWorkbook,
 } from "../lib/formula.ts";
 import type { Sheet } from "../types/index.ts";
+
+test("workbook recalculation refreshes transitive results independent of tab order without mutating its input", () => {
+  const input: Sheet = { id: "input", name: "Input", cells: { A1: { value: "20" } }, colWidths: { 0: 180 }, rowHeights: {} };
+  const middle: Sheet = { id: "middle", name: "Middle", cells: { A1: { value: "=Input!A1+1", computed: "11" } }, colWidths: {}, rowHeights: {} };
+  const last: Sheet = { id: "last", name: "Last", cells: { A1: { value: "=Middle!A1*2", computed: "22" } }, colWidths: {}, rowHeights: {} };
+  const original = structuredClone([last, middle, input]);
+  const result = recalculateWorkbook([last, middle, input]);
+  expect(result[0].cells.A1).toMatchObject({ value: "=Middle!A1*2", computed: "42", computedType: "number" });
+  expect(result[1].cells.A1.computed).toBe("21");
+  expect(result[2].colWidths).toEqual(input.colWidths);
+  expect([last, middle, input]).toEqual(original);
+});
+
+test("workbook recalculation preserves typed literals across sheet dependencies", () => {
+  const input: Sheet = { id: "input", name: "Input", cells: {
+    A1: { value: "007", valueType: "text" }, B1: { value: "=1+1", valueType: "text" }, C1: { value: "TRUE", valueType: "boolean" },
+  }, colWidths: {}, rowHeights: {} };
+  const dependent: Sheet = { id: "dependent", name: "Dependent", cells: {
+    A1: { value: "=SUM(Input!A1)" }, B1: { value: "=Input!B1" }, C1: { value: "=IF(Input!C1,1,2)" },
+  }, colWidths: {}, rowHeights: {} };
+  const result = recalculateWorkbook([input, dependent]);
+  expect(result[1].cells.A1.computed).toBe("0");
+  expect(result[1].cells.B1).toMatchObject({ computed: "=1+1", computedType: "text" });
+  expect(result[1].cells.C1.computed).toBe("1");
+  expect(result[0].cells.A1.valueType).toBe("text");
+});
+
+test("input-save recalculation retains historical file/stale provenance while explicit sheet evaluation may refresh it", () => {
+  const input: Sheet = { id: "input", name: "Input", cells: { A1: { value: "20" } }, colWidths: {}, rowHeights: {} };
+  const dependent: Sheet = { id: "dependent", name: "Dependent", cells: {
+    A1: { value: "=Input!A1+1", computed: "11", computedSource: "file" },
+    B1: { value: "=Input!A1+1", computed: "11", computedSource: "stale" },
+    C1: { value: "=_xlfn.FUTUREFUNC(Input!A1)", computed: "42", computedSource: "stale" },
+    D1: { value: "=1/(Input!A1-20)", computed: "-0.1" },
+  }, colWidths: {}, rowHeights: {} };
+  const result = recalculateWorkbook([input, dependent]);
+  for (const address of ["A1", "B1", "C1"]) expect(result[1].cells[address]).toEqual(dependent.cells[address]);
+  expect(result[1].cells.D1).toMatchObject({ computed: "#DIV/0!", computedType: "error" });
+  const explicit = evaluateSheet(result[1], result, { preserveImportedCache: true });
+  expect(explicit.B1.computed).toBe("21");
+  expect(explicit.B1.computedSource).toBeUndefined();
+  expect(explicit.A1.computedSource).toBe("file");
+  expect(explicit.C1.computedSource).toBe("stale");
+});
 
 test("sheet rename rewrites references and quotes names without rewriting literals or metadata", () => {
   const first: Sheet = { id: "first", name: "Sheet1", cells: { A1: { value: "10", format: { bold: true } } }, colWidths: { 0: 180 }, rowHeights: { 0: 40 } };

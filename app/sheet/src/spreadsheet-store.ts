@@ -31,6 +31,7 @@ import {
 import {
   evaluateFormula,
   evaluateSheet,
+  recalculateWorkbook,
   setCellValue,
   shiftSheetStructure,
   renameSheetReferences,
@@ -227,7 +228,7 @@ export class SpreadsheetStore {
   }
 
   private touch(ss: Spreadsheet, changedInputs = false): void {
-    if (changedInputs) ss.sheets = invalidateImportedFormulaCaches(ss).sheets;
+    if (changedInputs) ss.sheets = recalculateWorkbook(invalidateImportedFormulaCaches(ss).sheets);
     ss.updatedAt = nextEntityRevision(ss.updatedAt);
   }
 
@@ -347,7 +348,10 @@ export class SpreadsheetStore {
         createdAt: latest?.ss.createdAt ?? spreadsheet.createdAt,
         updatedAt: nextEntityRevision(latest?.ss.updatedAt),
       };
-      if (latest && spreadsheetInputsChanged(latest.ss, updated)) updated = invalidateImportedFormulaCaches(updated);
+      if (latest && spreadsheetInputsChanged(latest.ss, updated)) {
+        updated = invalidateImportedFormulaCaches(updated);
+        updated.sheets = recalculateWorkbook(updated.sheets);
+      }
       try {
         await this.client.putContent(
           fileId,

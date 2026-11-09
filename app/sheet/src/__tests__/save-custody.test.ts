@@ -7,6 +7,75 @@ import {
 } from "../lib/storage.ts";
 import { workspaceStorageKey } from "../../../shared/lib/space-id.ts";
 import { clientStoreFixture } from "./save-custody-fixture.ts";
+import { setCellValue } from "../lib/formula.ts";
+
+async function relatedWorkbook(f: ReturnType<typeof clientStoreFixture>) {
+  const initial = await f.seed("A");await loadSpreadsheetFromApi(initial.id);
+  await updateSpreadsheet({ ...initial, sheets: [
+    { ...initial.sheets[0], name: "Sheet1", cells: { A1: { value: "10" } } },
+    { id: "second", name: "Sheet2", cells: {}, colWidths: {}, rowHeights: {} },
+    { id: "third", name: "Sheet3", cells: {}, colWidths: {}, rowHeights: {} },
+  ] });
+  const store = f.store("A");
+  await store.setCell(initial.id, "second", "A1", "=Sheet1!A1+1");
+  await store.setCell(initial.id, "third", "A1", "=Sheet2!A1*2");
+  const book = await loadSpreadsheetFromApi(initial.id);
+  expect(book.sheets[1].cells.A1.computed).toBe("11");
+  expect(book.sheets[2].cells.A1.computed).toBe("22");
+  return book;
+}
+
+test("an input edit refreshes cross-sheet and transitive results before ACK and after real persistence", async () => {
+  const f = clientStoreFixture();let pending: Promise<unknown> | undefined;
+  let release = () => {};
+  try {
+    const before = await relatedWorkbook(f), first = before.sheets[0];
+    const cells = setCellValue(first, "A1", "20", before.sheets);
+    const gate = f.holdNext("PUT");release = gate.release;
+    pending = updateSpreadsheet({ ...before, sheets: [{ ...first, cells }, ...before.sheets.slice(1)] });
+    await gate.started;
+    expect(getSpreadsheet(before.id)!.sheets[1].cells.A1.computed).toBe("21");
+    expect(getSpreadsheet(before.id)!.sheets[2].cells.A1.computed).toBe("42");
+    gate.release();await pending;
+    const saved = await f.store("A").getSpreadsheet(before.id);
+    expect(saved.sheets[1].cells.A1.computed).toBe("21");
+    expect(saved.sheets[2].cells.A1.computed).toBe("42");
+    expect(await loadSpreadsheetFromApi(before.id)).toEqual(saved);
+  } finally { release();await Promise.allSettled([pending]);await f.close(); }
+});
+
+test("the canonical conditional PUT recalculates dependent results without relying on the Web client", async () => {
+  const f = clientStoreFixture();
+  try {
+    const before = await relatedWorkbook(f), draft = structuredClone(before);
+    draft.sheets[0].cells = setCellValue(draft.sheets[0], "A1", "20", draft.sheets);
+    const response = await f.app.request("/api/spreadsheets/" + before.id + "?space_id=A", {
+      method: "PUT", headers: { "Content-Type": "application/json", "If-Match": before.updatedAt }, body: JSON.stringify(draft),
+    });
+    expect(response.status).toBe(200);
+    const saved = await response.json();
+    expect(saved.sheets[1].cells.A1.computed).toBe("21");
+    expect(saved.sheets[2].cells.A1.computed).toBe("42");
+    expect(await f.store("A").getSpreadsheet(before.id)).toEqual(saved);
+  } finally { await f.close(); }
+});
+
+for (const mutation of ["cell", "range", "clear"] as const) {
+  test(`MCP ${mutation} mutation refreshes cross-sheet and transitive results`, async () => {
+    const f = clientStoreFixture();
+    try {
+      const before = await relatedWorkbook(f), store = f.store("A"), first = before.sheets[0];
+      if (mutation === "cell") await store.setCell(before.id, first.id, "A1", "20");
+      else if (mutation === "range") await store.setRange(before.id, first.id, "A1", [["30"]]);
+      else await store.clearRange(before.id, first.id, "A1:A1");
+      const expected = mutation === "cell" ? "21" : mutation === "range" ? "31" : "1";
+      const saved = await store.getSpreadsheet(before.id);
+      expect(saved.sheets[1].cells.A1.computed).toBe(expected);
+      expect(saved.sheets[2].cells.A1.computed).toBe(String(Number(expected) * 2));
+      expect((await store.getCell(before.id, "second", "A1")).computed).toBe(expected);
+    } finally { await f.close(); }
+  });
+}
 
 test("the existing MCP renameTab store callee persists rewritten references and a same-name retry has effect0", async () => {
   const f = clientStoreFixture();

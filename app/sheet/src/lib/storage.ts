@@ -4,7 +4,7 @@ import { ApiRequestError, createApiClient, type ApiClientScope } from "../../../
 import { nextEntityRevision } from "../../../shared/lib/entity-revision.ts";
 import { ScopedRevisionWriteQueues } from "../../../shared/lib/revision-write-queue.ts";
 import { assertNamedRangeStructureEditable, invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "./imported-formula-cache.ts";
-import { renameSheetReferences } from "./formula.ts";
+import { recalculateWorkbook, renameSheetReferences } from "./formula.ts";
 
 const api = createApiClient("/api/spreadsheets", "takos-excel-spreadsheets", {
   onClear: invalidateWrites,
@@ -144,7 +144,10 @@ async function updateInScope(scope: ApiClientScope, spreadsheet: Spreadsheet): P
   if (index < 0) return undefined;
   const base = records[index];
   let draft = { ...structuredClone(spreadsheet), id: base.id, createdAt: base.createdAt, updatedAt: nextEntityRevision(base.updatedAt) };
-  if (spreadsheetInputsChanged(base, draft)) draft = invalidateImportedFormulaCaches(draft);
+  if (spreadsheetInputsChanged(base, draft)) {
+    draft = invalidateImportedFormulaCaches(draft);
+    draft.sheets = recalculateWorkbook(draft.sheets);
+  }
   records[index] = draft;
   saveAt(scope.cacheKey, records);
   return queueSpreadsheetWrite(scope, draft, base.updatedAt);
@@ -350,7 +353,10 @@ function changeSheet<T>(id: string, change: (record: Spreadsheet) => T, unchange
   if (index < 0) return { value: unchanged, remote: Promise.resolve() };
   const base = records[index];let draft = structuredClone(base);const value = change(draft);
   if (value === false || value === undefined) return { value, remote: Promise.resolve() };
-  if (spreadsheetInputsChanged(base, draft)) draft = invalidateImportedFormulaCaches(draft);
+  if (spreadsheetInputsChanged(base, draft)) {
+    draft = invalidateImportedFormulaCaches(draft);
+    draft.sheets = recalculateWorkbook(draft.sheets);
+  }
   draft.updatedAt = nextEntityRevision(base.updatedAt);
   records[index] = draft;saveAt(scope.cacheKey, records);
   return { value, remote: queueSpreadsheetWrite(scope, draft, base.updatedAt) };

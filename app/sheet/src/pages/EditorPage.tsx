@@ -14,6 +14,7 @@ import {
 } from "../lib/storage";
 import {
   evaluateSheet,
+  recalculateWorkbook,
   setCellValue,
   shiftSheetStructure,
   type StructuralOp,
@@ -206,7 +207,10 @@ export const EditorPage: Component = () => {
   const save = (ss: Spreadsheet, recordHistory = true) => {
     if (!writer) return;
     const current = spreadsheet();
-    if (current && spreadsheetInputsChanged(current, ss)) ss = invalidateImportedFormulaCaches(ss);
+    if (current && spreadsheetInputsChanged(current, ss)) {
+      ss = invalidateImportedFormulaCaches(ss);
+      ss.sheets = recalculateWorkbook(ss.sheets);
+    }
     editVersion++;
     setSpreadsheet({ ...ss });
     if (recordHistory) history.push(ss);

@@ -127,13 +127,24 @@ export function evaluateSheet(
     ? allSheets.map((s) => (s.id === sheet.id ? sheet : s))
     : [...allSheets, sheet];
   const { hf, idBySheetId } = buildEngine(sheets);
-  const sheetId = idBySheetId.get(sheet.id) ?? 0;
+  try {
+    return evaluateCells(sheet, hf, idBySheetId.get(sheet.id) ?? 0, options);
+  } finally { hf.destroy(); }
+}
+
+function evaluateCells(
+  sheet: Sheet,
+  hf: HyperFormula,
+  sheetId: number,
+  options?: { preserveImportedCache?: boolean; preserveHistoricalResults?: boolean },
+): Record<string, CellData> {
   const updatedCells: Record<string, CellData> = { ...sheet.cells };
 
   for (
     const [addr, cell] of Object.entries(sheet.cells) as [string, CellData][]
   ) {
-    if (options?.preserveImportedCache && cell.computedSource === "file" && cell.computed !== undefined) {
+    if ((options?.preserveHistoricalResults && cell.computedSource)
+      || (options?.preserveImportedCache && cell.computedSource === "file" && cell.computed !== undefined)) {
       updatedCells[addr] = { ...cell };
       continue;
     }
@@ -168,6 +179,18 @@ export function evaluateSheet(
   }
 
   return updatedCells;
+}
+
+/** Refresh all editor-calculated results in one engine, including transitive
+ * cross-sheet dependencies. Imported historical caches keep their provenance;
+ * input writers invalidate them separately instead of claiming a new result. */
+export function recalculateWorkbook(sheets: Sheet[]): Sheet[] {
+  const { hf, idBySheetId } = buildEngine(sheets);
+  try {
+    return sheets.map(sheet => ({ ...sheet, cells: evaluateCells(
+      sheet, hf, idBySheetId.get(sheet.id)!, { preserveHistoricalResults: true },
+    ) }));
+  } finally { hf.destroy(); }
 }
 
 /**
