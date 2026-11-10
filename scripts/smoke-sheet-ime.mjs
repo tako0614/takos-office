@@ -13,9 +13,14 @@ import solid from "vite-plugin-solid";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const chromePath = process.argv[2];
-if (!chromePath || process.argv.length !== 3)
+const surface = process.argv[3] ?? "sheet";
+if (
+  !chromePath ||
+  process.argv.length > 4 ||
+  !["sheet", "slide"].includes(surface)
+)
   throw new Error(
-    "usage: node scripts/smoke-sheet-ime.mjs <chrome-executable>",
+    "usage: node scripts/smoke-sheet-ime.mjs <chrome-executable> [sheet|slide]",
   );
 const scratch = await mkdtemp(join(tmpdir(), "takos-office-sheet-ime-"));
 let chrome, socket, server;
@@ -79,6 +84,7 @@ try {
     logLevel: "silent",
     plugins: [solid()],
     resolve: { dedupe: ["solid-js", "@solidjs/router"] },
+    worker: { format: "es" },
     build: {
       outDir: join(scratch, "bundle"),
       minify: false,
@@ -94,13 +100,13 @@ try {
   server = createServer((request, response) => {
     if (
       request.method === "GET" &&
-      /\/api\/spreadsheets(?:\?|$)/.test(request.url)
+      /\/api\/(?:spreadsheets|presentations)(?:\?|$)/.test(request.url)
     ) {
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end("[]");
     } else if (
       request.method === "PUT" &&
-      /\/api\/spreadsheets\//.test(request.url)
+      /\/api\/(?:spreadsheets|presentations)\//.test(request.url)
     ) {
       const chunks = [];
       request.on("data", (chunk) => chunks.push(chunk));
@@ -118,7 +124,7 @@ try {
     } else if (request.url === "/client.js") {
       response.writeHead(200, { "Content-Type": "application/javascript" });
       response.end(bundle);
-    } else if (request.url === "/") {
+    } else if (request.url === "/" || request.url.startsWith("/?")) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       response.end(
         '<html lang="ja"><div id="root"></div><script src="/client.js"></script></html>',
@@ -185,10 +191,13 @@ try {
   await call("Runtime.enable");
   await call("Page.enable");
   await call("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
-  await call("Page.navigate", { url: origin });
+  await call("Page.navigate", { url: `${origin}/?surface=${surface}` });
   const readyDeadline = Date.now() + 10_000;
   while (!(await evaluate("Boolean(window.sheetImeFixture)"))) {
-    assert.ok(Date.now() < readyDeadline, "components did not render");
+    assert.ok(
+      Date.now() < readyDeadline,
+      `components did not render: ${JSON.stringify(errors)}`,
+    );
     await sleep(25);
   }
   const checks = [];
@@ -253,7 +262,7 @@ try {
         selectionEnd: 0,
       });
   };
-  for (const kind of ["formula", "cell"]) {
+  for (const kind of surface === "sheet" ? ["formula", "cell"] : []) {
     await key(kind, "Enter", 13, true, []);
     await key(kind, "Escape", 27, true, []);
     await key(kind, "Enter", 229, false, []);
@@ -280,52 +289,67 @@ try {
       nativeVirtualKeyCode: code,
       modifiers,
     });
-  await evaluate(
-    "document.querySelector('#grid').focus();window.sheetImeFixture.clear()",
-  );
-  await dispatch("Process", 229, "rawKeyDown");
-  await dispatch("Process", 229, "keyUp");
-  const started = await evaluate(
-    "({starts:[...window.sheetImeFixture.grid.starts],active:document.activeElement?.matches('#grid input'),events:[...window.sheetImeFixture.events]})",
-  );
-  assert.deepEqual(
-    started.starts,
-    [{ address: "A1", value: "" }],
-    "grid ignored the first IME key",
-  );
-  assert.equal(
-    started.active,
-    true,
-    "grid did not focus its actual CellEditor",
-  );
-  assert.equal(started.events[0].isTrusted, true);
-  checks.push({ kind: "grid", name: "Process starts and focuses real editor" });
-  await call("Input.imeSetComposition", {
-    text: "にほん",
-    selectionStart: 3,
-    selectionEnd: 3,
-  });
-  await dispatch("Enter", 13);
-  await dispatch("Enter", 13, "keyUp");
-  assert.deepEqual(
-    await evaluate("window.sheetImeFixture.grid.actions"),
-    [],
-    "grid submitted unconverted input",
-  );
-  checks.push({ kind: "grid", name: "composition confirmation retains draft" });
-  await call("Input.insertText", { text: "日本語" });
-  await dispatch("Enter", 13);
-  await dispatch("Enter", 13, "keyUp");
-  assert.deepEqual(await evaluate("window.sheetImeFixture.grid.actions"), [
-    { action: "submit", value: "日本語" },
-  ]);
-  checks.push({
-    kind: "grid",
-    name: "explicit confirmation submits final Japanese once",
-  });
+  if (surface === "sheet") {
+    await evaluate(
+      "document.querySelector('#grid').focus();window.sheetImeFixture.clear()",
+    );
+    await dispatch("Process", 229, "rawKeyDown");
+    await dispatch("Process", 229, "keyUp");
+    const started = await evaluate(
+      "({starts:[...window.sheetImeFixture.grid.starts],active:document.activeElement?.matches('#grid input'),events:[...window.sheetImeFixture.events]})",
+    );
+    assert.deepEqual(
+      started.starts,
+      [{ address: "A1", value: "" }],
+      "grid ignored the first IME key",
+    );
+    assert.equal(
+      started.active,
+      true,
+      "grid did not focus its actual CellEditor",
+    );
+    assert.equal(started.events[0].isTrusted, true);
+    checks.push({
+      kind: "grid",
+      name: "Process starts and focuses real editor",
+    });
+    await call("Input.imeSetComposition", {
+      text: "にほん",
+      selectionStart: 3,
+      selectionEnd: 3,
+    });
+    await dispatch("Enter", 13);
+    await dispatch("Enter", 13, "keyUp");
+    assert.deepEqual(
+      await evaluate("window.sheetImeFixture.grid.actions"),
+      [],
+      "grid submitted unconverted input",
+    );
+    checks.push({
+      kind: "grid",
+      name: "composition confirmation retains draft",
+    });
+    await call("Input.insertText", { text: "日本語" });
+    await dispatch("Enter", 13);
+    await dispatch("Enter", 13, "keyUp");
+    assert.deepEqual(await evaluate("window.sheetImeFixture.grid.actions"), [
+      { action: "submit", value: "日本語" },
+    ]);
+    checks.push({
+      kind: "grid",
+      name: "explicit confirmation submits final Japanese once",
+    });
+  }
 
   await evaluate(
-    "[...document.querySelectorAll('#library button')].find(e=>e.textContent.includes('New Spreadsheet')).click()",
+    `[...document.querySelectorAll('#library button')].find(e=>e.textContent.includes(${JSON.stringify(surface === "slide" ? "New Presentation" : "New Spreadsheet")})).click()`,
+  );
+  await waitFor(
+    "Boolean(document.querySelector('#library .fixed input'))",
+    "create dialog did not open",
+  );
+  await evaluate(
+    "const title = document.querySelector('#library .fixed input'); title.focus(); title.select()",
   );
   await waitFor(
     "document.activeElement?.matches('#library .fixed input')",
@@ -359,12 +383,34 @@ try {
     kind: "create",
     name: "composition cancellation retains dialog",
   });
+  if (surface === "slide") {
+    await call("Input.imeSetComposition", {
+      text: "",
+      selectionStart: 0,
+      selectionEnd: 0,
+    });
+    await dispatch("Enter", 229);
+    await dispatch("Enter", 229, "keyUp");
+    assert.equal(refusedWrites.length, 0, "legacy IME key attempted a create");
+    assert.equal(
+      await evaluate(
+        "Boolean(document.querySelector('#library .fixed input'))",
+      ),
+      true,
+      "legacy IME key closed the create dialog",
+    );
+    checks.push({
+      kind: "create",
+      name: "legacy keyCode229 waits for explicit action",
+    });
+  }
+  const title = surface === "slide" ? "日本語の発表" : "日本語の表";
   await call("Input.imeSetComposition", {
-    text: "日本語の表",
-    selectionStart: 5,
-    selectionEnd: 5,
+    text: title,
+    selectionStart: title.length,
+    selectionEnd: title.length,
   });
-  await call("Input.insertText", { text: "日本語の表" });
+  await call("Input.insertText", { text: title });
   await dispatch("Enter", 13);
   await dispatch("Enter", 13, "keyUp");
   const writeDeadline = Date.now() + 5_000;
@@ -374,7 +420,7 @@ try {
   }
   assert.equal(refusedWrites.length, 1);
   assert.equal(refusedWrites[0].createOnly, true);
-  assert.equal(refusedWrites[0].body.title, "日本語の表");
+  assert.equal(refusedWrites[0].body.title, title);
   checks.push({
     kind: "create",
     name: "explicit final Japanese title reaches one create-only request",
@@ -384,7 +430,7 @@ try {
   console.log(
     JSON.stringify({
       status: "PASSED",
-      kind: "office.sheet-ime@v1",
+      kind: `office.${surface}-ime@v1`,
       checks,
       refusedCreateRequests: refusedWrites.length,
       blocked,

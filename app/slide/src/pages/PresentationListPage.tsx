@@ -309,7 +309,10 @@ export default function PresentationListPage() {
               placeholder={t("titlePlaceholder")}
               value={newTitle()}
               onInput={(e) => setNewTitle(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              onKeyDown={(e) => {
+                if (e.isComposing || e.keyCode === 229) return;
+                if (e.key === "Enter") handleCreate();
+              }}
               autofocus
             />
             <div class="flex justify-end gap-3">

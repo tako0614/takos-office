@@ -4,7 +4,10 @@ import { FormulaBar } from "../../app/sheet/src/components/FormulaBar.tsx";
 import { CellEditor } from "../../app/sheet/src/components/CellEditor.tsx";
 import { Grid } from "../../app/sheet/src/components/Grid.tsx";
 import { SpreadsheetListPage } from "../../app/sheet/src/pages/SpreadsheetListPage.tsx";
+import PresentationListPage from "../../app/slide/src/pages/PresentationListPage.tsx";
 import { Router, Route } from "@solidjs/router";
+
+const slide = new URLSearchParams(location.search).get("surface") === "slide";
 
 const [formula, setFormula] = createSignal("");
 const [cell, setCell] = createSignal("");
@@ -75,7 +78,10 @@ render(
       </div>
       <div id="library">
         <Router>
-          <Route path="/" component={SpreadsheetListPage} />
+          <Route
+            path="/"
+            component={slide ? PresentationListPage : SpreadsheetListPage}
+          />
         </Router>
       </div>
       <div id="cell">
