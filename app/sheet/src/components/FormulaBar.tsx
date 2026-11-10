@@ -30,6 +30,7 @@ export const FormulaBar: Component<FormulaBarProps> = (props) => {
         onInput={(e) => props.onValueChange(e.currentTarget.value)}
         onBlur={props.onBlur}
         onKeyDown={(e) => {
+          if (e.isComposing || e.keyCode === 229) return;
           if (e.key === "Enter") {
             e.preventDefault();
             props.onSubmit();

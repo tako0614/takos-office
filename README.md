@@ -151,6 +151,10 @@ the replacement. Tab operations use the same revision queue, and deletion
 removes a local item only after an explicit successful deletion acknowledgement.
 Formula-bar typing retains its own focus; each Enter commits the edit once.
 
+The native input regression uses an isolated Chrome profile and trusted IME input:
+`node scripts/smoke-sheet-ime.mjs /path/to/chrome` (Node 24+). It is separate from
+the portable gate and does not qualify a physical OS keyboard or installed app.
+
 Slides uses the same acknowledged-revision queue and Workspace-bound cache/journal.
 Continuous edits and late responses preserve newer drafts. Unknown saves or true
 conflicts retain the draft across reload and expose explicit conditional recovery;
