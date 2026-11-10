@@ -259,6 +259,15 @@ export const Grid: Component<GridProps> = (props) => {
 
     const { col, row } = selectedParsed();
 
+    // The first IME key has no printable character yet. Focus the existing
+    // editor before the browser sends its composition text.
+    if (e.key === "Process" || e.keyCode === 229) {
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        props.onStartEdit(formatCellAddress(col, row), "");
+      }
+      return;
+    }
+
     const navigate = (newCol: number, newRow: number, shift: boolean) => {
       const clampedCol = Math.max(0, Math.min(TOTAL_COLS - 1, newCol));
       const clampedRow = Math.max(0, Math.min(TOTAL_ROWS - 1, newRow));

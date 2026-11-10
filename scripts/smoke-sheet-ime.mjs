@@ -23,6 +23,7 @@ let nextId = 0;
 const pending = new Map();
 const blocked = [],
   errors = [];
+const refusedWrites = [];
 let stderr = "";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function call(method, params = {}) {
@@ -91,7 +92,30 @@ try {
   });
   const bundle = await readFile(join(scratch, "bundle/client.js"));
   server = createServer((request, response) => {
-    if (request.url === "/client.js") {
+    if (
+      request.method === "GET" &&
+      /\/api\/spreadsheets(?:\?|$)/.test(request.url)
+    ) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end("[]");
+    } else if (
+      request.method === "PUT" &&
+      /\/api\/spreadsheets\//.test(request.url)
+    ) {
+      const chunks = [];
+      request.on("data", (chunk) => chunks.push(chunk));
+      request.on("end", () => {
+        refusedWrites.push({
+          path: request.url,
+          body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+          createOnly: request.headers["if-none-match"] === "*",
+        });
+        response.writeHead(503, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({ error: "intentional component-fixture refusal" }),
+        );
+      });
+    } else if (request.url === "/client.js") {
       response.writeHead(200, { "Content-Type": "application/javascript" });
       response.end(bundle);
     } else if (request.url === "/") {
@@ -240,6 +264,121 @@ try {
       await key(kind, "Tab", 9, false, ["shift-tab"], true);
     }
   }
+  const waitFor = async (expression, label) => {
+    const deadline = Date.now() + 5_000;
+    while (!(await evaluate(expression))) {
+      assert.ok(Date.now() < deadline, label);
+      await sleep(25);
+    }
+  };
+  const dispatch = async (name, code, type = "keyDown", modifiers = 0) =>
+    call("Input.dispatchKeyEvent", {
+      type,
+      key: name,
+      code: name === "Process" ? "KeyN" : name,
+      windowsVirtualKeyCode: code,
+      nativeVirtualKeyCode: code,
+      modifiers,
+    });
+  await evaluate(
+    "document.querySelector('#grid').focus();window.sheetImeFixture.clear()",
+  );
+  await dispatch("Process", 229, "rawKeyDown");
+  await dispatch("Process", 229, "keyUp");
+  const started = await evaluate(
+    "({starts:[...window.sheetImeFixture.grid.starts],active:document.activeElement?.matches('#grid input'),events:[...window.sheetImeFixture.events]})",
+  );
+  assert.deepEqual(
+    started.starts,
+    [{ address: "A1", value: "" }],
+    "grid ignored the first IME key",
+  );
+  assert.equal(
+    started.active,
+    true,
+    "grid did not focus its actual CellEditor",
+  );
+  assert.equal(started.events[0].isTrusted, true);
+  checks.push({ kind: "grid", name: "Process starts and focuses real editor" });
+  await call("Input.imeSetComposition", {
+    text: "にほん",
+    selectionStart: 3,
+    selectionEnd: 3,
+  });
+  await dispatch("Enter", 13);
+  await dispatch("Enter", 13, "keyUp");
+  assert.deepEqual(
+    await evaluate("window.sheetImeFixture.grid.actions"),
+    [],
+    "grid submitted unconverted input",
+  );
+  checks.push({ kind: "grid", name: "composition confirmation retains draft" });
+  await call("Input.insertText", { text: "日本語" });
+  await dispatch("Enter", 13);
+  await dispatch("Enter", 13, "keyUp");
+  assert.deepEqual(await evaluate("window.sheetImeFixture.grid.actions"), [
+    { action: "submit", value: "日本語" },
+  ]);
+  checks.push({
+    kind: "grid",
+    name: "explicit confirmation submits final Japanese once",
+  });
+
+  await evaluate(
+    "[...document.querySelectorAll('#library button')].find(e=>e.textContent.includes('New Spreadsheet')).click()",
+  );
+  await waitFor(
+    "document.activeElement?.matches('#library .fixed input')",
+    "create input did not receive focus",
+  );
+  await call("Input.imeSetComposition", {
+    text: "にほん",
+    selectionStart: 3,
+    selectionEnd: 3,
+  });
+  await dispatch("Enter", 13);
+  await dispatch("Enter", 13, "keyUp");
+  assert.equal(
+    await evaluate("Boolean(document.querySelector('#library .fixed input'))"),
+    true,
+    "IME Enter closed the create dialog",
+  );
+  assert.equal(refusedWrites.length, 0, "IME confirmation attempted a create");
+  checks.push({
+    kind: "create",
+    name: "composition confirmation has zero create requests",
+  });
+  await dispatch("Escape", 27);
+  await dispatch("Escape", 27, "keyUp");
+  assert.equal(
+    await evaluate("Boolean(document.querySelector('#library .fixed input'))"),
+    true,
+    "IME Escape closed the create dialog",
+  );
+  checks.push({
+    kind: "create",
+    name: "composition cancellation retains dialog",
+  });
+  await call("Input.imeSetComposition", {
+    text: "日本語の表",
+    selectionStart: 5,
+    selectionEnd: 5,
+  });
+  await call("Input.insertText", { text: "日本語の表" });
+  await dispatch("Enter", 13);
+  await dispatch("Enter", 13, "keyUp");
+  const writeDeadline = Date.now() + 5_000;
+  while (refusedWrites.length === 0) {
+    assert.ok(Date.now() < writeDeadline, "explicit create request missing");
+    await sleep(25);
+  }
+  assert.equal(refusedWrites.length, 1);
+  assert.equal(refusedWrites[0].createOnly, true);
+  assert.equal(refusedWrites[0].body.title, "日本語の表");
+  checks.push({
+    kind: "create",
+    name: "explicit final Japanese title reaches one create-only request",
+  });
   assert.deepEqual(blocked, []);
   assert.deepEqual(errors, []);
   console.log(
@@ -247,10 +386,11 @@ try {
       status: "PASSED",
       kind: "office.sheet-ime@v1",
       checks,
+      refusedCreateRequests: refusedWrites.length,
       blocked,
       errors,
       scope:
-        "actual components/Solid/Chrome trusted CDP IME and keyboard input; callback-only, no server/storage/OS-device qualification",
+        "actual components/Solid/Chrome trusted CDP IME and keyboard input; callback/request boundary only; local API writes deliberately refused, no storage or OS-device qualification",
     }),
   );
 } finally {
