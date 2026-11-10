@@ -33,6 +33,7 @@ export const CellEditor: Component<CellEditorProps> = (props) => {
       value={props.value}
       onInput={(e) => props.onChange(e.currentTarget.value)}
       onKeyDown={(e) => {
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter") {
           e.preventDefault();
           props.onSubmit();
