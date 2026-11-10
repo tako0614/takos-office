@@ -150,10 +150,14 @@ replacement or an explicit read/discard; a concurrent writer can still reject
 the replacement. Tab operations use the same revision queue, and deletion
 removes a local item only after an explicit successful deletion acknowledgement.
 Formula-bar typing retains its own focus; each Enter commits the edit once.
+Typing with an IME into a selected cell opens the inline editor. Conversion
+confirmation keeps the draft; a subsequent explicit Enter saves it. The new
+spreadsheet dialog also waits for conversion before creating the file.
 
 The native input regression uses an isolated Chrome profile and trusted IME input:
 `node scripts/smoke-sheet-ime.mjs /path/to/chrome` (Node 24+). It is separate from
-the portable gate and does not qualify a physical OS keyboard or installed app.
+the portable gate. Its callback/request fixture refuses API writes and does not
+qualify storage, a physical OS keyboard, or an installed app.
 
 Slides uses the same acknowledged-revision queue and Workspace-bound cache/journal.
 Continuous edits and late responses preserve newer drafts. Unknown saves or true

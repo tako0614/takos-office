@@ -352,6 +352,7 @@ export const SpreadsheetListPage: Component = () => {
               value={newTitle()}
               onInput={(e) => setNewTitle(e.currentTarget.value)}
               onKeyDown={(e) => {
+                if (e.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter") handleCreate();
                 if (e.key === "Escape") setShowNewDialog(false);
               }}
