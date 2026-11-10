@@ -158,12 +158,16 @@ The native input regression uses an isolated Chrome profile and trusted IME inpu
 `node scripts/smoke-sheet-ime.mjs /path/to/chrome` (Node 24+). It is separate from
 the portable gate. Its callback/request fixture refuses API writes and does not
 qualify storage, a physical OS keyboard, or an installed app.
+Use the optional `slide` argument to check the actual presentation creation dialog
+without repeating the spreadsheet cases.
 
 Slides uses the same acknowledged-revision queue and Workspace-bound cache/journal.
 Continuous edits and late responses preserve newer drafts. Unknown saves or true
 conflicts retain the draft across reload and expose explicit conditional recovery;
 opening presentation mode also keeps the current Workspace. Library deletion
 keeps the item until an explicit successful deletion acknowledgement.
+The new presentation dialog keeps Japanese input through IME conversion; only a
+subsequent explicit Enter creates the file with its final title.
 
 ### Office file compatibility
 
