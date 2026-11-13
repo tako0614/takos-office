@@ -50,7 +50,7 @@
     "exceljs": "4.4.0",
     "hono": "^4.12.9",
     "hyperformula": "^2.7.0",
-    "jspdf": "^2.5.0",
+    "jspdf": "4.2.1",
     "lucide-solid": "^0.554.0",
     "mammoth": "1.13.0",
     "pptxgenjs": "4.0.1",

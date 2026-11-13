@@ -205,7 +205,7 @@ test("exportPresentationToPdf handles shape element", async () => {
 // A 1x1 transparent PNG as a data URL — embeds via doc.addImage with no
 // network access, exercising the real image path (not the placeholder).
 const TINY_PNG_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
 
 test("exportPresentationToPdf embeds a data-URL image", async () => {
   const exportPdf = requirePdfExporter();

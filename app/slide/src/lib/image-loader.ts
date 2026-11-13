@@ -10,15 +10,21 @@
  * `null` so callers fall back to a placeholder rather than aborting the export.
  */
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+import { MAX_RASTER_PIXELS } from "../../../shared/lib/office-raster.ts";
+import { exportImageInfo } from "./image-metadata.ts";
+
+export const MAX_EXPORT_IMAGE_BYTES = 5 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_REDIRECTS = 5;
 
 export interface LoadedImage {
   /** A `data:<mime>;base64,<...>` URL usable by node-canvas and jsPDF. */
   dataUrl: string;
-  /** Upper-case format hint for jsPDF (`PNG` | `JPEG` | `WEBP` | `GIF`). */
+  /** Actual magic-validated format, including existing GIF/BMP support. */
   format: string;
+  width: number;
+  height: number;
+  byteLength: number;
 }
 
 /** Minimal fetch shape (so tests can pass a plain stub). */
@@ -28,13 +34,27 @@ type FetchLike = (
 ) => Promise<Response>;
 
 const DATA_IMAGE_RE =
-  /^data:image\/(png|jpeg|jpg|gif|webp);base64,([a-z0-9+/=\s]+)$/i;
+  /^data:image\/(png|jpeg|jpg|gif|bmp|webp);base64,([a-z0-9+/=\s]+)$/i;
 
 /** Parse a `data:image/...;base64` URL with no network access. */
 export function parseDataImageUrl(url: string): LoadedImage | null {
+  if (url.length > Math.ceil(MAX_EXPORT_IMAGE_BYTES * 4 / 3) + 128) return null;
   const match = url.trim().match(DATA_IMAGE_RE);
   if (!match) return null;
-  return { dataUrl: url.trim(), format: formatHint(`image/${match[1]}`) };
+  try {
+    const binary = atob(match[2].replace(/\s/g, ""));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return loadedImage(bytes, `image/${match[1].toLowerCase()}`);
+  } catch { return null; }
+}
+
+function loadedImage(bytes: Uint8Array, mime: string): LoadedImage | null {
+  if (!bytes.length || bytes.length > MAX_EXPORT_IMAGE_BYTES) return null;
+  try {
+    const info = exportImageInfo(bytes, mime);
+    return { dataUrl: `data:${info.mime};base64,${toBase64(bytes)}`, format: info.format,
+      width: info.width, height: info.height, byteLength: bytes.length };
+  } catch { return null; }
 }
 
 /** True for an IPv4 address in a loopback/private/CGNAT/multicast/reserved range. */
@@ -161,6 +181,12 @@ export async function loadImageForExport(
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const responses: Response[] = [];
+  const discardBody = (response: Response) => {
+    // Cancellation may itself return a pending promise. Initiate it without
+    // adding an unbounded wait; the shared abort signal also retires fetch IO.
+    if (response.body && !response.body.locked) void response.body.cancel().catch(() => {});
+  };
   try {
     // Follow redirects manually so each hop's target host is validated BEFORE
     // the request is issued. With `redirect: "follow"` a public URL could
@@ -171,6 +197,7 @@ export async function loadImageForExport(
       signal: controller.signal,
       redirect: "manual",
     });
+    responses.push(res);
     for (let hops = 0; res.status >= 300 && res.status < 400; hops++) {
       if (hops >= MAX_REDIRECTS) return null;
       const location = res.headers.get("location");
@@ -184,10 +211,12 @@ export async function loadImageForExport(
       if (next.protocol !== "http:" && next.protocol !== "https:") return null;
       if (!isFetchableImageHost(next.toString())) return null;
       current = next.toString();
+      discardBody(res);
       res = await fetchImpl(current, {
         signal: controller.signal,
         redirect: "manual",
       });
+      responses.push(res);
     }
     if (!res.ok) return null;
 
@@ -195,25 +224,61 @@ export async function loadImageForExport(
       .split(";")[0]
       .trim()
       .toLowerCase();
-    if (!mime.startsWith("image/")) return null;
-
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
-      return null;
-    }
-    return { dataUrl: `data:${mime};base64,${toBase64(bytes)}`, format: formatHint(mime) };
+    if (!/^image\/(png|x-png|jpeg|jpg|pjpeg|gif|bmp|x-bmp|x-ms-bmp|webp)$/.test(mime) || !res.body) return null;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_EXPORT_IMAGE_BYTES) {
+          controller.abort();
+          void reader.cancel().catch(() => {});
+          return null;
+        }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+    return loadedImage(bytes, mime);
   } catch {
     return null;
   } finally {
+    controller.abort();
+    for (const response of responses) discardBody(response);
     clearTimeout(timer);
   }
 }
 
-function formatHint(mime: string): string {
-  if (mime.includes("jpeg") || mime.includes("jpg")) return "JPEG";
-  if (mime.includes("webp")) return "WEBP";
-  if (mime.includes("gif")) return "GIF";
-  return "PNG";
+/** Share the existing deck byte/pixel budget across delivery formats, before decode. */
+export async function loadImagesForExport(
+  elements: Iterable<{ id: string; type: string; imageUrl?: string }>,
+  fetchImpl: FetchLike = fetch,
+): Promise<Map<string, LoadedImage>> {
+  const images = new Map<string, LoadedImage>();
+  const cached = new Map<string, LoadedImage | null>();
+  let bytes = 0, pixels = 0;
+  for (const element of elements) {
+    if (element.type !== "image" || !element.imageUrl) continue;
+    const url = element.imageUrl;
+    if (!cached.has(url)) {
+      let loaded: LoadedImage | null = null;
+      if (bytes < MAX_EXPORT_IMAGE_BYTES && pixels < MAX_RASTER_PIXELS) {
+        loaded = await loadImageForExport(url, fetchImpl);
+        if (loaded && (bytes + loaded.byteLength > MAX_EXPORT_IMAGE_BYTES ||
+            pixels + loaded.width * loaded.height > MAX_RASTER_PIXELS)) loaded = null;
+      }
+      if (loaded) { bytes += loaded.byteLength; pixels += loaded.width * loaded.height; }
+      cached.set(url, loaded);
+    }
+    const loaded = cached.get(url);
+    if (loaded) images.set(element.id, loaded);
+  }
+  return images;
 }
 
 function toBase64(bytes: Uint8Array): string {
