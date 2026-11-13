@@ -57,6 +57,9 @@
     "solid-js": "^1.9.3",
     "zod": "^3.25.32"
   },
+  "overrides": {
+    "prosemirror-view": "1.42.6"
+  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "@types/bun": "^1.3.14",
