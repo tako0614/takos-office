@@ -7,7 +7,7 @@
 
 import { createCanvas, type Image, loadImage } from "canvas";
 import type { Slide, SlideElement } from "../types/index.ts";
-import { loadImageForExport } from "./image-loader.ts";
+import { loadImagesForExport } from "./image-loader.ts";
 import { logicalSlideSize, type SlideSize } from "../../../shared/lib/slide-size.ts";
 
 
@@ -20,19 +20,15 @@ type ImageMap = Map<string, Image>;
  */
 async function loadSlideImages(slide: Slide): Promise<ImageMap> {
   const map: ImageMap = new Map();
-  await Promise.all(
-    slide.elements
-      .filter((el) => el.type === "image" && el.imageUrl)
-      .map(async (el) => {
-        const loaded = await loadImageForExport(el.imageUrl as string);
-        if (!loaded) return;
-        try {
-          map.set(el.id, await loadImage(loaded.dataUrl));
-        } catch {
-          // leave unset -> placeholder
-        }
-      }),
-  );
+  const loaded = await loadImagesForExport(slide.elements);
+  const decoded = new Map<string, Image | null>();
+  for (const [id, image] of loaded) {
+    try {
+      let value = decoded.get(image.dataUrl);
+      if (value === undefined) { value = await loadImage(image.dataUrl); decoded.set(image.dataUrl, value); }
+      if (value) map.set(id, value);
+    } catch { decoded.set(image.dataUrl, null); /* leave unset -> placeholder */ }
+  }
   return map;
 }
 

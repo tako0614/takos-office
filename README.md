@@ -213,6 +213,13 @@ and thumbnail rendering, presentation mode, PNG, PDF, and PPTX export. Decks
 without this metadata retain the previous 16:9 editing space and PDF convention.
 Embedded PNG, JPEG, GIF, and BMP images share a 5 MiB decoded-byte and 32 million
 pixel budget per deck; remote images are never fetched during PPTX conversion.
+Server PDF/PNG export checks raster magic, declared MIME and dimensions before
+decoding, with the same 5 MiB image-byte and 32 million pixel budget shared by
+inline and remote images. PNG, JPEG, GIF, BMP and WebP remain supported. Images
+that fail admission use the existing placeholder. Loading is sequential and
+repeated URLs, including failed loads, are reused within an export. There is no
+new 64-image limit; these image budgets do not establish a service-wide capacity
+or a total export deadline across distinct failed URLs.
 Slides accepts at most 1,000 slides, 10,000 elements per slide, and 50,000 elements
 in total. Common text, basic shapes, raster images, backgrounds, and speaker notes
 are converted; rich text, theme/layout detail, charts, groups, transitions and

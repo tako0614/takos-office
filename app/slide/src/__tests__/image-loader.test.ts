@@ -7,7 +7,7 @@ import {
 
 test("parseDataImageUrl accepts supported base64 image data URLs", () => {
   const url =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
   const parsed = parseDataImageUrl(url);
   expect(parsed?.format).toBe("PNG");
   expect(parsed?.dataUrl).toBe(url);
@@ -69,7 +69,7 @@ test("isFetchableImageHost still allows public IPv6 (incl. mapped public v4)", (
 
 test("loadImageForExport returns the inline image without fetching", async () => {
   const url =
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=";
   let called = false;
   const noFetch = () => {
     called = true;
@@ -107,7 +107,7 @@ test("loadImageForExport rejects non-image content types", async () => {
 });
 
 test("loadImageForExport embeds a fetched image as a data URL", async () => {
-  const pngBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const pngBytes = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII="), char => char.charCodeAt(0));
   const okFetch = () =>
     Promise.resolve(
       new Response(pngBytes, {
@@ -146,7 +146,7 @@ test("loadImageForExport never issues the internal request on a redirect to a pr
 });
 
 test("loadImageForExport follows a redirect to another public host", async () => {
-  const pngBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const pngBytes = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII="), char => char.charCodeAt(0));
   const requested: string[] = [];
   const redirectingFetch = (input: string) => {
     requested.push(input);

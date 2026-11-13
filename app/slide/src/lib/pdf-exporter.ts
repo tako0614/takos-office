@@ -7,11 +7,11 @@
 
 import { jsPDF } from "jspdf";
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
-import { loadImageForExport } from "./image-loader.ts";
+import { loadImagesForExport } from "./image-loader.ts";
 import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
 
 /** Slide-element id -> embeddable image (only successfully loaded ones). */
-type PdfImageMap = Map<string, { dataUrl: string; format: string }>;
+type PdfImageMap = Map<string, { dataUrl: string; format: string; failed?: boolean }>;
 
 /**
  * Export a full presentation to a PDF document, embedding real images where
@@ -46,17 +46,7 @@ export async function exportPresentationToPdf(
 async function loadPresentationImages(
   presentation: Presentation,
 ): Promise<PdfImageMap> {
-  const map: PdfImageMap = new Map();
-  const elements = presentation.slides
-    .flatMap((s) => s.elements)
-    .filter((el) => el.type === "image" && el.imageUrl);
-  await Promise.all(
-    elements.map(async (el) => {
-      const loaded = await loadImageForExport(el.imageUrl as string);
-      if (loaded) map.set(el.id, loaded);
-    }),
-  );
-  return map;
+  return loadImagesForExport(presentation.slides.flatMap((slide) => slide.elements));
 }
 
 // ---------------------------------------------------------------------------
@@ -277,18 +267,21 @@ function renderImageToPdf(
   el: SlideElement,
   sx: number,
   sy: number,
-  image?: { dataUrl: string; format: string },
+  image?: { dataUrl: string; format: string; failed?: boolean },
 ): void {
   const x = el.x * sx;
   const y = el.y * sy;
   const w = el.width * sx;
   const h = el.height * sy;
 
-  if (image) {
+  if (image && !image.failed) {
     try {
       doc.addImage(image.dataUrl, image.format, x, y, w, h);
       return;
     } catch {
+      // Repeated placements share this admitted image; never retry a failed
+      // decoder for each copy of the same URL in the same export.
+      image.failed = true;
       // fall through to the placeholder on decode/embed failure
     }
   }
