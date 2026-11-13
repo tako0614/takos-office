@@ -285,12 +285,13 @@ export function createOfficeApp(
       const slideStore = createPresentationStore(client);
       const sheetStore = new SpreadsheetStore(client);
       handler = createMcpRequestHandler(
-        () =>
+        (signal) =>
           createOfficeMcpServer({
             docsStore,
             slideStore,
             sheetStore,
             nativeRendering: nativeRenderingEnabled(env),
+            signal,
           }),
         {
           authToken: envValue(env, "MCP_AUTH_TOKEN"),

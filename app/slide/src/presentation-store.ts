@@ -464,7 +464,7 @@ export interface PresentationStore {
 
   // Export
   exportJson(id: string): Promise<Presentation>;
-  exportPdf(id: string): Promise<Uint8Array>;
+  exportPdf(id: string, signal?: AbortSignal): Promise<Uint8Array>;
   getSlideCount(id: string): Promise<number>;
 }
 
@@ -1122,9 +1122,11 @@ export function createPresentationStore(
       return p;
     },
 
-    async exportPdf(id: string) {
+    async exportPdf(id: string, signal?: AbortSignal) {
+      signal?.throwIfAborted();
       const { p } = await mustGet(id);
-      return exportPresentationToPdf(p);
+      signal?.throwIfAborted();
+      return exportPresentationToPdf(p, signal);
     },
 
     async getSlideCount(id: string) {

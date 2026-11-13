@@ -33,6 +33,7 @@ import {
 export type SlideMcpServerOptions = {
   nativeRendering?: boolean;
   runtimeCapabilities?: SlideRuntimeCapabilityManifest;
+  signal?: AbortSignal;
 };
 
 export function createSlideMcpServer(
@@ -47,7 +48,7 @@ export function createSlideMcpServer(
     name: "takos-slide",
     version: "1.0.0",
     registerTools: (server) =>
-      registerSlideTools(server, store, runtimeCapabilities),
+      registerSlideTools(server, store, runtimeCapabilities, options.signal),
   });
 }
 
@@ -55,6 +56,7 @@ export function registerSlideTools(
   server: McpServer,
   store: PresentationStore,
   runtimeCapabilities: SlideRuntimeCapabilityManifest,
+  requestSignal?: AbortSignal,
 ): void {
   const text = mcpText;
   const json = mcpJson;
@@ -756,13 +758,16 @@ export function registerSlideTools(
       slideIndex: number;
       width?: number;
       height?: number;
-    }) => {
+    }, extra) => {
       const unavailable = slideScreenshotUnavailableMessage(
         runtimeCapabilities.screenshot,
       );
       if (unavailable) return error(unavailable);
 
+      const signal = requestSignal ? AbortSignal.any([requestSignal, extra.signal]) : extra.signal;
+      signal.throwIfAborted();
       const p = await store.get(presentationId);
+      signal.throwIfAborted();
       if (!p) return error(`Presentation not found: ${presentationId}`);
       const slide = p.slides[slideIndex];
       if (!slide) {
@@ -788,7 +793,9 @@ export function registerSlideTools(
         const { renderSlideToBuffer } = await import(
           rendererModule
         ) as typeof import("./lib/server-renderer.ts");
-        const buf = await renderSlideToBuffer(slide, safeWidth, safeHeight, p.slideSize);
+        signal.throwIfAborted();
+        const buf = await renderSlideToBuffer(slide, safeWidth, safeHeight, p.slideSize, signal);
+        signal.throwIfAborted();
         const base64 = bytesToBase64(buf);
         return {
           content: [
@@ -826,9 +833,12 @@ export function registerSlideTools(
     "slide_export_pdf",
     "Export a presentation as a PDF file. Returns base64-encoded PDF data.",
     { id: idSchema.describe("Presentation ID") },
-    async ({ id }: { id: string }) => {
+    async ({ id }: { id: string }, extra) => {
       try {
-        const pdfBytes = await store.exportPdf(id);
+        const signal = requestSignal ? AbortSignal.any([requestSignal, extra.signal]) : extra.signal;
+        signal.throwIfAborted();
+        const pdfBytes = await store.exportPdf(id, signal);
+        signal.throwIfAborted();
         const base64 = bytesToBase64(pdfBytes);
         return text(base64);
       } catch (e) {

@@ -223,6 +223,7 @@ async function readBoundedJsonRequest(
       method: request.method,
       headers,
       body: raw,
+      signal: request.signal,
     }),
     body,
   };
@@ -254,7 +255,7 @@ export function createAppMcpServer(config: AppMcpServerConfig): McpServer {
  * transport.
  */
 export function createMcpRequestHandler(
-  createServer: () => McpServer,
+  createServer: (signal: AbortSignal) => McpServer,
   options: McpAuthOptions = {},
 ) {
   return async (request: Request): Promise<Response> => {
@@ -264,7 +265,7 @@ export function createMcpRequestHandler(
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
-    const mcpServer = createServer();
+    const mcpServer = createServer(request.signal);
     await mcpServer.connect(transport);
 
     if (request.method !== "POST") {

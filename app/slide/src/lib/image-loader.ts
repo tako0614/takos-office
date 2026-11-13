@@ -6,8 +6,8 @@
  * available (Node/Bun, never workerd), so it can fetch remote images — but that
  * means an agent-supplied URL could point the server at internal hosts. The
  * fetch path therefore refuses obviously-private targets (SSRF best effort),
- * caps the body size, and requires an image content-type. Any failure returns
- * `null` so callers fall back to a placeholder rather than aborting the export.
+ * caps the body size, and requires an image content-type. Image failures return
+ * `null` for a placeholder; caller cancellation propagates to stop the export.
  */
 
 import { MAX_RASTER_PIXELS } from "../../../shared/lib/office-raster.ts";
@@ -162,11 +162,13 @@ export function isFetchableImageHost(url: string): boolean {
   return true;
 }
 
-/** Load an image URL into a base64 data URL, or `null` on any failure. */
+/** Load a data URL or return `null` on image failure; caller cancellation throws. */
 export async function loadImageForExport(
   url: string,
   fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal,
 ): Promise<LoadedImage | null> {
+  signal?.throwIfAborted();
   const inline = parseDataImageUrl(url);
   if (inline) return inline;
 
@@ -180,6 +182,9 @@ export async function loadImageForExport(
   if (!isFetchableImageHost(url)) return null;
 
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   const responses: Response[] = [];
   const discardBody = (response: Response) => {
@@ -198,6 +203,7 @@ export async function loadImageForExport(
       redirect: "manual",
     });
     responses.push(res);
+    controller.signal.throwIfAborted();
     for (let hops = 0; res.status >= 300 && res.status < 400; hops++) {
       if (hops >= MAX_REDIRECTS) return null;
       const location = res.headers.get("location");
@@ -217,6 +223,7 @@ export async function loadImageForExport(
         redirect: "manual",
       });
       responses.push(res);
+      controller.signal.throwIfAborted();
     }
     if (!res.ok) return null;
 
@@ -226,11 +233,15 @@ export async function loadImageForExport(
       .toLowerCase();
     if (!/^image\/(png|x-png|jpeg|jpg|pjpeg|gif|bmp|x-bmp|x-ms-bmp|webp)$/.test(mime) || !res.body) return null;
     const reader = res.body.getReader();
+    const cancelRead = () => { void reader.cancel(controller.signal.reason).catch(() => {}); };
+    controller.signal.addEventListener("abort", cancelRead, { once: true });
     const chunks: Uint8Array[] = [];
     let total = 0;
     try {
+      controller.signal.throwIfAborted();
       while (true) {
         const { value, done } = await reader.read();
+        controller.signal.throwIfAborted();
         if (done) break;
         total += value.byteLength;
         if (total > MAX_EXPORT_IMAGE_BYTES) {
@@ -240,14 +251,19 @@ export async function loadImageForExport(
         }
         chunks.push(value);
       }
-    } finally { reader.releaseLock(); }
+    } finally {
+      controller.signal.removeEventListener("abort", cancelRead);
+      reader.releaseLock();
+    }
     const bytes = new Uint8Array(total);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     return loadedImage(bytes, mime);
   } catch {
+    signal?.throwIfAborted();
     return null;
   } finally {
+    signal?.removeEventListener("abort", abort);
     controller.abort();
     for (const response of responses) discardBody(response);
     clearTimeout(timer);
@@ -258,17 +274,21 @@ export async function loadImageForExport(
 export async function loadImagesForExport(
   elements: Iterable<{ id: string; type: string; imageUrl?: string }>,
   fetchImpl: FetchLike = fetch,
+  signal?: AbortSignal,
 ): Promise<Map<string, LoadedImage>> {
+  signal?.throwIfAborted();
   const images = new Map<string, LoadedImage>();
   const cached = new Map<string, LoadedImage | null>();
   let bytes = 0, pixels = 0;
   for (const element of elements) {
+    signal?.throwIfAborted();
     if (element.type !== "image" || !element.imageUrl) continue;
     const url = element.imageUrl;
     if (!cached.has(url)) {
       let loaded: LoadedImage | null = null;
       if (bytes < MAX_EXPORT_IMAGE_BYTES && pixels < MAX_RASTER_PIXELS) {
-        loaded = await loadImageForExport(url, fetchImpl);
+        loaded = await loadImageForExport(url, fetchImpl, signal);
+        signal?.throwIfAborted();
         if (loaded && (bytes + loaded.byteLength > MAX_EXPORT_IMAGE_BYTES ||
             pixels + loaded.width * loaded.height > MAX_RASTER_PIXELS)) loaded = null;
       }
