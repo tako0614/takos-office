@@ -28,6 +28,7 @@ export interface OfficeMcpServerDeps {
   sheetStore: SpreadsheetStore;
   /** Whether the runtime can render screenshots/PDF natively (Bun container). */
   nativeRendering?: boolean;
+  signal?: AbortSignal;
 }
 
 export function createOfficeMcpServer(deps: OfficeMcpServerDeps): McpServer {
@@ -45,6 +46,7 @@ export function createOfficeMcpServer(deps: OfficeMcpServerDeps): McpServer {
         server,
         deps.slideStore,
         createSlideRuntimeCapabilityManifest({ nativeRendering }),
+        deps.signal,
       );
       registerExcelTools(
         server,

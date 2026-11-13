@@ -220,6 +220,13 @@ that fail admission use the existing placeholder. Loading is sequential and
 repeated URLs, including failed loads, are reused within an export. There is no
 new 64-image limit; these image budgets do not establish a service-wide capacity
 or a total export deadline across distinct failed URLs.
+MCP PDF/PNG rendering propagates the authenticated HTTP request signal and the
+SDK tool cancellation signal to image fetch/read and checks it before later
+image decodes, placements and output. Cancellation is cooperative: an already
+running synchronous codec or output operation is not preempted, and callers
+that do not cancel still have no new total export deadline.
+This does not add cancellation-notification routing across separate stateless
+HTTP requests or qualify disconnect signaling in a deployed runtime.
 Slides accepts at most 1,000 slides, 10,000 elements per slide, and 50,000 elements
 in total. Common text, basic shapes, raster images, backgrounds, and speaker notes
 are converted; rich text, theme/layout detail, charts, groups, transitions and

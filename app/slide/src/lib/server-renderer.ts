@@ -18,16 +18,24 @@ type ImageMap = Map<string, Image>;
  * Pre-fetch and decode every image element on the slide. Failed loads are
  * simply omitted, so the renderer falls back to a placeholder for them.
  */
-async function loadSlideImages(slide: Slide): Promise<ImageMap> {
+async function loadSlideImages(slide: Slide, signal?: AbortSignal): Promise<ImageMap> {
   const map: ImageMap = new Map();
-  const loaded = await loadImagesForExport(slide.elements);
+  const loaded = await loadImagesForExport(slide.elements, fetch, signal);
   const decoded = new Map<string, Image | null>();
   for (const [id, image] of loaded) {
+    signal?.throwIfAborted();
     try {
       let value = decoded.get(image.dataUrl);
-      if (value === undefined) { value = await loadImage(image.dataUrl); decoded.set(image.dataUrl, value); }
+      if (value === undefined) {
+        value = await loadImage(image.dataUrl);
+        signal?.throwIfAborted();
+        decoded.set(image.dataUrl, value);
+      }
       if (value) map.set(id, value);
-    } catch { decoded.set(image.dataUrl, null); /* leave unset -> placeholder */ }
+    } catch {
+      signal?.throwIfAborted();
+      decoded.set(image.dataUrl, null); /* leave unset -> placeholder */
+    }
   }
   return map;
 }
@@ -40,7 +48,9 @@ export async function renderSlideToBuffer(
   width = 1280,
   height = 720,
   slideSize?: SlideSize,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -52,7 +62,8 @@ export async function renderSlideToBuffer(
   const scaleY = slideSize ? fit : height / logical.height;
   const offsetX = slideSize ? (width - logical.width * fit) / 2 : 0;
   const offsetY = slideSize ? (height - logical.height * fit) / 2 : 0;
-  const images = await loadSlideImages(slide);
+  const images = await loadSlideImages(slide, signal);
+  signal?.throwIfAborted();
 
   // Background
   ctx.fillStyle = slide.background;
@@ -64,10 +75,12 @@ export async function renderSlideToBuffer(
   ctx.scale(scaleX, scaleY);
 
   for (const element of slide.elements) {
+    signal?.throwIfAborted();
     renderElement(ctx, element, images);
   }
 
   ctx.restore();
+  signal?.throwIfAborted();
   return canvas.toBuffer("image/png");
 }
 

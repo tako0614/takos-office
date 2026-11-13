@@ -20,7 +20,9 @@ type PdfImageMap = Map<string, { dataUrl: string; format: string; failed?: boole
  */
 export async function exportPresentationToPdf(
   presentation: Presentation,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  signal?.throwIfAborted();
   const logical = logicalSlideSize(presentation.slideSize);
   // Imported page dimensions are exact EMUs (36,000 per mm). Field-absent
   // decks retain the original 297 mm-wide PDF convention.
@@ -31,22 +33,25 @@ export async function exportPresentationToPdf(
 
   const scaleX = pageWidth / logical.width;
   const scaleY = pageHeight / logical.height;
-  const images = await loadPresentationImages(presentation);
+  const images = await loadPresentationImages(presentation, signal);
 
   for (let i = 0; i < presentation.slides.length; i++) {
+    signal?.throwIfAborted();
     if (i > 0) doc.addPage([pageWidth, pageHeight], orientation);
-    renderSlideToPdf(doc, presentation.slides[i], scaleX, scaleY, images);
+    renderSlideToPdf(doc, presentation.slides[i], scaleX, scaleY, images, signal);
   }
 
   // Get the PDF as ArrayBuffer, then wrap as Uint8Array
+  signal?.throwIfAborted();
   const arrayBuf = doc.output("arraybuffer");
   return new Uint8Array(arrayBuf);
 }
 
 async function loadPresentationImages(
   presentation: Presentation,
+  signal?: AbortSignal,
 ): Promise<PdfImageMap> {
-  return loadImagesForExport(presentation.slides.flatMap((slide) => slide.elements));
+  return loadImagesForExport(presentation.slides.flatMap((slide) => slide.elements), fetch, signal);
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +64,7 @@ function renderSlideToPdf(
   sx: number,
   sy: number,
   images: PdfImageMap,
+  signal?: AbortSignal,
 ): void {
   // Background
   const bg = parseColor(slide.background) ?? { r: 255, g: 255, b: 255 };
@@ -67,6 +73,7 @@ function renderSlideToPdf(
 
   // Elements (render in order so later elements are on top)
   for (const element of slide.elements) {
+    signal?.throwIfAborted();
     renderElementToPdf(doc, element, sx, sy, images);
   }
 }
