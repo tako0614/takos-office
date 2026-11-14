@@ -255,13 +255,17 @@ export async function loadSpreadsheetFromApi(
   return remote;
 }
 
-export async function loadSpreadsheetsFromApi(): Promise<Spreadsheet[]> {
-  const scope = api.capture();
+export async function loadSpreadsheetsFromApi(
+  lifetime: { isActive?: () => boolean } = {},
+): Promise<Spreadsheet[]> {
+  if (lifetime.isActive?.() === false) throw new Error("Spreadsheet read was retired");
+  const scope = api.capture(lifetime);
   const startedEpoch = epoch(scope);
   const before = new Map(
     loadAt(scope.cacheKey).map((record) => [record.id, JSON.stringify(record)]),
   );
   const remote = await scope.requestJson<Spreadsheet[]>(api.apiPath);
+  if (lifetime.isActive?.() === false) throw new Error("Spreadsheet read was retired");
   if (epoch(scope) !== startedEpoch)
     throw new Error("Spreadsheet cache was cleared");
   const current = loadAt(scope.cacheKey);

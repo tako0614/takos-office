@@ -167,6 +167,11 @@ qualify storage, a physical OS keyboard, or an installed app.
 Use the optional `slide` argument to check the actual presentation creation dialog
 without repeating the spreadsheet cases.
 
+Slides and Sheets library reads also retire with their captured view, including
+leaving and reopening the same Workspace. Late reads cannot reinsert a deleted
+item into the reopened cache or clear that cache on an old 401. Current-view
+401 refusals still invalidate that scope and its pending-write journal.
+
 Slides uses the same acknowledged-revision queue and Workspace-bound cache/journal.
 Continuous edits and late responses preserve newer drafts. Unknown saves or true
 conflicts retain the draft across reload and expose explicit conditional recovery;

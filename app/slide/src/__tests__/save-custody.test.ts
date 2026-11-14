@@ -282,3 +282,59 @@ test("a delayed A GET returns A while B cache stays byte-exact", async () => {
     expect(JSON.parse(f.values.get("takos-slide-presentations:workspace:A")!)[0].id).toBe(a.id);
   } finally { await f.close(); }
 });
+
+
+for (const status of [200, 401]) {
+  test(`retired slide library read cannot restore a deleted item or clear reopened cache after ${status}`, async () => {
+    const f = clientStoreFixture();
+    let pending: Promise<unknown> | undefined;
+    try {
+      const initial = await f.seed("A");
+      await loadPresentationsFromApi();
+      if (status === 401) f.failNextRead(401);
+      const held = f.holdNext("GET");
+      let active = true;
+      pending = loadPresentationsFromApi({ isActive: () => active }).catch((error) => error);
+      await held.started;
+      active = false;
+      f.scope("B");
+      await f.seed("B");
+      await loadPresentationsFromApi();
+      const keyB = "takos-slide-presentations:workspace:B", beforeB = f.values.get(keyB);
+      f.scope("A");
+      await loadPresentationsFromApi({ isActive: () => true });
+      await savePresentation({ ...getPresentation(initial.id)!, title: "First save" }).remote;
+      const firstAck = getPresentation(initial.id)!;
+      await loadPresentationFromApi(initial.id);
+      await savePresentation({ ...getPresentation(initial.id)!, title: "Second save" }).remote;
+      expect(f.calls.filter((entry) => entry.method === "PUT")[1].revision).toBe(firstAck.updatedAt);
+      await deletePresentation(initial.id);
+      expect(getPresentation(initial.id)).toBeUndefined();
+      const before = [...f.values.entries()], href = location.href;
+      held.release();
+      const outcome = await pending;
+      expect([...f.values.entries()]).toEqual(before);
+      expect(outcome).toBeInstanceOf(Error);
+      expect(f.values.get(keyB)).toBe(beforeB);
+      expect(location.href).toBe(href);
+      expect(await loadPresentationsFromApi()).toEqual([]);
+      expect(f.calls.filter((entry) => entry.method === "DELETE").map((entry) => entry.status)).toEqual([200]);
+    } finally { await f.close(); await pending; }
+  });
+}
+
+test("current slide library401 still invalidates its unconfirmed journal", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");
+    await loadPresentationFromApi(initial.id);
+    f.loseNextWrite();
+    await expect(savePresentation({ ...initial, title: "Unconfirmed" }).remote).rejects.toThrow();
+    expect(getPresentationSaveState(initial.id)).toBe("failed");
+    f.failNextRead(401);
+    await expect(loadPresentationsFromApi({ isActive: () => true })).rejects.toThrow();
+    expect(f.values.get("takos-slide-presentations:workspace:A")).toBeUndefined();
+    expect(f.values.get("takos-slide-presentations:workspace:A:pending-writes")).toBeUndefined();
+    expect(getPresentationSaveState(initial.id)).toBe("clean");
+  } finally { await f.close(); }
+});

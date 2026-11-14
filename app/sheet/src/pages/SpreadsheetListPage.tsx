@@ -115,7 +115,7 @@ export const SpreadsheetListPage: Component = () => {
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
-    void loadSpreadsheetsFromApi()
+    void loadSpreadsheetsFromApi({ isActive: () => active && routeScope() === scope })
       .then((items) => {
         if (!active || routeScope() !== scope) return;
         setSpreadsheets(items);

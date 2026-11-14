@@ -241,13 +241,17 @@ export async function loadPresentationFromApi(
   return remote;
 }
 
-export async function loadPresentationsFromApi(): Promise<Presentation[]> {
-  const scope = api.capture();
+export async function loadPresentationsFromApi(
+  lifetime: { isActive?: () => boolean } = {},
+): Promise<Presentation[]> {
+  if (lifetime.isActive?.() === false) throw new Error("Presentation read was retired");
+  const scope = api.capture(lifetime);
   const startedEpoch = epoch(scope);
   const before = new Map(
     loadAt(scope.cacheKey).map((record) => [record.id, JSON.stringify(record)]),
   );
   const remote = await scope.requestJson<Presentation[]>(api.apiPath);
+  if (lifetime.isActive?.() === false) throw new Error("Presentation read was retired");
   if (epoch(scope) !== startedEpoch)
     throw new Error("Presentation cache was cleared");
   const current = loadAt(scope.cacheKey);
