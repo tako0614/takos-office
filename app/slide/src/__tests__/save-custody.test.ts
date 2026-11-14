@@ -338,3 +338,41 @@ test("current slide library401 still invalidates its unconfirmed journal", async
     expect(getPresentationSaveState(initial.id)).toBe("clean");
   } finally { await f.close(); }
 });
+
+
+test("cancelled Slides recovery refuses queued PUT and retains an explicit fresh retry", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");await loadPresentationFromApi(initial.id);f.loseNextWrite();
+    await expect(savePresentation({...initial,title:"Retained deck draft"}).remote).rejects.toThrow();
+    const draft = JSON.stringify(getPresentation(initial.id)), current = await(await f.read("A",initial.id)).json();
+    const writes = f.calls.filter((call)=>call.method==="PUT").length, controller = new AbortController();
+    const set = localStorage.setItem.bind(localStorage);let cancelledBeforeDispatch = false;
+    localStorage.setItem = (key,value) => {
+      set(key,value);
+      if(key.endsWith(":pending-writes") && JSON.parse(value)[initial.id]?.state==="pending") queueMicrotask(()=>{
+        cancelledBeforeDispatch = f.calls.filter((call)=>call.method==="PUT").length===writes;controller.abort();
+      });
+    };
+    const outcome = await retryPresentationAfterConflict(initial.id,{signal:controller.signal}).catch((error)=>error);localStorage.setItem = set;
+    expect(cancelledBeforeDispatch).toBe(true);expect(outcome).toMatchObject({name:"AbortError"});
+    expect(f.calls.filter((call)=>call.method==="PUT")).toHaveLength(writes);expect(JSON.stringify(getPresentation(initial.id))).toBe(draft);expect(getPresentationSaveState(initial.id)).toBe("failed");
+    expect(JSON.parse(f.values.get("takos-slide-presentations:workspace:A:pending-writes")!)[initial.id].revision).toBe(current.updatedAt);
+    expect((await(await f.read("A",initial.id)).json()).updatedAt).toBe(current.updatedAt);
+    const ack = await retryPresentationAfterConflict(initial.id);
+    expect(ack?.title).toBe("Retained deck draft");expect(f.calls.filter((call)=>call.method==="PUT")).toHaveLength(writes+1);
+    expect(f.calls.filter((call)=>call.method==="PUT")[writes].revision).toBe(current.updatedAt);expect(getPresentationSaveState(initial.id)).toBe("clean");
+  } finally {await f.close();}
+});
+
+test("Slides recovery cancellation after committed PUT preserves actual ACK", async () => {
+  const f = clientStoreFixture();let pending: ReturnType<typeof retryPresentationAfterConflict> | undefined, release = () => {};
+  try {
+    const initial = await f.seed("A");await loadPresentationFromApi(initial.id);f.loseNextWrite();
+    await expect(savePresentation({...initial,title:"Already committed deck"}).remote).rejects.toThrow();
+    const writes = f.calls.filter((call)=>call.method==="PUT").length, held = f.holdNext("PUT"), controller = new AbortController();release = held.release;
+    pending = retryPresentationAfterConflict(initial.id,{signal:controller.signal});await held.started;controller.abort();held.release();const ack = await pending;
+    expect(f.calls.filter((call)=>call.method==="PUT")).toHaveLength(writes+1);expect(ack?.title).toBe("Already committed deck");
+    expect(getPresentation(initial.id)).toEqual(ack!);expect(await(await f.read("A",initial.id)).json()).toEqual(ack!);expect(getPresentationSaveState(initial.id)).toBe("clean");
+  } finally {release();await pending?.catch(()=>undefined);await f.close();}
+});
