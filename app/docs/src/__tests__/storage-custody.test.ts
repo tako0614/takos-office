@@ -1078,7 +1078,7 @@ test("a scoped401 invalidates the Docs journal and prevents a late ACK from recr
         : new Response("", { status: 401 })) as typeof fetch;
     pending = client.updateDocumentInStorage(doc.id, { content: "in flight" });
     await entered.promise;
-    await expect(client.loadDocumentFromApi("other-id")).rejects.toThrow();
+    await expect(client.loadDocumentFromApi("other-id", { isActive: () => true })).rejects.toThrow();
     release.resolve();
     await pending;
     fixture.setWorkspace("unauthorized-A");
@@ -1396,3 +1396,67 @@ test("an import creator cannot recreate a scope cleared while file conversion wa
     fixture.restore();
   }
 });
+
+
+for (const kind of ["document", "library"] as const) {
+  for (const status of [200, 401]) {
+    test(`retired Docs reads preserve reopened drafts after a late ${kind} ${status}`, async () => {
+      const fixture = installFixture(`retired-read-${kind}-${status}`);
+      const entered = deferred(), release = deferred();
+      let oldRead: Promise<unknown> | undefined;
+      try {
+        const doc = document("reopened-doc", "initial");
+        const remote = server(doc);
+        client.saveDocuments([doc]);
+        const wire = globalThis.fetch;
+        let firstRead = true;
+        globalThis.fetch = (async (input, init) => {
+          if (firstRead && (!init?.method || init.method === "GET")) {
+            firstRead = false;
+            entered.resolve();
+            await release.promise;
+            return status === 401
+              ? new Response(null, { status })
+              : Response.json(kind === "document" ? doc : [doc]);
+          }
+          return wire(input, init);
+        }) as typeof fetch;
+        let active = true;
+        const lifetime = { isActive: () => active };
+        oldRead = (kind === "document"
+          ? client.loadDocumentFromApi(doc.id, lifetime)
+          : client.loadDocumentsFromApi(lifetime)).catch((error) => error);
+        await entered.promise;
+        active = false;
+        fixture.setWorkspace("other-view");
+        client.saveDocuments([document("other", "untouched")]);
+        const other = fixture.lastCacheSnapshot();
+        fixture.setWorkspace(`retired-read-${kind}-${status}`);
+        await client.loadDocumentFromApi(doc.id);
+        const firstAck = await client.updateDocumentInStorage(doc.id, { content: "first save" });
+        assert(firstAck);
+        await client.loadDocumentFromApi(doc.id);
+        const writer = client.captureDocumentWriter(doc.id);
+        writer.stage({ content: "new draft after reopen" });
+        const before = fixture.dump(), href = location.href;
+        release.resolve();
+        expect(await oldRead).toBeInstanceOf(Error);
+        expect(fixture.dump()).toEqual(before);
+        expect(location.href).toBe(href);
+        expect(fixture.cacheBytes(other.key)).toBe(other.bytes);
+        expect(client.getDocumentSaveState(doc.id)).toBe("draft");
+        await writer({ content: "new draft after reopen" });
+        expect(remote.requests.map((request) => request.expected)).toEqual([
+          doc.updatedAt, firstAck.updatedAt,
+        ]);
+        expect((await remote.store.get(doc.id))?.content).toBe("new draft after reopen");
+        expect((await client.loadDocumentFromApi(doc.id)).content).toBe("new draft after reopen");
+        expect(client.getDocumentSaveState(doc.id)).toBe("clean");
+      } finally {
+        release.resolve();
+        await oldRead;
+        fixture.restore();
+      }
+    });
+  }
+}
