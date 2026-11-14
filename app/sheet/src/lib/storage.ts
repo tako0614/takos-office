@@ -91,7 +91,12 @@ async function syncSpreadsheet(scope: ApiClientScope, snapshot: Spreadsheet, rev
   if (!response.ok) throw new ApiRequestError(response.status);
   return validateSpreadsheet(await response.json() as Spreadsheet, snapshot.id);
 }
-function queueSpreadsheetWrite(scope: ApiClientScope, draft: Spreadsheet, initialRevision?: string): Promise<Spreadsheet> {
+function queueSpreadsheetWrite(
+  scope: ApiClientScope,
+  draft: Spreadsheet,
+  initialRevision?: string,
+  signal?: AbortSignal,
+): Promise<Spreadsheet> {
   const submitted = JSON.stringify(draft);
   const snapshot = JSON.parse(submitted) as Spreadsheet;
   const previous = journal(scope)[draft.id];
@@ -101,6 +106,7 @@ function queueSpreadsheetWrite(scope: ApiClientScope, draft: Spreadsheet, initia
   mark(scope, draft.id, { revision: queue.revision, state: "pending" });
   return queue.enqueue(
     (revision) => {
+      signal?.throwIfAborted();
       if (epoch(scope) !== startedEpoch) throw new Error("Spreadsheet cache was cleared");
       return syncSpreadsheet(scope, snapshot, revision);
     },
@@ -322,7 +328,7 @@ export async function retrySpreadsheetAfterConflict(
   if (!local) return null;
   queues.discard(scope.cacheKey, id);
   mark(scope, id);
-  return queueSpreadsheetWrite(scope, local, remote?.updatedAt);
+  return queueSpreadsheetWrite(scope, local, remote?.updatedAt, options?.signal);
 }
 
 export async function deleteSpreadsheet(id: string): Promise<void> {
