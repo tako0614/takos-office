@@ -483,3 +483,70 @@ test("current sheet library401 still invalidates its unconfirmed journal", async
     expect(getSpreadsheetSaveState(initial.id)).toBe("clean");
   } finally { await f.close(); }
 });
+
+
+test("cancelled sheet recovery refuses its queued PUT and retains a fresh explicit retry", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");
+    await loadSpreadsheetFromApi(initial.id);
+    f.loseNextWrite();
+    await expect(updateSpreadsheet({ ...initial, title: "Retained replacement" })).rejects.toThrow();
+    const draft = JSON.stringify(getSpreadsheet(initial.id));
+    const current = await f.store("A").getSpreadsheet(initial.id);
+    const writes = f.calls.filter((call) => call.method === "PUT").length;
+    const controller = new AbortController();
+    const set = localStorage.setItem.bind(localStorage);
+    let cancelledBeforeDispatch = false;
+    // Select one legal microtask interleaving after recovery queues intent,
+    // before its deferred write callback. This hook is not an auth event.
+    localStorage.setItem = (key, value) => {
+      set(key, value);
+      if (key.endsWith(":pending-writes") && JSON.parse(value)[initial.id]?.state === "pending") {
+        queueMicrotask(() => {
+          cancelledBeforeDispatch = f.calls.filter((call) => call.method === "PUT").length === writes;
+          controller.abort();
+        });
+      }
+    };
+    const outcome = await retrySpreadsheetAfterConflict(initial.id, { signal: controller.signal }).catch((error) => error);
+    localStorage.setItem = set;
+    expect(cancelledBeforeDispatch).toBe(true);
+    expect(outcome).toMatchObject({ name: "AbortError" });
+    expect(f.calls.filter((call) => call.method === "PUT")).toHaveLength(writes);
+    expect(JSON.stringify(getSpreadsheet(initial.id))).toBe(draft);
+    expect(getSpreadsheetSaveState(initial.id)).toBe("failed");
+    const pending = JSON.parse(f.values.get("takos-excel-spreadsheets:workspace:A:pending-writes")!)[initial.id];
+    expect(pending.revision).toBe(current?.updatedAt);
+    expect((await f.store("A").getSpreadsheet(initial.id))?.updatedAt).toBe(current?.updatedAt);
+    const ack = await retrySpreadsheetAfterConflict(initial.id);
+    expect(ack?.title).toBe("Retained replacement");
+    expect(f.calls.filter((call) => call.method === "PUT")).toHaveLength(writes + 1);
+    expect(f.calls.filter((call) => call.method === "PUT")[writes].revision).toBe(current?.updatedAt);
+    expect(getSpreadsheetSaveState(initial.id)).toBe("clean");
+  } finally { await f.close(); }
+});
+
+test("sheet recovery cancellation after committed PUT retains the actual ACK", async () => {
+  const f = clientStoreFixture();
+  let pending: Promise<unknown> | undefined;
+  try {
+    const initial = await f.seed("A");
+    await loadSpreadsheetFromApi(initial.id);
+    f.loseNextWrite();
+    await expect(updateSpreadsheet({ ...initial, title: "Already dispatched" })).rejects.toThrow();
+    const writes = f.calls.filter((call) => call.method === "PUT").length;
+    const held = f.holdNext("PUT"), controller = new AbortController();
+    pending = retrySpreadsheetAfterConflict(initial.id, { signal: controller.signal });
+    await held.started;
+    // The fixture's route/store has already committed; only the ACK is held.
+    controller.abort();
+    held.release();
+    const ack = await pending as Awaited<ReturnType<typeof retrySpreadsheetAfterConflict>>;
+    expect(f.calls.filter((call) => call.method === "PUT")).toHaveLength(writes + 1);
+    expect(ack?.title).toBe("Already dispatched");
+    expect(getSpreadsheet(initial.id)).toEqual(ack!);
+    expect(await f.store("A").getSpreadsheet(initial.id)).toEqual(ack!);
+    expect(getSpreadsheetSaveState(initial.id)).toBe("clean");
+  } finally { await f.close(); await pending; }
+});
