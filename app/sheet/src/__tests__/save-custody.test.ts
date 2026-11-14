@@ -427,3 +427,59 @@ test("a canonical deleted:false response cannot remove the local row", async () 
     expect(await f.store("A").listSpreadsheets()).toEqual([]);
   } finally { await f.close(); }
 });
+
+
+for (const status of [200, 401]) {
+  test(`retired sheet library read cannot restore a deleted item or clear reopened cache after ${status}`, async () => {
+    const f = clientStoreFixture();
+    let pending: Promise<unknown> | undefined;
+    try {
+      const initial = await f.seed("A");
+      await loadSpreadsheetsFromApi();
+      if (status === 401) f.failNextRead(401);
+      const held = f.holdNext("GET");
+      let active = true;
+      pending = loadSpreadsheetsFromApi({ isActive: () => active }).catch((error) => error);
+      await held.started;
+      active = false;
+      f.scope("B");
+      await f.seed("B");
+      await loadSpreadsheetsFromApi();
+      const keyB = "takos-excel-spreadsheets:workspace:B", beforeB = f.values.get(keyB);
+      f.scope("A");
+      await loadSpreadsheetsFromApi({ isActive: () => true });
+      await updateSpreadsheet({ ...getSpreadsheet(initial.id)!, title: "First save" });
+      const firstAck = getSpreadsheet(initial.id)!;
+      await loadSpreadsheetFromApi(initial.id);
+      await updateSpreadsheet({ ...getSpreadsheet(initial.id)!, title: "Second save" });
+      expect(f.calls.filter((entry) => entry.method === "PUT")[1].revision).toBe(firstAck.updatedAt);
+      await deleteSpreadsheet(initial.id);
+      expect(getSpreadsheet(initial.id)).toBeUndefined();
+      const before = [...f.values.entries()], href = location.href;
+      held.release();
+      const outcome = await pending;
+      expect([...f.values.entries()]).toEqual(before);
+      expect(outcome).toBeInstanceOf(Error);
+      expect(f.values.get(keyB)).toBe(beforeB);
+      expect(location.href).toBe(href);
+      expect(await loadSpreadsheetsFromApi()).toEqual([]);
+      expect(f.calls.filter((entry) => entry.method === "DELETE").map((entry) => entry.status)).toEqual([200]);
+    } finally { await f.close(); await pending; }
+  });
+}
+
+test("current sheet library401 still invalidates its unconfirmed journal", async () => {
+  const f = clientStoreFixture();
+  try {
+    const initial = await f.seed("A");
+    await loadSpreadsheetFromApi(initial.id);
+    f.loseNextWrite();
+    await expect(updateSpreadsheet({ ...initial, title: "Unconfirmed" })).rejects.toThrow();
+    expect(getSpreadsheetSaveState(initial.id)).toBe("failed");
+    f.failNextRead(401);
+    await expect(loadSpreadsheetsFromApi({ isActive: () => true })).rejects.toThrow();
+    expect(f.values.get("takos-excel-spreadsheets:workspace:A")).toBeUndefined();
+    expect(f.values.get("takos-excel-spreadsheets:workspace:A:pending-writes")).toBeUndefined();
+    expect(getSpreadsheetSaveState(initial.id)).toBe("clean");
+  } finally { await f.close(); }
+});

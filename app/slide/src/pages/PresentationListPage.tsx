@@ -117,7 +117,7 @@ export default function PresentationListPage() {
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
-    void loadPresentationsFromApi()
+    void loadPresentationsFromApi({ isActive: () => active && routeScope() === scope })
       .then((items) => {
         if (!active || routeScope() !== scope) return;
         setPresentations(items);
