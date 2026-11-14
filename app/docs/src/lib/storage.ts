@@ -146,6 +146,7 @@ function queueDocumentWrite(
   doc: Document,
   initialRevision?: string,
   allowStagedDraft = false,
+  signal?: AbortSignal,
 ): Promise<Document> {
   const submitted = JSON.stringify(doc);
   const previous = journal(scope)[doc.id];
@@ -164,6 +165,7 @@ function queueDocumentWrite(
   return queue
     .enqueue(
       (revision) => {
+        signal?.throwIfAborted();
         if (epoch(scope) !== startedEpoch)
           throw new Error("Document cache was cleared");
         return syncDocument(scope, doc, revision);
@@ -462,7 +464,7 @@ export async function retryDocumentAfterConflict(
   if (!local) return null;
   queues.discard(scope.cacheKey, id);
   mark(scope, id);
-  return queueDocumentWrite(scope, local, remote?.updatedAt);
+  return queueDocumentWrite(scope, local, remote?.updatedAt, false, options?.signal);
 }
 
 export async function removeDocument(id: string): Promise<void> {

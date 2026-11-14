@@ -8,6 +8,7 @@ import type {
   StorageFile,
 } from "../../../shared/lib/takos-storage.ts";
 import type { Document } from "../types/index.ts";
+import { docsRecoveryHttpFixture } from "./recovery-http-fixture.ts";
 
 function deferred() {
   let resolve!: () => void;
@@ -1460,3 +1461,46 @@ for (const kind of ["document", "library"] as const) {
     });
   }
 }
+
+
+test("cancelled Docs recovery refuses queued PUT and retains an explicit fresh retry", async () => {
+  const f = docsRecoveryHttpFixture();
+  try {
+    const initial = await f.seed();await client.loadDocumentFromApi(initial.id);
+    f.loseNextWrite();
+    await expect(client.updateDocumentInStorage(initial.id, {content:"Retained document draft"})).rejects.toThrow();
+    const draft = JSON.stringify(client.getDocument(initial.id)), current = await (await f.read(initial.id)).json();
+    const writes = f.calls.filter((call) => call.method === "PUT").length, controller = new AbortController();
+    const set = localStorage.setItem.bind(localStorage);let cancelledBeforeDispatch = false;
+    // Controlled scheduler only; the real Editor cleanup supplies this signal.
+    localStorage.setItem = (key, value) => {
+      set(key,value);
+      if (key.endsWith(":pending-writes") && JSON.parse(value)[initial.id]?.state === "pending") queueMicrotask(() => {
+        cancelledBeforeDispatch = f.calls.filter((call) => call.method === "PUT").length === writes;controller.abort();
+      });
+    };
+    const outcome = await client.retryDocumentAfterConflict(initial.id, {signal:controller.signal}).catch((error)=>error);
+    localStorage.setItem = set;
+    expect(cancelledBeforeDispatch).toBe(true);expect(outcome).toMatchObject({name:"AbortError"});
+    expect(f.calls.filter((call) => call.method === "PUT")).toHaveLength(writes);
+    expect(JSON.stringify(client.getDocument(initial.id))).toBe(draft);expect(client.getDocumentSaveState(initial.id)).toBe("failed");
+    expect(JSON.parse(f.values.get("takos-docs-documents:workspace:A:pending-writes")!)[initial.id].revision).toBe(current.updatedAt);
+    expect((await (await f.read(initial.id)).json()).updatedAt).toBe(current.updatedAt);
+    const ack = await client.retryDocumentAfterConflict(initial.id);
+    expect(ack?.content).toBe("Retained document draft");expect(f.calls.filter((call) => call.method === "PUT")).toHaveLength(writes+1);
+    expect(f.calls.filter((call) => call.method === "PUT")[writes].revision).toBe(current.updatedAt);expect(client.getDocumentSaveState(initial.id)).toBe("clean");
+  } finally {await f.close();}
+});
+
+test("Docs recovery cancellation after committed PUT preserves actual ACK", async () => {
+  const f = docsRecoveryHttpFixture();let pending: ReturnType<typeof client.retryDocumentAfterConflict> | undefined, release = () => {};
+  try {
+    const initial = await f.seed();await client.loadDocumentFromApi(initial.id);f.loseNextWrite();
+    await expect(client.updateDocumentInStorage(initial.id,{content:"Already committed document"})).rejects.toThrow();
+    const writes = f.calls.filter((call)=>call.method==="PUT").length, held = f.holdNext("PUT"), controller = new AbortController();release = held.release;
+    pending = client.retryDocumentAfterConflict(initial.id,{signal:controller.signal});await held.started;
+    controller.abort();held.release();const ack = await pending;
+    expect(f.calls.filter((call)=>call.method==="PUT")).toHaveLength(writes+1);expect(ack?.content).toBe("Already committed document");
+    expect(client.getDocument(initial.id)).toEqual(ack!);expect(await(await f.read(initial.id)).json()).toEqual(ack!);expect(client.getDocumentSaveState(initial.id)).toBe("clean");
+  } finally {release();await pending?.catch(()=>undefined);await f.close();}
+});

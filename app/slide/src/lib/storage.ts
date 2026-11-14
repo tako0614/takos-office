@@ -89,7 +89,12 @@ async function syncPresentation(scope: ApiClientScope, snapshot: Presentation, r
   if (!response.ok) throw new ApiRequestError(response.status);
   return validatePresentation(await response.json() as Presentation, snapshot.id);
 }
-function queuePresentationWrite(scope: ApiClientScope, draft: Presentation, initialRevision?: string): Promise<Presentation> {
+function queuePresentationWrite(
+  scope: ApiClientScope,
+  draft: Presentation,
+  initialRevision?: string,
+  signal?: AbortSignal,
+): Promise<Presentation> {
   const submitted = JSON.stringify(draft);
   const snapshot = JSON.parse(submitted) as Presentation;
   const previous = journal(scope)[draft.id];
@@ -99,6 +104,7 @@ function queuePresentationWrite(scope: ApiClientScope, draft: Presentation, init
   mark(scope, draft.id, { revision: queue.revision, state: "pending" });
   return queue.enqueue(
     (revision) => {
+      signal?.throwIfAborted();
       if (epoch(scope) !== startedEpoch) throw new Error("Presentation cache was cleared");
       return syncPresentation(scope, snapshot, revision);
     },
@@ -308,7 +314,7 @@ export async function retryPresentationAfterConflict(
   if (!local) return null;
   queues.discard(scope.cacheKey, id);
   mark(scope, id);
-  return queuePresentationWrite(scope, local, remote?.updatedAt);
+  return queuePresentationWrite(scope, local, remote?.updatedAt, options?.signal);
 }
 
 export async function deletePresentation(id: string): Promise<void> {

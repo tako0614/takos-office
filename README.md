@@ -155,9 +155,10 @@ reload, and block automatic replay. Recovery offers a fresh conditional
 replacement or an explicit read/discard; a concurrent writer can still reject
 the replacement. Tab operations use the same revision queue, and deletion
 removes a local item only after an explicit successful deletion acknowledgement.
-An explicit Sheets replacement that is cancelled before its queued write starts
-keeps the local draft for another explicit recovery. Cancellation after dispatch
-does not undo the write or replace its actual acknowledgement.
+An explicit replacement in Docs, Slides or Sheets that is cancelled before its
+queued write starts keeps the local draft for another explicit recovery.
+Cancellation after dispatch does not undo the write or replace its actual
+acknowledgement.
 Formula-bar typing retains its own focus; each Enter commits the edit once.
 Typing with an IME into a selected cell opens the inline editor. Conversion
 confirmation keeps the draft; a subsequent explicit Enter saves it. The new
