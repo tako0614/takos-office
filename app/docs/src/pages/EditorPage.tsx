@@ -194,7 +194,9 @@ export default function EditorPage() {
     setTitle("");
     setSaveStatus("idle");
     setRecovering(false);
-    void loadDocumentFromApi(id)
+    void loadDocumentFromApi(id, {
+      isActive: () => routeVersion === selectedRoute,
+    })
       .then((remote) => {
         if (routeVersion !== selectedRoute) return;
         setDoc((d) => nextBoundDoc(d, { kind: "load", doc: remote }));

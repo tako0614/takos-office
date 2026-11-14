@@ -47,7 +47,7 @@ export default function DocumentListPage() {
     setImported(null);
     setDocuments([]);
     setIsLoading(true);
-    void loadDocumentsFromApi()
+    void loadDocumentsFromApi({ isActive: () => generation === viewGeneration })
       .then((docs) => { if (generation === viewGeneration) setDocuments(docs); })
       .catch(() => undefined)
       .finally(() => { if (generation === viewGeneration) setIsLoading(false); });

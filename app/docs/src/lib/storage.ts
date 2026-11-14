@@ -290,19 +290,31 @@ async function updateInScope(
   return queueDocumentWrite(scope, draft, base.updatedAt, allowStagedDraft);
 }
 
-export function loadDocumentFromApi(id: string): Promise<Document>;
+type ReadLifetime = { isActive?: () => boolean };
+
+function assertReadActive(lifetime: ReadLifetime): void {
+  if (lifetime.isActive?.() === false)
+    throw new Error("Document read was retired");
+}
+
 export function loadDocumentFromApi(
   id: string,
-  options: { discardLocal: true; signal?: AbortSignal },
+  options?: ReadLifetime & { discardLocal?: false; signal?: AbortSignal },
+): Promise<Document>;
+export function loadDocumentFromApi(
+  id: string,
+  options: ReadLifetime & { discardLocal: true; signal?: AbortSignal },
 ): Promise<Document | null>;
 export async function loadDocumentFromApi(
   id: string,
-  options?: { discardLocal?: boolean; signal?: AbortSignal },
+  options: ReadLifetime & { discardLocal?: boolean; signal?: AbortSignal } = {},
 ): Promise<Document | null> {
-  const scope = api.capture();
+  assertReadActive(options);
+  const scope = api.capture(options);
   const startedEpoch = epoch(scope);
   const creating = queues.find(scope.cacheKey, id);
   if (creating?.busy) await creating.settled();
+  assertReadActive(options);
   options?.signal?.throwIfAborted();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
@@ -313,6 +325,7 @@ export async function loadDocumentFromApi(
   try {
     remote = await requestDocument(scope, id, options?.signal);
   } catch (error) {
+    assertReadActive(options);
     options?.signal?.throwIfAborted();
     if (epoch(scope) !== startedEpoch) throw error;
     const docs = loadAt(scope.cacheKey);
@@ -349,12 +362,14 @@ export async function loadDocumentFromApi(
     }
     throw error;
   }
+  assertReadActive(options);
   options?.signal?.throwIfAborted();
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   if (!options?.discardLocal) {
     const writing = queues.find(scope.cacheKey, id);
     if (writing?.busy) await writing.settled();
+    assertReadActive(options);
     if (epoch(scope) !== startedEpoch)
       throw new Error("Document cache was cleared");
   }
@@ -380,13 +395,17 @@ export async function loadDocumentFromApi(
   return remote;
 }
 
-export async function loadDocumentsFromApi(): Promise<Document[]> {
-  const scope = api.capture();
+export async function loadDocumentsFromApi(
+  lifetime: ReadLifetime = {},
+): Promise<Document[]> {
+  assertReadActive(lifetime);
+  const scope = api.capture(lifetime);
   const startedEpoch = epoch(scope);
   const before = new Map(
     loadAt(scope.cacheKey).map((doc) => [doc.id, JSON.stringify(doc)]),
   );
   const remote = await scope.requestJson<Document[]>(api.apiPath);
+  assertReadActive(lifetime);
   if (epoch(scope) !== startedEpoch)
     throw new Error("Document cache was cleared");
   const current = loadAt(scope.cacheKey);
