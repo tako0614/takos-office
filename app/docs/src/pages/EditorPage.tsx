@@ -167,7 +167,14 @@ export default function EditorPage() {
   // and the shortcuts help on `?` (Shift+/) when not typing in a field.
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
-      if (recovering() || isImeComposing(e)) return;
+      if (
+        recovering() ||
+        pendingRecovery() !== null ||
+        showShortcuts() ||
+        isImeComposing(e)
+      ) {
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setShowFind(true);
@@ -204,6 +211,7 @@ export default function EditorPage() {
     setTitle("");
     setSaveStatus("idle");
     setRecovering(false);
+    setPendingRecovery(null);
     void loadDocumentFromApi(id, {
       isActive: () => routeVersion === selectedRoute,
     })

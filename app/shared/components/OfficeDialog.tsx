@@ -38,9 +38,11 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
   let dialogRef: HTMLDivElement | undefined;
   let cancelBtnRef: HTMLButtonElement | undefined;
   let confirmBtnRef: HTMLButtonElement | undefined;
+  let pointerDownOnBackdrop = false;
 
   createEffect(() => {
     if (!props.open) return;
+    pointerDownOnBackdrop = false;
     const opener = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -70,8 +72,15 @@ export const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
       <Portal>
         <div
           class="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 dark:bg-black/70"
+          onPointerDown={(e) => {
+            pointerDownOnBackdrop = e.target === e.currentTarget;
+          }}
           onClick={(e) => {
-            if (e.target === e.currentTarget && !props.busy) props.onCancel();
+            const startedOnBackdrop = pointerDownOnBackdrop;
+            pointerDownOnBackdrop = false;
+            if (startedOnBackdrop && e.target === e.currentTarget && !props.busy) {
+              props.onCancel();
+            }
           }}
         >
           <div
@@ -149,9 +158,11 @@ export const PromptDialog: Component<PromptDialogProps> = (props) => {
   const [error, setError] = createSignal<string | null>(null);
   let dialogRef: HTMLDivElement | undefined;
   let inputRef: HTMLInputElement | undefined;
+  let pointerDownOnBackdrop = false;
 
   createEffect(() => {
     if (!props.open) return;
+    pointerDownOnBackdrop = false;
     setValue(props.initialValue ?? "");
     setError(null);
     const opener = document.activeElement instanceof HTMLElement
@@ -193,8 +204,15 @@ export const PromptDialog: Component<PromptDialogProps> = (props) => {
       <Portal>
         <div
           class="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 dark:bg-black/70"
+          onPointerDown={(e) => {
+            pointerDownOnBackdrop = e.target === e.currentTarget;
+          }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) props.onCancel();
+            const startedOnBackdrop = pointerDownOnBackdrop;
+            pointerDownOnBackdrop = false;
+            if (startedOnBackdrop && e.target === e.currentTarget) {
+              props.onCancel();
+            }
           }}
         >
           <div

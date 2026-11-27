@@ -80,38 +80,27 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
   let dialogRef: HTMLDivElement | undefined;
   let closeRef: HTMLButtonElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
-  let releaseScrollLock: (() => void) | undefined;
 
   // Close on Escape and trap focus within the dialog while it is open.
   const handleKeyDown = (e: KeyboardEvent) => {
     handleModalKeyDown(e, dialogRef, props.onClose);
   };
 
-  const cleanupModal = () => {
-    document.removeEventListener("keydown", handleKeyDown);
-    releaseScrollLock?.();
-    releaseScrollLock = undefined;
-    restoreFocus(previouslyFocused);
-    previouslyFocused = null;
-  };
-
   createEffect(() => {
-    if (props.open) {
-      previouslyFocused = document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-      releaseScrollLock?.();
-      releaseScrollLock = acquireModalScrollLock();
-      document.addEventListener("keydown", handleKeyDown);
-      // Move focus into the dialog once it is mounted.
-      queueMicrotask(() => closeRef?.focus());
-    } else {
-      cleanupModal();
-    }
-  });
-
-  onCleanup(() => {
-    cleanupModal();
+    if (!props.open) return;
+    previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const releaseScrollLock = acquireModalScrollLock();
+    document.addEventListener("keydown", handleKeyDown);
+    // Move focus into the dialog once it is mounted.
+    queueMicrotask(() => closeRef?.focus());
+    onCleanup(() => {
+      document.removeEventListener("keydown", handleKeyDown);
+      releaseScrollLock();
+      restoreFocus(previouslyFocused);
+      previouslyFocused = null;
+    });
   });
 
   return (

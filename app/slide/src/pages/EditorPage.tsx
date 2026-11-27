@@ -64,7 +64,6 @@ export default function EditorPage() {
   let mobilePanelButton: HTMLButtonElement | undefined;
   let textEditorDialogRef: HTMLDivElement | undefined;
   let textEditorPreviouslyFocused: HTMLElement | null = null;
-  let releaseTextEditorLock: (() => void) | undefined;
   let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 
   const announceStatus = (message: string) => {
@@ -76,8 +75,12 @@ export default function EditorPage() {
 
   onCleanup(() => {
     if (statusClearTimer) clearTimeout(statusClearTimer);
-    releaseTextEditorLock?.();
-    releaseTextEditorLock = undefined;
+  });
+
+  createEffect(() => {
+    if (!editingTextId()) return;
+    const release = acquireModalScrollLock();
+    onCleanup(release);
   });
 
   createEffect(() => {
@@ -87,8 +90,6 @@ export default function EditorPage() {
 
   const closeTextEditor = () => {
     setEditingTextId(null);
-    releaseTextEditorLock?.();
-    releaseTextEditorLock = undefined;
     const prev = textEditorPreviouslyFocused;
     textEditorPreviouslyFocused = null;
     queueMicrotask(() => restoreFocus(prev));
@@ -124,6 +125,8 @@ export default function EditorPage() {
     setSelectedSlideIndex(0);
     setSelectedElementId(null);
     setEditingTextId(null);
+    setShowImagePrompt(false);
+    setPendingRecovery(null);
     setMobilePanel(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -420,15 +423,13 @@ export default function EditorPage() {
     textEditorPreviouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    releaseTextEditorLock?.();
-    releaseTextEditorLock = acquireModalScrollLock();
     setEditingTextId(elementId);
     setSelectedElementId(elementId);
   };
 
   // Keyboard shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (showImagePrompt() || pendingRecovery() !== null) return;
+    if (showImagePrompt() || pendingRecovery() !== null || showShortcuts()) return;
     if (editingTextId()) {
       handleModalKeyDown(e, textEditorDialogRef, closeTextEditor);
       return;
@@ -449,10 +450,6 @@ export default function EditorPage() {
     ) {
       return;
     }
-
-    // While the shortcuts help is open, let it own the keyboard (it handles its
-    // own Esc / focus trap) and don't run editor shortcuts underneath it.
-    if (showShortcuts()) return;
 
     // "?" (Shift + /) opens the shortcuts help when not typing in a field.
     if (e.key === "?") {

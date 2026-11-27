@@ -157,6 +157,8 @@ export const EditorPage: Component = () => {
     setSpreadsheet(null);
     setRecovering(false);
     setRecoveryError("");
+    setPendingRecovery(null);
+    setPendingDeleteSheetId(null);
     setSaveKind("clean");
     setExporting(false);setExportFailed(false);setExportWarning(false);setNamedStructureBlocked(false);
     void loadSpreadsheetFromApi(id, { signal: controller.signal })

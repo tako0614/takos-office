@@ -641,8 +641,9 @@ export default function Toolbar(props: ToolbarProps) {
             if (isActive("link")) {
               props.editor?.chain().focus().unsetLink().run();
             } else {
+              const next = !showLinkInput();
               closePopups();
-              setShowLinkInput(!showLinkInput());
+              setShowLinkInput(next);
             }
           }}
           title={t("link")}
@@ -656,8 +657,9 @@ export default function Toolbar(props: ToolbarProps) {
           type="button"
           class={btn(false)}
           onClick={() => {
+            const next = !showImageInput();
             closePopups();
-            setShowImageInput(!showImageInput());
+            setShowImageInput(next);
           }}
           title={t("insertImage")}
           aria-label={t("insertImage")}
