@@ -1,9 +1,10 @@
-import { Component, createSignal, Show } from "solid-js";
+import { Component, createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { CellFormat } from "../types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { theme } from "../../../shared/lib/theme";
+import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
 
 interface ToolbarProps {
@@ -36,6 +37,30 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   const [showBgColor, setShowBgColor] = createSignal(false);
   const [editingTitle, setEditingTitle] = createSignal(false);
   const [titleValue, setTitleValue] = createSignal(props.title);
+  let toolbarRef: HTMLDivElement | undefined;
+
+  createEffect(() => {
+    if (!showTextColor() && !showBgColor()) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (toolbarRef && e.target instanceof Node && !toolbarRef.contains(e.target)) {
+        setShowTextColor(false);
+        setShowBgColor(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowTextColor(false);
+        setShowBgColor(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
 
   const fmt = () => props.format ?? {};
 
@@ -72,13 +97,17 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
   const ToolBtn = (btnProps: {
     active?: boolean;
+    disabled?: boolean;
+    ariaHaspopup?: "true" | "menu" | "dialog";
+    ariaExpanded?: boolean;
     onClick: () => void;
     children: JSX.Element;
     title?: string;
   }) => (
     <button
       type="button"
-      class={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors ${
+      disabled={btnProps.disabled}
+      class={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         btnProps.active
           ? "bg-gray-300 text-gray-900 dark:bg-neutral-600 dark:text-white"
           : "text-gray-700 hover:bg-gray-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
@@ -87,6 +116,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       title={btnProps.title}
       aria-label={btnProps.title}
       aria-pressed={btnProps.active}
+      aria-haspopup={btnProps.ariaHaspopup}
+      aria-expanded={btnProps.ariaExpanded}
     >
       {btnProps.children}
     </button>
@@ -97,7 +128,10 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   );
 
   return (
-    <div class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800">
+    <div
+      ref={toolbarRef}
+      class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
+    >
       {/* Home button */}
       <button
         type="button"
@@ -149,6 +183,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             setEditingTitle(false);
           }}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") {
               if (titleValue().trim()) {
                 props.onTitleChange(titleValue().trim());
@@ -167,6 +202,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <ToolBtn
         onClick={() => props.onUndo?.()}
         title={t("undo")}
+        disabled={!props.canUndo}
         active={false}
       >
         <svg
@@ -179,7 +215,6 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          style={{ opacity: props.canUndo ? 1 : 0.35 }}
         >
           <path d="M3 7v6h6" />
           <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
@@ -190,6 +225,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <ToolBtn
         onClick={() => props.onRedo?.()}
         title={t("redo")}
+        disabled={!props.canRedo}
         active={false}
       >
         <svg
@@ -202,7 +238,6 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          style={{ opacity: props.canRedo ? 1 : 0.35 }}
         >
           <path d="M21 7v6h-6" />
           <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
@@ -325,6 +360,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           title={t("filterColumn")}
           aria-label={t("filterColumn")}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") {
               props.onApplyFilter?.(e.currentTarget.value);
             }
@@ -395,6 +431,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             setShowBgColor(false);
           }}
           title={t("textColor")}
+          ariaHaspopup="true"
+          ariaExpanded={showTextColor()}
         >
           <span
             class="text-sm font-bold"
@@ -443,6 +481,8 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             setShowTextColor(false);
           }}
           title={t("backgroundColor")}
+          ariaHaspopup="true"
+          ariaExpanded={showBgColor()}
         >
           <div
             class="h-4 w-4 rounded"

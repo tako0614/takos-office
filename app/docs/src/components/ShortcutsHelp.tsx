@@ -1,6 +1,7 @@
-import { For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, For, onCleanup, Show } from "solid-js";
 import { X } from "lucide-solid";
 import { useI18n } from "../i18n";
+import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   open: boolean;
@@ -37,23 +38,23 @@ const SHORTCUTS: { labelKey: ShortcutKey; keys: string }[] = [
 export default function ShortcutsHelp(props: ShortcutsHelpProps) {
   const { t } = useI18n();
   let dialogRef: HTMLDivElement | undefined;
+  let previouslyFocused: HTMLElement | null = null;
 
-  // Close on Escape and move focus into the dialog when it opens.
-  onMount(() => {
+  // Close on Escape, trap focus within the dialog, and restore focus on close.
+  createEffect(() => {
+    if (!props.open) return;
+    previouslyFocused = document.activeElement as HTMLElement | null;
     const handler = (e: KeyboardEvent) => {
-      if (props.open && e.key === "Escape") {
-        e.preventDefault();
-        props.onClose();
-      }
+      handleModalKeyDown(e, dialogRef, props.onClose);
     };
     globalThis.addEventListener("keydown", handler);
-    onCleanup(() => globalThis.removeEventListener("keydown", handler));
-  });
-
-  const focusDialog = (el: HTMLDivElement) => {
-    dialogRef = el;
     queueMicrotask(() => dialogRef?.focus());
-  };
+    onCleanup(() => {
+      globalThis.removeEventListener("keydown", handler);
+      previouslyFocused?.focus?.();
+      previouslyFocused = null;
+    });
+  });
 
   return (
     <Show when={props.open}>
@@ -63,12 +64,12 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
         onClick={props.onClose}
       >
         <div
-          ref={focusDialog}
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-label={t("shortcutsTitle")}
           tabindex="-1"
-          class="w-full max-w-md rounded-xl bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100 shadow-xl border border-gray-200 dark:border-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-xl bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100 shadow-xl border border-gray-200 dark:border-neutral-700 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={(e) => e.stopPropagation()}
         >
           <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-neutral-700">

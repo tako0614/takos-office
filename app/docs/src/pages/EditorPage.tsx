@@ -333,6 +333,7 @@ export default function EditorPage() {
             value={title()}
             disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
+            aria-label={t("documentTitle")}
             class="w-full min-w-0 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />

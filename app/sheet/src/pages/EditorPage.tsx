@@ -35,6 +35,7 @@ import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import { isRedoKeyEvent, isUndoKeyEvent } from "../../../shared/lib/dialog-a11y";
 import { exportXlsxFile } from "../lib/xlsx-worker.ts";
 import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 import { invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "../lib/imported-formula-cache.ts";
@@ -538,14 +539,12 @@ export const EditorPage: Component = () => {
 
   // Keyboard shortcut handler for undo/redo + shortcut help.
   const handleGlobalKeyDown = (e: KeyboardEvent) => {
+    if (showShortcuts()) return;
     if (isTypingTarget(e.target)) return;
-    if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+    if (isUndoKeyEvent(e)) {
       e.preventDefault();
       handleUndo();
-    } else if (
-      ((e.ctrlKey || e.metaKey) && e.key === "y") ||
-      ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z")
-    ) {
+    } else if (isRedoKeyEvent(e)) {
       e.preventDefault();
       handleRedo();
     } else if (

@@ -1,5 +1,6 @@
 import { createEffect, For, onCleanup } from "solid-js";
 import { useI18n } from "../i18n";
+import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   open: boolean;
@@ -74,27 +75,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
 
   // Close on Escape and trap focus within the dialog while it is open.
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      props.onClose();
-      return;
-    }
-    if (e.key === "Tab" && dialogRef) {
-      const focusable = dialogRef.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
+    handleModalKeyDown(e, dialogRef, props.onClose);
   };
 
   createEffect(() => {
@@ -122,7 +103,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
         role="dialog"
         aria-modal="true"
         aria-label={t("shortcutsTitle")}
-        class="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+        class="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div class="mb-4 flex items-center justify-between">

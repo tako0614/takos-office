@@ -20,6 +20,14 @@ body {
   font-family: "Google Sans", "Roboto", Arial, sans-serif;
 }
 
+:where(button, a, [role="button"], summary):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+[data-theme="dark"] :where(button, a, [role="button"], summary):focus-visible {
+  outline-color: #60a5fa;
+}
+
 /* TipTap editor — white paper */
 .tiptap {
   outline: none;

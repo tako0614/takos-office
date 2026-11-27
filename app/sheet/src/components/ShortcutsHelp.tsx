@@ -1,5 +1,6 @@
 import { Component, For, onCleanup, onMount } from "solid-js";
 import { useI18n } from "../i18n";
+import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   onClose: () => void;
@@ -9,11 +10,12 @@ interface ShortcutsHelpProps {
  * Keyboard-shortcut help modal. Lists the shortcuts the sheet editor actually
  * supports (cell navigation, edit/commit, undo/redo, etc. — see EditorPage and
  * Grid). Accessible: role="dialog" + aria-modal, Escape/backdrop/close-button
- * dismissal, and focus moved to the dialog on open.
+ * dismissal, Tab focus trap, and focus moved to/restored from the dialog.
  */
 export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
   const { t } = useI18n();
   let dialogRef: HTMLDivElement | undefined;
+  let previouslyFocused: HTMLElement | null = null;
 
   const shortcuts: { labelKey: Parameters<typeof t>[0]; keysKey: Parameters<typeof t>[0] }[] = [
     { labelKey: "shortcutNavigate", keysKey: "shortcutNavigateKeys" },
@@ -32,20 +34,19 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
   ];
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      props.onClose();
-    }
+    handleModalKeyDown(e, dialogRef, props.onClose);
   };
 
   onMount(() => {
+    previouslyFocused = document.activeElement as HTMLElement | null;
     dialogRef?.focus();
     document.addEventListener("keydown", handleKeyDown, true);
   });
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown, true);
+    previouslyFocused?.focus?.();
+    previouslyFocused = null;
   });
 
   return (
@@ -59,7 +60,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
         aria-modal="true"
         aria-label={t("shortcutsHelp")}
         tabindex={-1}
-        class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-2xl outline-none dark:border-neutral-700 dark:bg-neutral-800"
+        class="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div class="mb-4 flex items-center justify-between">

@@ -23,6 +23,7 @@ export default function DocumentListPage() {
   const { t } = useI18n();
   const [documents, setDocuments] = createSignal<Document[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [loadError, setLoadError] = createSignal(false);
   const [search, setSearch] = createSignal("");
   const [importing, setImporting] = createSignal(false);
   const [importSaving, setImportSaving] = createSignal(false);
@@ -38,19 +39,23 @@ export default function DocumentListPage() {
     setImporting(false);
     setImportSaving(false);
   };
-  createEffect(() => {
-    // A→B→A is a new view even when the final Workspace id matches again.
-    void location.search;
+  const fetchDocuments = () => {
     const generation = ++viewGeneration;
     cancelImport();
     setImportError(null);
     setImported(null);
+    setLoadError(false);
     setDocuments([]);
     setIsLoading(true);
     void loadDocumentsFromApi({ isActive: () => generation === viewGeneration })
       .then((docs) => { if (generation === viewGeneration) setDocuments(docs); })
-      .catch(() => undefined)
+      .catch(() => { if (generation === viewGeneration) setLoadError(true); })
       .finally(() => { if (generation === viewGeneration) setIsLoading(false); });
+  };
+  createEffect(() => {
+    // A→B→A is a new view even when the final Workspace id matches again.
+    void location.search;
+    fetchDocuments();
   });
   onCleanup(() => { viewGeneration++; cancelImport(); });
 
@@ -130,22 +135,24 @@ export default function DocumentListPage() {
     <div class="min-h-screen bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
       {/* Header */}
       <header class="border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 sticky top-0 z-10">
-        <div class="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <OfficeNav />
 
           {/* Search */}
-          <div class="flex-1 max-w-xl mx-auto">
+          <div class="order-last basis-full md:order-none md:basis-0 md:flex-1 max-w-xl mx-auto">
             <div class="relative">
               <Search
                 size={18}
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500"
+                aria-hidden="true"
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-neutral-400 pointer-events-none"
               />
               <input
                 type="text"
                 placeholder={t("searchDocuments")}
+                aria-label={t("searchDocuments")}
                 value={search()}
                 onInput={(e) => setSearch(e.currentTarget.value)}
-                class="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-neutral-800 rounded-lg text-sm text-gray-700 dark:text-neutral-100 placeholder-gray-400 dark:placeholder-neutral-500 outline-none focus:bg-white dark:focus:bg-neutral-800 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
+                class="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-neutral-800 rounded-lg text-sm text-gray-800 dark:text-neutral-100 placeholder-gray-500 dark:placeholder-neutral-400 outline-none focus:bg-white dark:focus:bg-neutral-800 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
               />
             </div>
           </div>
@@ -158,7 +165,7 @@ export default function DocumentListPage() {
       </header>
 
       {/* Content */}
-      <main class="max-w-5xl mx-auto px-6 py-8">
+      <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {/* New document section */}
         <div class="mb-8">
           <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
@@ -209,6 +216,22 @@ export default function DocumentListPage() {
         </div>
 
         {/* Recent documents */}
+        <Show when={loadError()}>
+          <div
+            role="alert"
+            class="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+          >
+            <span class="min-w-0 flex-1">{t("loadDocumentsFailed")}</span>
+            <button
+              type="button"
+              class="rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              onClick={fetchDocuments}
+            >
+              {t("retry")}
+            </button>
+          </div>
+        </Show>
+
         <Show
           when={!isLoading()}
           fallback={
@@ -236,18 +259,36 @@ export default function DocumentListPage() {
           <Show
             when={filtered().length > 0}
             fallback={
-              <Show when={documents().length === 0}>
-                <div class="flex flex-col items-center justify-center py-20 text-center">
-                  <div class="w-20 h-20 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
-                    <FileText size={36} class="text-gray-400 dark:text-neutral-500" />
+              <Show when={!loadError()}>
+                <Show
+                  when={documents().length === 0}
+                  fallback={
+                    <div class="flex flex-col items-center justify-center py-16 text-center">
+                      <p class="text-sm text-gray-600 dark:text-neutral-300 mb-3">
+                        {t("noMatchingDocuments")}
+                      </p>
+                      <button
+                        type="button"
+                        class="rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                        onClick={() => setSearch("")}
+                      >
+                        {t("clearSearch")}
+                      </button>
+                    </div>
+                  }
+                >
+                  <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center mb-4">
+                      <FileText size={36} class="text-gray-400 dark:text-neutral-500" />
+                    </div>
+                    <h2 class="text-base font-medium text-gray-700 dark:text-neutral-200 mb-1">
+                      {t("noDocumentsTitle")}
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-neutral-400">
+                      {t("noDocumentsDescription")}
+                    </p>
                   </div>
-                  <h2 class="text-base font-medium text-gray-700 dark:text-neutral-200 mb-1">
-                    {t("noDocumentsTitle")}
-                  </h2>
-                  <p class="text-sm text-gray-500 dark:text-neutral-400">
-                    {t("noDocumentsDescription")}
-                  </p>
-                </div>
+                </Show>
               </Show>
             }
           >

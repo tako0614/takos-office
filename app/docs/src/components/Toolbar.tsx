@@ -33,6 +33,7 @@ import {
   Undo,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
+import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 import {
   downloadDocument,
   type ExportFormat,
@@ -125,6 +126,7 @@ export default function Toolbar(props: ToolbarProps) {
   const [exporting, setExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal(false);
   const [exportWarning, setExportWarning] = createSignal(false);
+  let toolbarRef: HTMLDivElement | undefined;
   let exportController: AbortController | undefined;
   onCleanup(() => exportController?.abort());
   createEffect(() => {
@@ -136,6 +138,29 @@ export default function Toolbar(props: ToolbarProps) {
     setExportError(false);
     setExportWarning(false);
     setShowExport(false);
+  });
+
+  createEffect(() => {
+    const anyPopupOpen =
+      showTextColor() || showHighlight() || showExport();
+    if (!anyPopupOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (toolbarRef && e.target instanceof Node && !toolbarRef.contains(e.target)) {
+        closePopups();
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closePopups();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    });
   });
 
   // Prefer the live editor's JSON (freshest, before autosave debounce) and fall
@@ -230,7 +255,10 @@ export default function Toolbar(props: ToolbarProps) {
   };
 
   return (
-    <div class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800">
+    <div
+      ref={toolbarRef}
+      class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800"
+    >
       <div class="flex items-center gap-0.5 px-2 py-1 flex-wrap">
         {/* Undo / Redo */}
         <button
@@ -620,6 +648,7 @@ export default function Toolbar(props: ToolbarProps) {
               setShowExport(next);
             }}
             title={t("export")}
+            aria-label={t(exporting() ? "exporting" : "export")}
             disabled={exporting()}
             aria-busy={exporting()}
             aria-haspopup="menu"
@@ -687,9 +716,11 @@ export default function Toolbar(props: ToolbarProps) {
           <input
             type="url"
             placeholder={t("linkPlaceholder")}
+            aria-label={t("link")}
             value={linkUrl()}
             onInput={(e) => setLinkUrl(e.currentTarget.value)}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") handleSetLink();
               if (e.key === "Escape") setShowLinkInput(false);
             }}
@@ -718,9 +749,11 @@ export default function Toolbar(props: ToolbarProps) {
           <input
             type="url"
             placeholder={t("imagePlaceholder")}
+            aria-label={t("insertImage")}
             value={imageUrl()}
             onInput={(e) => setImageUrl(e.currentTarget.value)}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") handleInsertImage();
               if (e.key === "Escape") setShowImageInput(false);
             }}
@@ -772,6 +805,7 @@ function ColorPicker(
               class="color-swatch"
               style={{ background: c }}
               onClick={() => props.onSelect(c)}
+              aria-label={c}
               title={c}
             />
           )}

@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
+import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 import {
   findMatches,
   type MatchRange,
@@ -245,6 +246,7 @@ export default function FindReplace(props: FindReplaceProps) {
         role="search"
         aria-label={t("findAndReplace")}
         onKeyDown={(e) => {
+          if (isImeComposing(e)) return;
           if (e.key === "Escape") {
             e.preventDefault();
             props.onClose();
@@ -259,6 +261,7 @@ export default function FindReplace(props: FindReplaceProps) {
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") {
                 e.preventDefault();
                 if (e.shiftKey) goPrevious();
@@ -317,6 +320,7 @@ export default function FindReplace(props: FindReplaceProps) {
           value={replacement()}
           onInput={(e) => setReplacement(e.currentTarget.value)}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") {
               e.preventDefault();
               replaceCurrent();

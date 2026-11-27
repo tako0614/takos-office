@@ -153,6 +153,12 @@ export default function PresentPage() {
   const prevSlide = () => navigateSlide(currentIndex() - 1);
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (
+      e.target instanceof HTMLButtonElement &&
+      (e.key === " " || e.key === "Enter")
+    ) {
+      return;
+    }
     switch (e.key) {
       case "ArrowRight":
       case "ArrowDown":
@@ -238,10 +244,10 @@ export default function PresentPage() {
 
   return (
     <div
-      class="fixed inset-0 bg-black flex items-center justify-center cursor-none select-none"
+      class="fixed inset-0 bg-black flex items-center justify-center select-none"
       onClick={(e) => {
         // Click on left third = prev, right two-thirds = next
-        const rect = (e.target as HTMLElement).getBoundingClientRect();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const x = e.clientX - rect.left;
         if (x < rect.width / 3) {
           prevSlide();
@@ -252,7 +258,7 @@ export default function PresentPage() {
     >
       <Show
         when={presentation()}
-        fallback={<div class="text-gray-500">{t("loading")}</div>}
+        fallback={<div class="text-gray-400">{t("loading")}</div>}
       >
         <div
           ref={wrapperRef}
@@ -262,14 +268,47 @@ export default function PresentPage() {
           <canvas ref={canvasRef} class="shadow-2xl" />
         </div>
 
-        {/* Slide counter (shows briefly) */}
-        <div class="fixed bottom-4 right-4 text-gray-600 text-sm opacity-30 hover:opacity-80 transition-opacity cursor-default">
-          {currentIndex() + 1} / {totalSlides()}
-        </div>
-
-        {/* ESC hint */}
-        <div class="fixed top-4 right-4 text-gray-700 text-xs opacity-0 hover:opacity-60 transition-opacity cursor-default">
-          {t("escToExit")}
+        {/* Accessible presentation controls (touch, pointer, and keyboard friendly) */}
+        <div
+          class="fixed bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-black/75 border border-white/15 px-2.5 py-1.5 text-white shadow-lg backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            class="px-2.5 py-1 rounded-full text-xs font-medium text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-colors"
+            onClick={() => prevSlide()}
+            disabled={currentIndex() <= 0}
+            aria-label={t("shortcutPrevSlide")}
+            title={t("shortcutPrevSlide")}
+          >
+            ←
+          </button>
+          <span
+            class="px-2 text-xs font-medium tabular-nums text-gray-200"
+            aria-live="polite"
+          >
+            {currentIndex() + 1} / {totalSlides()}
+          </span>
+          <button
+            type="button"
+            class="px-2.5 py-1 rounded-full text-xs font-medium text-white hover:bg-white/15 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-colors"
+            onClick={() => nextSlide()}
+            disabled={currentIndex() >= totalSlides() - 1}
+            aria-label={t("shortcutNextSlide")}
+            title={t("shortcutNextSlide")}
+          >
+            →
+          </button>
+          <div class="w-px h-4 bg-white/20 mx-0.5" aria-hidden="true" />
+          <button
+            type="button"
+            class="px-2.5 py-1 rounded-full text-xs font-medium text-gray-100 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transition-colors"
+            onClick={() => exitPresentation()}
+            aria-label={t("shortcutExitPresent")}
+            title={t("escToExit")}
+          >
+            {t("exitPresent")}
+          </button>
         </div>
       </Show>
     </div>

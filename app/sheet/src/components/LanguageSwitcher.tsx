@@ -22,7 +22,7 @@ export function LanguageSwitcher() {
             classList={{
               "bg-white text-gray-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100 dark:shadow-none":
                 language() === lang.value,
-              "text-gray-500 hover:text-gray-800 dark:text-neutral-500 dark:hover:text-neutral-200":
+              "text-gray-600 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-neutral-100":
                 language() !== lang.value,
             }}
             aria-pressed={language() === lang.value}

@@ -106,7 +106,10 @@ export function renderShellPage(): string {
   }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; text-decoration: none; }
   .brand .mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#2563eb,#16a34a); }
-  .brand b { color: #111827; } .brand span { color: #6b7280; font-weight: 500; }
+  .brand b { color: #111827; } .brand span { color: #52525b; font-weight: 500; }
+  .brand:focus-visible, header nav a:focus-visible, .theme-toggle:focus-visible, .card-new:focus-visible, li.item a:focus-visible, #retry:focus-visible {
+    outline: 2px solid #2563eb; outline-offset: 2px;
+  }
   .spacer { flex: 1; }
   header nav { display: flex; gap: 4px; }
   header nav a {
@@ -116,7 +119,7 @@ export function renderShellPage(): string {
   main { max-width: 860px; margin: 0 auto; padding: 40px 24px 64px; }
   .hero { margin-bottom: 26px; }
   .hero h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.01em; }
-  .hero p { margin: 0; color: #6b7280; font-size: 15px; }
+  .hero p { margin: 0; color: #4b5563; font-size: 15px; }
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 22px 0 30px; }
   .card {
     display: flex; flex-direction: column; gap: 10px; padding: 16px;
@@ -133,22 +136,22 @@ export function renderShellPage(): string {
   }
   .card-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .card-label { font-weight: 600; font-size: 15px; }
-  .card-desc { font-size: 12.5px; color: #6b7280; line-height: 1.35; }
+  .card-desc { font-size: 12.5px; color: #4b5563; line-height: 1.35; }
   .card-new {
     align-self: flex-start; font-size: 12px; color: var(--accent); text-decoration: none;
     padding: 4px 11px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
     border-radius: 999px; transition: background .12s, color .12s, border-color .12s;
   }
   .card-new:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-  [data-theme="dark"] .card-desc { color: #9ca3af; }
+  [data-theme="dark"] .card-desc { color: #a1a1aa; }
   .search { position: relative; margin-bottom: 8px; }
-  .search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #9ca3af; }
+  .search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #6b7280; pointer-events: none; }
   .search input {
     width: 100%; padding: 12px 14px 12px 40px; font-size: 15px;
-    border: 1px solid #d1d5db; border-radius: 10px; outline: none; background: #fff;
+    border: 1px solid #d1d5db; border-radius: 10px; outline: none; background: #fff; color: #111827;
   }
   .search input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 24px 0 6px; font-weight: 600; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #52525b; margin: 24px 0 6px; font-weight: 600; }
   ul.items { list-style: none; margin: 0; padding: 0; }
   li.item a {
     display: flex; align-items: center; gap: 12px; padding: 11px 8px;
@@ -161,10 +164,20 @@ export function renderShellPage(): string {
   }
   .badge.docs { background: #2563eb; } .badge.slide { background: #ea580c; } .badge.sheet { background: #16a34a; }
   .item-title { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item-time { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
+  .item-time { font-size: 12px; color: #52525b; flex-shrink: 0; }
   .empty, .loading {
-    color: #9ca3af; font-size: 14px; padding: 28px 8px; text-align: center;
+    color: #52525b; font-size: 14px; padding: 28px 8px; text-align: center;
   }
+  #load-error, #partial {
+    margin: 12px 0; padding: 12px 14px; border-radius: 10px; font-size: 14px; line-height: 1.45;
+  }
+  #load-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  #partial { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+  #retry {
+    margin-top: 4px; padding: 8px 14px; font-size: 13px; font-weight: 500;
+    border-radius: 8px; border: 1px solid #d1d5db; background: #fff; color: #111827; cursor: pointer;
+  }
+  #retry:hover { background: #f3f4f6; }
   .theme-toggle {
     display: inline-flex; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e5e7eb;
@@ -174,16 +187,21 @@ export function renderShellPage(): string {
   /* Dark theme */
   [data-theme="dark"] header { background: #161a22; border-bottom-color: #262b36; }
   [data-theme="dark"] .brand b { color: #f3f4f6; }
-  [data-theme="dark"] header nav a { color: #9ca3af; }
+  [data-theme="dark"] .brand span { color: #a1a1aa; }
+  [data-theme="dark"] header nav a { color: #a1a1aa; }
   [data-theme="dark"] header nav a:hover { background: #20262f; color: #f3f4f6; }
-  [data-theme="dark"] .theme-toggle { background: #1b2029; border-color: #2c323d; color: #9ca3af; }
+  [data-theme="dark"] .theme-toggle { background: #1b2029; border-color: #2c323d; color: #a1a1aa; }
   [data-theme="dark"] .theme-toggle:hover { background: #20262f; color: #f3f4f6; }
-  [data-theme="dark"] .hero p, [data-theme="dark"] .card-desc { color: #9ca3af; }
+  [data-theme="dark"] .hero p, [data-theme="dark"] .card-desc { color: #a1a1aa; }
   [data-theme="dark"] .card { background: #161a22; border-color: #262b36; }
   [data-theme="dark"] .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.4); }
   [data-theme="dark"] .search input { background: #161a22; border-color: #2c323d; color: #e5e7eb; }
   [data-theme="dark"] li.item a:hover { background: #20262f; }
-  [data-theme="dark"] .item-time, [data-theme="dark"] h2, [data-theme="dark"] .empty, [data-theme="dark"] .loading { color: #6b7280; }
+  [data-theme="dark"] .item-time, [data-theme="dark"] h2, [data-theme="dark"] .empty, [data-theme="dark"] .loading { color: #a1a1aa; }
+  [data-theme="dark"] #load-error { background: rgba(127,29,29,.25); border-color: rgba(248,113,113,.4); color: #fecaca; }
+  [data-theme="dark"] #partial { background: rgba(120,53,15,.25); border-color: rgba(251,191,36,.4); color: #fde68a; }
+  [data-theme="dark"] #retry { background: #1b2029; border-color: #374151; color: #f3f4f6; }
+  [data-theme="dark"] #retry:hover { background: #262e3a; }
   @media (max-width: 640px) {
     .cards { grid-template-columns: 1fr; }
     header { flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; }
@@ -201,7 +219,7 @@ export function renderShellPage(): string {
   <header>
     <a class="brand" href="/"><span class="mark"></span><b>Takos</b> <span>Office</span></a>
     <span class="spacer"></span>
-    <nav>${navLinks}</nav>
+    <nav aria-label="Takos Office apps">${navLinks}</nav>
     <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme"></button>
   </header>
   <main>
@@ -211,8 +229,8 @@ export function renderShellPage(): string {
     </div>
     <div class="cards">${APPS.map(appCard).join("")}</div>
     <div class="search">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="q" type="search" placeholder="Search across Documents, Slides and Sheets…" autocomplete="off" />
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="search" aria-label="Search across Documents, Slides and Sheets" placeholder="Search across Documents, Slides and Sheets…" autocomplete="off" />
     </div>
     <h2 id="list-heading">Recent</h2>
     <ul class="items" id="items"></ul>
