@@ -27,7 +27,8 @@ export default function PresentationListPage() {
     search: location.search,
   }));
   let active = true;
-  onCleanup(() => { active = false; });
+  let loadGeneration = 0;
+  onCleanup(() => { active = false; loadGeneration++; });
   const [creating, setCreating] = createSignal(false);
   const [importing, setImporting] = createSignal(false);
   const [importSaving, setImportSaving] = createSignal(false);
@@ -133,23 +134,26 @@ export default function PresentationListPage() {
 
   const fetchPresentations = () => {
     const scope = routeScope();
+    const generation = ++loadGeneration;
+    const isCurrent = () =>
+      active && routeScope() === scope && generation === loadGeneration;
     cancelImport();setImportError(null);setImported(null);
     setIsLoading(true);setLoadError(false);setPresentations([]);setDeleteError("");setDeleting(new Set<string>());
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
-    void loadPresentationsFromApi({ isActive: () => active && routeScope() === scope })
+    void loadPresentationsFromApi({ isActive: isCurrent })
       .then((items) => {
-        if (!active || routeScope() !== scope) return;
+        if (!isCurrent()) return;
         setPresentations(items);
         if (snapshot !== undefined && receipt.acknowledge(snapshot)) {
           clearCreationFailure(receipt.key);
         }
       })
       .catch(() => {
-        if (active && routeScope() === scope) setLoadError(true);
+        if (isCurrent()) setLoadError(true);
       })
-      .finally(() => { if (active && routeScope() === scope) setIsLoading(false); });
+      .finally(() => { if (isCurrent()) setIsLoading(false); });
   };
 
   createEffect(() => {

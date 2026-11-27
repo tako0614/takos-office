@@ -37,19 +37,27 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   const [showBgColor, setShowBgColor] = createSignal(false);
   const [editingTitle, setEditingTitle] = createSignal(false);
   const [titleValue, setTitleValue] = createSignal(props.title);
-  let toolbarRef: HTMLDivElement | undefined;
+  let textColorRef: HTMLDivElement | undefined;
+  let bgColorRef: HTMLDivElement | undefined;
 
   createEffect(() => {
     if (!showTextColor() && !showBgColor()) return;
+    const activeWrapper = showTextColor() ? textColorRef : bgColorRef;
     const onPointerDown = (e: PointerEvent) => {
-      if (toolbarRef && e.target instanceof Node && !toolbarRef.contains(e.target)) {
+      if (
+        activeWrapper &&
+        e.target instanceof Node &&
+        !activeWrapper.contains(e.target)
+      ) {
         setShowTextColor(false);
         setShowBgColor(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         setShowTextColor(false);
         setShowBgColor(false);
       }
@@ -129,7 +137,6 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
   return (
     <div
-      ref={toolbarRef}
       class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
     >
       {/* Home button */}
@@ -424,7 +431,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Separator />
 
       {/* Text color */}
-      <div class="relative">
+      <div ref={textColorRef} class="relative">
         <ToolBtn
           onClick={() => {
             setShowTextColor(!showTextColor());
@@ -474,7 +481,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       </div>
 
       {/* Background color */}
-      <div class="relative">
+      <div ref={bgColorRef} class="relative">
         <ToolBtn
           onClick={() => {
             setShowBgColor(!showBgColor());

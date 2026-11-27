@@ -51,7 +51,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     queueMicrotask(() => dialogRef?.focus());
     onCleanup(() => {
       globalThis.removeEventListener("keydown", handler);
-      previouslyFocused?.focus?.();
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
       previouslyFocused = null;
     });
   });

@@ -23,21 +23,79 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
   >(null);
   const [renamingId, setRenamingId] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
+  let menuRef: HTMLDivElement | undefined;
+  let menuOpener: HTMLElement | null = null;
 
   const handleContextMenu = (e: MouseEvent, sheetId: string) => {
     e.preventDefault();
+    menuOpener = e.currentTarget instanceof HTMLElement
+      ? e.currentTarget
+      : (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
     setContextMenu({ x: e.clientX, y: e.clientY, sheetId });
   };
 
-  const closeContextMenu = () => setContextMenu(null);
+  const closeContextMenu = (restoreFocus = false) => {
+    setContextMenu(null);
+    const opener = menuOpener;
+    menuOpener = null;
+    if (restoreFocus && opener?.isConnected) {
+      queueMicrotask(() => {
+        if (opener.isConnected) opener.focus();
+      });
+    }
+  };
 
   createEffect(() => {
     if (!contextMenu()) return;
-    const onPointerDown = () => closeContextMenu();
+    queueMicrotask(() => {
+      menuRef?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    });
+    const onPointerDown = (e: PointerEvent) => {
+      if (menuRef && e.target instanceof Node && menuRef.contains(e.target)) {
+        return;
+      }
+      closeContextMenu();
+    };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
+        closeContextMenu(true);
+        return;
+      }
+      if (e.key === "Tab") {
         closeContextMenu();
+        return;
+      }
+      if (
+        e.key === "ArrowDown" ||
+        e.key === "ArrowUp" ||
+        e.key === "Home" ||
+        e.key === "End"
+      ) {
+        const items = Array.from(
+          menuRef?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+        );
+        if (items.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const activeIdx = items.indexOf(document.activeElement as HTMLElement);
+        let nextIdx = 0;
+        if (e.key === "ArrowDown") {
+          nextIdx = activeIdx >= 0 ? (activeIdx + 1) % items.length : 0;
+        } else if (e.key === "ArrowUp") {
+          nextIdx = activeIdx >= 0
+            ? (activeIdx - 1 + items.length) % items.length
+            : items.length - 1;
+        } else if (e.key === "Home") {
+          nextIdx = 0;
+        } else {
+          nextIdx = items.length - 1;
+        }
+        items[nextIdx]?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -142,13 +200,13 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
       <Show when={contextMenu()}>
         {(menu) => (
           <div
+            ref={menuRef}
             role="menu"
             class="context-menu"
             style={{
-              left: `${Math.min(menu().x, Math.max(8, globalThis.innerWidth - 150))}px`,
+              left: `${Math.max(8, Math.min(menu().x, globalThis.innerWidth - 150))}px`,
               top: `${Math.max(8, menu().y - 84)}px`,
             }}
-            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <button

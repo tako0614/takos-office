@@ -45,7 +45,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown, true);
-    previouslyFocused?.focus?.();
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
     previouslyFocused = null;
   });
 

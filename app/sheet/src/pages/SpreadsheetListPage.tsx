@@ -26,7 +26,8 @@ export const SpreadsheetListPage: Component = () => {
     search: location.search,
   }));
   let active = true;
-  onCleanup(() => { active = false; });
+  let loadGeneration = 0;
+  onCleanup(() => { active = false; loadGeneration++; });
   const [creating, setCreating] = createSignal(false);
   const [importing, setImporting] = createSignal(false);
   const [importSaving, setImportSaving] = createSignal(false);
@@ -128,6 +129,9 @@ export const SpreadsheetListPage: Component = () => {
 
   const fetchSpreadsheets = () => {
     const scope = routeScope();
+    const generation = ++loadGeneration;
+    const isCurrent = () =>
+      active && routeScope() === scope && generation === loadGeneration;
     cancelImport();setImported(null);setImportError(null);
     setIsLoading(true);
     setLoadError(false);
@@ -137,18 +141,18 @@ export const SpreadsheetListPage: Component = () => {
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
-    void loadSpreadsheetsFromApi({ isActive: () => active && routeScope() === scope })
+    void loadSpreadsheetsFromApi({ isActive: isCurrent })
       .then((items) => {
-        if (!active || routeScope() !== scope) return;
+        if (!isCurrent()) return;
         setSpreadsheets(items);
         if (snapshot !== undefined && receipt.acknowledge(snapshot)) {
           clearCreationFailure(receipt.key);
         }
       })
       .catch(() => {
-        if (active && routeScope() === scope) setLoadError(true);
+        if (isCurrent()) setLoadError(true);
       })
-      .finally(() => { if (active && routeScope() === scope) setIsLoading(false); });
+      .finally(() => { if (isCurrent()) setIsLoading(false); });
   };
 
   createEffect(() => {

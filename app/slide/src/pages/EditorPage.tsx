@@ -60,7 +60,9 @@ export default function EditorPage() {
     setEditingTextId(null);
     const prev = textEditorPreviouslyFocused;
     textEditorPreviouslyFocused = null;
-    queueMicrotask(() => prev?.focus?.());
+    queueMicrotask(() => {
+      if (prev?.isConnected) prev.focus();
+    });
   };
 
   const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getPresentationSaveState>>("clean");
@@ -380,7 +382,7 @@ export default function EditorPage() {
     if (e.key === "Escape" && mobilePanel()) {
       e.preventDefault();
       setMobilePanel(null);
-      mobilePanelButton?.focus();
+      if (mobilePanelButton?.isConnected) mobilePanelButton.focus();
       return;
     }
     // Don't handle if editing text in an input

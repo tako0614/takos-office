@@ -126,7 +126,9 @@ export default function Toolbar(props: ToolbarProps) {
   const [exporting, setExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal(false);
   const [exportWarning, setExportWarning] = createSignal(false);
-  let toolbarRef: HTMLDivElement | undefined;
+  let textColorRef: HTMLDivElement | undefined;
+  let highlightRef: HTMLDivElement | undefined;
+  let exportRef: HTMLDivElement | undefined;
   let exportController: AbortController | undefined;
   onCleanup(() => exportController?.abort());
   createEffect(() => {
@@ -144,14 +146,25 @@ export default function Toolbar(props: ToolbarProps) {
     const anyPopupOpen =
       showTextColor() || showHighlight() || showExport();
     if (!anyPopupOpen) return;
+    const activeWrapper = showTextColor()
+      ? textColorRef
+      : showHighlight()
+      ? highlightRef
+      : exportRef;
     const onPointerDown = (e: PointerEvent) => {
-      if (toolbarRef && e.target instanceof Node && !toolbarRef.contains(e.target)) {
+      if (
+        activeWrapper &&
+        e.target instanceof Node &&
+        !activeWrapper.contains(e.target)
+      ) {
         closePopups();
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e)) return;
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         closePopups();
       }
     };
@@ -256,7 +269,6 @@ export default function Toolbar(props: ToolbarProps) {
 
   return (
     <div
-      ref={toolbarRef}
       class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800"
     >
       <div class="flex items-center gap-0.5 px-2 py-1 flex-wrap">
@@ -360,13 +372,14 @@ export default function Toolbar(props: ToolbarProps) {
         </button>
 
         {/* Text color */}
-        <div class="relative">
+        <div ref={textColorRef} class="relative">
           <button
             type="button"
             class={btn(false)}
             onClick={() => {
+              const next = !showTextColor();
               closePopups();
-              setShowTextColor(!showTextColor());
+              setShowTextColor(next);
             }}
             title={t("textColor")}
             aria-label={t("textColor")}
@@ -401,13 +414,14 @@ export default function Toolbar(props: ToolbarProps) {
         </div>
 
         {/* Highlight */}
-        <div class="relative">
+        <div ref={highlightRef} class="relative">
           <button
             type="button"
             class={btn(isActive("highlight"))}
             onClick={() => {
+              const next = !showHighlight();
               closePopups();
-              setShowHighlight(!showHighlight());
+              setShowHighlight(next);
             }}
             title={t("highlight")}
             aria-label={t("highlight")}
@@ -638,7 +652,7 @@ export default function Toolbar(props: ToolbarProps) {
         </button>
 
         {/* Export menu — pushed to the right edge of the toolbar row */}
-        <div class="relative ml-auto">
+        <div ref={exportRef} class="relative ml-auto">
           <button
             type="button"
             class="flex items-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"

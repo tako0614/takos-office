@@ -78,20 +78,29 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     handleModalKeyDown(e, dialogRef, props.onClose);
   };
 
+  const restoreFocus = () => {
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    previouslyFocused = null;
+  };
+
   createEffect(() => {
     if (props.open) {
-      previouslyFocused = document.activeElement as HTMLElement | null;
+      previouslyFocused = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
       document.addEventListener("keydown", handleKeyDown);
       // Move focus into the dialog once it is mounted.
       queueMicrotask(() => closeRef?.focus());
     } else {
       document.removeEventListener("keydown", handleKeyDown);
-      previouslyFocused?.focus?.();
-      previouslyFocused = null;
+      restoreFocus();
     }
   });
 
-  onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+  onCleanup(() => {
+    document.removeEventListener("keydown", handleKeyDown);
+    restoreFocus();
+  });
 
   return (
     <div
