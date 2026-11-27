@@ -17,7 +17,7 @@ export default function OfficeNav() {
   const { t } = useI18n();
 
   return (
-    <nav class="flex items-center gap-3" aria-label={t("officeNavLabel")}>
+    <nav class="flex flex-wrap items-center gap-2 sm:gap-3" aria-label={t("officeNavLabel")}>
       {/* Brand returns to the Office shell (NOT /slide). */}
       <a
         href={withCurrentSpaceId("/")}
@@ -34,11 +34,11 @@ export default function OfficeNav() {
             return (
               <a
                 href={withCurrentSpaceId(app.path)}
-                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                class="rounded-md px-2 sm:px-2.5 py-1 text-xs font-medium transition-colors"
                 classList={{
                   "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100":
                     isCurrent,
-                  "text-gray-500 hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200":
+                  "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100":
                     !isCurrent,
                 }}
                 aria-current={isCurrent ? "page" : undefined}

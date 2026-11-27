@@ -26,6 +26,11 @@ import OfficeNav from "../components/OfficeNav";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
+import {
+  handleModalKeyDown,
+  isRedoKeyEvent,
+  isUndoKeyEvent,
+} from "../../../shared/lib/dialog-a11y";
 import { exportPptxFile } from "../lib/pptx-worker.ts";
 import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 
@@ -48,6 +53,17 @@ export default function EditorPage() {
   const [showShortcuts, setShowShortcuts] = createSignal(false);
   const [mobilePanel, setMobilePanel] = createSignal<"slides" | "properties" | null>(null);
   let mobilePanelButton: HTMLButtonElement | undefined;
+  let textEditorDialogRef: HTMLDivElement | undefined;
+  let textEditorPreviouslyFocused: HTMLElement | null = null;
+
+  const closeTextEditor = () => {
+    setEditingTextId(null);
+    const prev = textEditorPreviouslyFocused;
+    textEditorPreviouslyFocused = null;
+    queueMicrotask(() => {
+      if (prev?.isConnected) prev.focus();
+    });
+  };
 
   const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getPresentationSaveState>>("clean");
   const [recovering, setRecovering] = createSignal(false);
@@ -352,16 +368,21 @@ export default function EditorPage() {
   };
 
   const handleEditText = (elementId: string) => {
+    textEditorPreviouslyFocused = document.activeElement as HTMLElement | null;
     setEditingTextId(elementId);
     setSelectedElementId(elementId);
   };
 
   // Keyboard shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (editingTextId()) {
+      handleModalKeyDown(e, textEditorDialogRef, closeTextEditor);
+      return;
+    }
     if (e.key === "Escape" && mobilePanel()) {
       e.preventDefault();
       setMobilePanel(null);
-      mobilePanelButton?.focus();
+      if (mobilePanelButton?.isConnected) mobilePanelButton.focus();
       return;
     }
     // Don't handle if editing text in an input
@@ -386,19 +407,12 @@ export default function EditorPage() {
     if (e.key === "Delete" || e.key === "Backspace") {
       handleDelete();
     }
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === "z") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-      }
-      if (e.key === "y") {
-        e.preventDefault();
-        handleRedo();
-      }
+    if (isUndoKeyEvent(e)) {
+      e.preventDefault();
+      handleUndo();
+    } else if (isRedoKeyEvent(e)) {
+      e.preventDefault();
+      handleRedo();
     }
     if (e.key === "Escape") {
       setSelectedElementId(null);
@@ -517,18 +531,27 @@ export default function EditorPage() {
             return (
               <Show when={el()}>
                 <div
-                  class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                  onClick={() => setEditingTextId(null)}
+                  class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                  onClick={closeTextEditor}
                 >
                   <div
-                    class="bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-4 border shadow-xl"
+                    ref={textEditorDialogRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="edit-text-dialog-title"
+                    class="w-full max-w-md bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-4 border shadow-xl"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <h3
+                      id="edit-text-dialog-title"
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                    >
                       {t("editText")}
                     </h3>
                     <textarea
-                      class="w-80 h-32 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-3 py-2 rounded border outline-none focus:border-blue-500 resize-none text-sm"
+                      ref={(node) => queueMicrotask(() => node.focus())}
+                      aria-label={t("editText")}
+                      class="w-full h-32 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-3 py-2 rounded border outline-none focus:border-blue-500 resize-none text-sm"
                       value={el()!.text ?? ""}
                       onInput={(e) => {
                         handleUpdateElement({
@@ -536,13 +559,12 @@ export default function EditorPage() {
                           text: e.currentTarget.value,
                         });
                       }}
-                      autofocus
                     />
                     <div class="flex justify-end mt-3">
                       <button
                         type="button"
-                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors"
-                        onClick={() => setEditingTextId(null)}
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                        onClick={closeTextEditor}
                       >
                         {t("done")}
                       </button>
@@ -582,7 +604,7 @@ export default function EditorPage() {
         </Show>
 
         {/* Bottom bar */}
-        <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-500">
+        <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">
           <span>
             {t("slideCount", {
               current: selectedSlideIndex() + 1,

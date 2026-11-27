@@ -16,6 +16,7 @@ import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 import type { Spreadsheet } from "../types";
 import { createSpreadsheetImporter } from "../lib/spreadsheet-import.ts";
 import { OfficeFileError } from "../../../shared/lib/office-file.ts";
+import { handleModalKeyDown, isImeComposing } from "../../../shared/lib/dialog-a11y.ts";
 
 export const SpreadsheetListPage: Component = () => {
   const navigate = useNavigate();
@@ -25,7 +26,8 @@ export const SpreadsheetListPage: Component = () => {
     search: location.search,
   }));
   let active = true;
-  onCleanup(() => { active = false; });
+  let loadGeneration = 0;
+  onCleanup(() => { active = false; loadGeneration++; });
   const [creating, setCreating] = createSignal(false);
   const [importing, setImporting] = createSignal(false);
   const [importSaving, setImportSaving] = createSignal(false);
@@ -62,11 +64,31 @@ export const SpreadsheetListPage: Component = () => {
   const { t } = useI18n();
   const [spreadsheets, setSpreadsheets] = createSignal<Spreadsheet[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
+  const [loadError, setLoadError] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
   const [deleting, setDeleting] = createSignal(new Set<string>());
 
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
+  let dialogRef: HTMLDivElement | undefined;
+  let dialogInputRef: HTMLInputElement | undefined;
+  let previouslyFocused: HTMLElement | null = null;
+
+  createEffect(() => {
+    if (!showNewDialog()) return;
+    previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    queueMicrotask(() => dialogInputRef?.focus());
+    const onKeyDown = (event: KeyboardEvent) =>
+      handleModalKeyDown(event, dialogRef, () => setShowNewDialog(false));
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+      previouslyFocused = null;
+    });
+  });
 
   const handleImport = async (file: File) => {
     const operation = ++importGeneration;
@@ -105,27 +127,37 @@ export const SpreadsheetListPage: Component = () => {
     }
   };
 
-  createEffect(() => {
+  const fetchSpreadsheets = () => {
     const scope = routeScope();
+    const generation = ++loadGeneration;
+    const isCurrent = () =>
+      active && routeScope() === scope && generation === loadGeneration;
     cancelImport();setImported(null);setImportError(null);
     setIsLoading(true);
+    setLoadError(false);
     setSpreadsheets([]);
     setDeleteError("");
     setDeleting(new Set<string>());
     const receipt = creationReceipt();
     let snapshot: string | null | undefined;
     try { snapshot = receipt.current(); } catch { /* Fail closed until a usable read. */ }
-    void loadSpreadsheetsFromApi({ isActive: () => active && routeScope() === scope })
+    void loadSpreadsheetsFromApi({ isActive: isCurrent })
       .then((items) => {
-        if (!active || routeScope() !== scope) return;
+        if (!isCurrent()) return;
         setSpreadsheets(items);
         if (snapshot !== undefined && receipt.acknowledge(snapshot)) {
           clearCreationFailure(receipt.key);
         }
       })
-      .catch(() => undefined)
-      .finally(() => { if (active && routeScope() === scope) setIsLoading(false); });
+      .catch(() => {
+        if (isCurrent()) setLoadError(true);
+      })
+      .finally(() => { if (isCurrent()) setIsLoading(false); });
+  };
 
+  createEffect(() => {
+    routeScope();
+    fetchSpreadsheets();
   });
 
   onMount(() => {
@@ -164,22 +196,22 @@ export const SpreadsheetListPage: Component = () => {
     <div class="min-h-screen bg-white dark:bg-neutral-900">
       {/* Header */}
       <header class="border-b border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-          <div class="flex items-center gap-4">
+        <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-5">
+          <div class="flex items-center gap-3 sm:gap-4">
             <OfficeNav />
             <div class="hidden sm:block">
               <h1 class="text-xl font-bold text-gray-900 dark:text-neutral-100">Takos Sheets</h1>
-              <p class="mt-0.5 text-sm text-gray-500 dark:text-neutral-500">
+              <p class="mt-0.5 text-sm text-gray-600 dark:text-neutral-400">
                 {t("spreadsheetEditor")}
               </p>
             </div>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             <ThemeToggle t={t} />
             <LanguageSwitcher />
             <button
               type="button"
-              class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              class="flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-600 px-3 sm:px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
               disabled={creating() || importing() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
             >
@@ -267,11 +299,27 @@ export const SpreadsheetListPage: Component = () => {
           </div>
         </Show>
 
+        <Show when={loadError()}>
+          <div
+            role="alert"
+            class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200"
+          >
+            <span class="min-w-0 flex-1">{t("loadSpreadsheetsFailed")}</span>
+            <button
+              type="button"
+              class="rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              onClick={fetchSpreadsheets}
+            >
+              {t("retry")}
+            </button>
+          </div>
+        </Show>
+
         <Show when={!isLoading()}>
         <Show
           when={spreadsheets().length > 0}
           fallback={
-            <Show when={!isLoading()}>
+            <Show when={!isLoading() && !loadError()}>
               <div class="flex flex-col items-center justify-center py-24 text-center">
                 <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-neutral-800">
                   <svg
@@ -284,7 +332,7 @@ export const SpreadsheetListPage: Component = () => {
                     stroke-width="1.5"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    class="text-gray-400 dark:text-neutral-500"
+                    class="text-gray-400 dark:text-neutral-400"
                   >
                     <rect
                       x="3"
@@ -303,14 +351,14 @@ export const SpreadsheetListPage: Component = () => {
                 <h2 class="mb-2 text-lg font-semibold text-gray-800 dark:text-neutral-200">
                   {t("noSpreadsheetsTitle")}
                 </h2>
-                <p class="mb-6 text-sm text-gray-500 dark:text-neutral-500">
+                <p class="mb-6 text-sm text-gray-600 dark:text-neutral-400">
                   {t("noSpreadsheetsDescription")}
                 </p>
                 <button
                   type="button"
                   class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500"
                   disabled={creating() || importing() || !!creationError()}
-              onClick={() => setShowNewDialog(true)}
+                  onClick={() => setShowNewDialog(true)}
                 >
                   {t("createSpreadsheet")}
                 </button>
@@ -336,32 +384,39 @@ export const SpreadsheetListPage: Component = () => {
       {/* New spreadsheet dialog */}
       <Show when={showNewDialog()}>
         <div
-          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
           onClick={() => setShowNewDialog(false)}
         >
           <div
-            class="w-96 rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-spreadsheet-dialog-title"
+            class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-100">
+            <h2
+              id="new-spreadsheet-dialog-title"
+              class="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-100"
+            >
               {t("newSpreadsheet")}
             </h2>
             <input
+              ref={dialogInputRef}
               class="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
               placeholder={t("spreadsheetTitlePlaceholder")}
+              aria-label={t("spreadsheetTitlePlaceholder")}
               value={newTitle()}
               onInput={(e) => setNewTitle(e.currentTarget.value)}
               onKeyDown={(e) => {
-                if (e.isComposing || e.keyCode === 229) return;
+                if (isImeComposing(e)) return;
                 if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") setShowNewDialog(false);
               }}
-              ref={(el) => setTimeout(() => el.focus(), 0)}
             />
             <div class="flex justify-end gap-2">
               <button
                 type="button"
-                class="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+                class="rounded-lg px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-neutral-100"
                 onClick={() => setShowNewDialog(false)}
               >
                 {t("cancel")}

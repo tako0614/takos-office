@@ -46,42 +46,47 @@ export default function PresentationCard(props: PresentationCardProps) {
 
   return (
     <div
-      class="bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl border cursor-pointer transition-all duration-200 overflow-hidden group"
+      class="relative bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl border transition-all duration-200 overflow-hidden group"
       classList={{
         "border-blue-500 shadow-lg shadow-blue-500/20": hovered(),
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => props.onClick()}
     >
-      <div
-        ref={thumbnailRef}
-        class="w-full bg-gray-100 dark:bg-gray-700"
-        style={{ "aspect-ratio": `${logicalSlideSize(props.presentation.slideSize).width}/${logicalSlideSize(props.presentation.slideSize).height}` }}
-      />
-      <div class="p-4">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-          {props.presentation.title}
-        </h3>
-        <div class="flex items-center justify-between mt-2">
-          <span class="text-xs text-gray-500 dark:text-gray-400">
-            {formatDate(props.presentation.updatedAt)}
-          </span>
-          <button
-            type="button"
-            class="text-xs text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-600 dark:hover:text-red-300 transition-opacity px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-            aria-label={t("deletePresentationLabel", {
-              title: props.presentation.title,
-            })}
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onDelete(e);
-            }}
-          >
-            {t("deletePresentation")}
-          </button>
+      <button
+        type="button"
+        class="block w-full text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+        onClick={() => props.onClick()}
+      >
+        <div
+          ref={thumbnailRef}
+          class="w-full bg-gray-100 dark:bg-gray-700"
+          style={{ "aspect-ratio": `${logicalSlideSize(props.presentation.slideSize).width}/${logicalSlideSize(props.presentation.slideSize).height}` }}
+        />
+        <div class="p-4 pb-10">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+            {props.presentation.title}
+          </h3>
+          <div class="mt-2">
+            <span class="text-xs text-gray-500 dark:text-gray-400">
+              {formatDate(props.presentation.updatedAt)}
+            </span>
+          </div>
         </div>
-      </div>
+      </button>
+      <button
+        type="button"
+        class="absolute bottom-3 right-3 text-xs text-red-600 dark:text-red-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-red-700 dark:hover:text-red-300 transition-opacity px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        aria-label={t("deletePresentationLabel", {
+          title: props.presentation.title,
+        })}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onDelete(e);
+        }}
+      >
+        {t("deletePresentation")}
+      </button>
     </div>
   );
 }

@@ -62,7 +62,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
       <div class="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
 
       {/* Insert tools */}
-      <span class="text-xs text-gray-500 dark:text-gray-500 mr-1">{t("insert")}</span>
+      <span class="text-xs text-gray-500 dark:text-gray-400 mr-1">{t("insert")}</span>
       <ToolButton label={t("text")} onClick={() => props.onInsertText()} />
       <ToolButton
         label={t("rect")}

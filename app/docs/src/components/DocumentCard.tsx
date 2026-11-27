@@ -29,37 +29,43 @@ export default function DocumentCard(props: DocumentCardProps) {
 
   return (
     <div
-      class="group relative rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md dark:hover:shadow-black/40 transition-all cursor-pointer overflow-hidden bg-white dark:bg-neutral-900"
-      onClick={() => props.onClick()}
+      class="group relative rounded-lg border border-gray-200 dark:border-neutral-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md dark:hover:shadow-black/40 transition-all overflow-hidden bg-white dark:bg-neutral-900"
     >
-      {/* Preview area */}
-      <div class="h-40 bg-white dark:bg-neutral-800 border-b border-gray-100 dark:border-neutral-700 p-4 overflow-hidden">
-        <div class="text-[8px] leading-tight text-gray-400 dark:text-neutral-500 line-clamp-[12]">
-          {props.document.title}
+      <button
+        type="button"
+        onClick={() => props.onClick()}
+        class="block w-full text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+      >
+        {/* Preview area */}
+        <div class="h-40 bg-white dark:bg-neutral-800 border-b border-gray-100 dark:border-neutral-700 p-4 overflow-hidden">
+          <div class="text-[8px] leading-tight text-gray-500 dark:text-neutral-400 line-clamp-[12]">
+            {props.document.title}
+          </div>
         </div>
-      </div>
 
-      {/* Info */}
-      <div class="px-3 py-2.5">
-        <h3 class="text-sm font-medium text-gray-800 dark:text-neutral-100 truncate">
-          {props.document.title}
-        </h3>
-        <div class="flex items-center gap-1.5 mt-1">
-          <FileText size={14} class="text-blue-600 dark:text-blue-400" />
-          <span class="text-xs text-gray-500 dark:text-neutral-400">
-            {t("opened", { date: formatDate(props.document.updatedAt) })}
-          </span>
+        {/* Info */}
+        <div class="px-3 py-2.5">
+          <h3 class="text-sm font-medium text-gray-800 dark:text-neutral-100 truncate">
+            {props.document.title}
+          </h3>
+          <div class="flex items-center gap-1.5 mt-1">
+            <FileText size={14} class="text-blue-600 dark:text-blue-400 shrink-0" />
+            <span class="text-xs text-gray-500 dark:text-neutral-400">
+              {t("opened", { date: formatDate(props.document.updatedAt) })}
+            </span>
+          </div>
         </div>
-      </div>
+      </button>
 
       <button
         type="button"
-        class="absolute top-2 right-2 p-1.5 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-400 dark:text-neutral-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-500 dark:hover:text-red-400 transition-all shadow-sm"
+        class="absolute top-2 right-2 p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-500 dark:text-neutral-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
         onClick={(e) => {
           e.stopPropagation();
           props.onDelete(e);
         }}
         title={t("deleteDocumentTitle")}
+        aria-label={`${t("deleteDocumentTitle")}: ${props.document.title}`}
       >
         <Trash2 size={14} />
       </button>

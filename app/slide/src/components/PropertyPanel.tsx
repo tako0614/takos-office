@@ -25,6 +25,7 @@ function PropertyRow(props: { label: string; children: JSX.Element }) {
 function NumberInput(props: {
   value: number;
   onChange: (v: number) => void;
+  ariaLabel: string;
   min?: number;
   step?: number;
 }) {
@@ -32,6 +33,7 @@ function NumberInput(props: {
     <input
       type="number"
       class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500 transition-colors"
+      aria-label={props.ariaLabel}
       value={props.value}
       min={props.min}
       step={props.step ?? 1}
@@ -43,18 +45,24 @@ function NumberInput(props: {
   );
 }
 
-function ColorInput(props: { value: string; onChange: (v: string) => void }) {
+function ColorInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+}) {
   return (
     <div class="flex gap-1 items-center">
       <input
         type="color"
         class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
+        aria-label={props.ariaLabel}
         value={props.value}
         onInput={(e) => props.onChange(e.currentTarget.value)}
       />
       <input
         type="text"
         class="flex-1 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500"
+        aria-label={`${props.ariaLabel} (hex)`}
         value={props.value}
         onInput={(e) => props.onChange(e.currentTarget.value)}
       />
@@ -87,6 +95,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
           <ColorInput
             value={props.slideBackground}
             onChange={props.onUpdateBackground}
+            ariaLabel={t("slideBackground")}
           />
         </div>
 
@@ -101,12 +110,14 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 <NumberInput
                   value={el()!.x}
                   onChange={(v) => update({ x: v })}
+                  ariaLabel={`${t("position")} X`}
                 />
               </PropertyRow>
               <PropertyRow label="Y">
                 <NumberInput
                   value={el()!.y}
                   onChange={(v) => update({ y: v })}
+                  ariaLabel={`${t("position")} Y`}
                 />
               </PropertyRow>
             </div>
@@ -118,6 +129,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 <NumberInput
                   value={el()!.width}
                   onChange={(v) => update({ width: v })}
+                  ariaLabel={`${t("size")} W`}
                   min={10}
                 />
               </PropertyRow>
@@ -125,6 +137,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 <NumberInput
                   value={el()!.height}
                   onChange={(v) => update({ height: v })}
+                  ariaLabel={`${t("size")} H`}
                   min={10}
                 />
               </PropertyRow>
@@ -135,6 +148,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
               <NumberInput
                 value={el()!.rotation}
                 onChange={(v) => update({ rotation: v })}
+                ariaLabel={t("rotation")}
               />
             </PropertyRow>
 
@@ -191,6 +205,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </span>
                 <textarea
                   class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1.5 rounded border outline-none focus:border-blue-500 resize-none"
+                  aria-label={t("text")}
                   rows={3}
                   value={el()!.text ?? ""}
                   onInput={(e) => update({ text: e.currentTarget.value })}
@@ -199,6 +214,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                   <NumberInput
                     value={el()!.fontSize ?? 24}
                     onChange={(v) => update({ fontSize: v })}
+                    ariaLabel={t("fontSize")}
                     min={8}
                   />
                 </PropertyRow>
@@ -206,11 +222,13 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                   <ColorInput
                     value={el()!.fontColor ?? "#333333"}
                     onChange={(v) => update({ fontColor: v })}
+                    ariaLabel={t("color")}
                   />
                 </PropertyRow>
                 <PropertyRow label={t("align")}>
                   <select
                     class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none"
+                    aria-label={t("align")}
                     value={el()!.textAlign ?? "left"}
                     onChange={(e) =>
                       update({
@@ -270,18 +288,21 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                   <ColorInput
                     value={el()!.fillColor ?? "#4f87e0"}
                     onChange={(v) => update({ fillColor: v })}
+                    ariaLabel={t("fill")}
                   />
                 </PropertyRow>
                 <PropertyRow label={t("stroke")}>
                   <ColorInput
                     value={el()!.strokeColor ?? "#2563eb"}
                     onChange={(v) => update({ strokeColor: v })}
+                    ariaLabel={t("stroke")}
                   />
                 </PropertyRow>
                 <PropertyRow label={t("strokeWidth")}>
                   <NumberInput
                     value={el()!.strokeWidth ?? 2}
                     onChange={(v) => update({ strokeWidth: v })}
+                    ariaLabel={t("strokeWidth")}
                     min={0}
                   />
                 </PropertyRow>
@@ -298,6 +319,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                   <input
                     type="text"
                     class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 text-xs px-2 py-1 rounded border outline-none focus:border-blue-500"
+                    aria-label={t("imageUrl")}
                     value={el()!.imageUrl ?? ""}
                     onInput={(e) => update({ imageUrl: e.currentTarget.value })}
                     placeholder="https://..."
@@ -309,7 +331,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
         </Show>
 
         <Show when={!el()}>
-          <div class="text-xs text-gray-500 text-center py-8">
+          <div class="text-xs text-gray-500 dark:text-gray-400 text-center py-8">
             {t("selectElementToEdit")}
           </div>
         </Show>

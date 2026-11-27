@@ -1,4 +1,4 @@
-import { createEffect, For, onCleanup, onMount } from "solid-js";
+import { createEffect, For, onCleanup, onMount, Show } from "solid-js";
 import type { Slide, SlideSize } from "../types";
 import { observeSlideImages, renderThumbnail } from "../lib/canvas-renderer";
 import { t, useI18n } from "../i18n";
@@ -19,6 +19,7 @@ function SlideThumbnail(props: {
   slideSize?: SlideSize;
   index: number;
   selected: boolean;
+  canDelete: boolean;
   onClick: () => void;
   onDelete: () => void;
   onDragStart: (e: DragEvent) => void;
@@ -45,7 +46,7 @@ function SlideThumbnail(props: {
 
   return (
     <div
-      class="group relative p-1 cursor-pointer rounded-lg transition-all duration-150"
+      class="group relative rounded-lg transition-all duration-150"
       classList={{
         "bg-blue-100 dark:bg-blue-600/30 ring-2 ring-blue-500": props.selected,
         "hover:bg-gray-100 dark:hover:bg-gray-700": !props.selected,
@@ -54,31 +55,37 @@ function SlideThumbnail(props: {
       onDragStart={props.onDragStart}
       onDragOver={props.onDragOver}
       onDrop={props.onDrop}
-      onClick={props.onClick}
     >
-      <div class="flex items-start gap-2">
-        <span class="text-xs text-gray-500 dark:text-gray-500 mt-1 w-4 text-right shrink-0">
-          {props.index + 1}
-        </span>
-        <div
-          ref={thumbRef}
-          class="flex-1 rounded overflow-hidden border border-gray-300 dark:border-gray-600"
-          style={{ "aspect-ratio": `${logicalSlideSize(props.slideSize).width}/${logicalSlideSize(props.slideSize).height}` }}
-        />
-      </div>
-      {/* Delete button */}
       <button
         type="button"
-        class="absolute top-2 right-2 w-5 h-5 rounded bg-red-600/80 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 transition-opacity"
-        aria-label={t("deleteSlide", { number: props.index + 1 })}
-        title={t("deleteSlide", { number: props.index + 1 })}
-        onClick={(e) => {
-          e.stopPropagation();
-          props.onDelete();
-        }}
+        class="w-full p-1 text-left rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        aria-label={t("slideNumberLabel", { number: props.index + 1 })}
+        aria-current={props.selected ? "true" : undefined}
+        onClick={props.onClick}
       >
-        x
+        <div class="flex items-start gap-2">
+          <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 w-4 text-right shrink-0">
+            {props.index + 1}
+          </span>
+          <div
+            ref={thumbRef}
+            class="flex-1 rounded overflow-hidden border border-gray-300 dark:border-gray-600"
+            style={{ "aspect-ratio": `${logicalSlideSize(props.slideSize).width}/${logicalSlideSize(props.slideSize).height}` }}
+          />
+        </div>
       </button>
+      {/* Delete button */}
+      <Show when={props.canDelete}>
+        <button
+          type="button"
+          class="absolute top-2 right-2 w-5 h-5 rounded bg-red-600/85 text-white text-xs flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 transition-opacity"
+          aria-label={t("deleteSlide", { number: props.index + 1 })}
+          title={t("deleteSlide", { number: props.index + 1 })}
+          onClick={() => props.onDelete()}
+        >
+          x
+        </button>
+      </Show>
     </div>
   );
 }
@@ -110,6 +117,7 @@ export default function SlidePanel(props: SlidePanelProps) {
               slideSize={props.slideSize}
               index={i()}
               selected={i() === props.selectedIndex}
+              canDelete={props.slides.length > 1}
               onClick={() => props.onSelectSlide(i())}
               onDelete={() => props.onDeleteSlide(i())}
               onDragStart={(e) => {
