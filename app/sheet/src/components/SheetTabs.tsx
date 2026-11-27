@@ -133,7 +133,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
 
   return (
     <div
-      class="flex h-8 items-center overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
+      class="flex min-h-10 sm:h-8 items-center overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
       onClick={handleWindowClick}
     >
       <For each={props.spreadsheet.sheets}>
@@ -143,10 +143,10 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
             fallback={
               <button
                 type="button"
-                class={`mr-0.5 flex h-6 shrink-0 items-center rounded px-3 text-xs transition-colors ${
+                class={`mr-0.5 flex min-h-8 sm:h-6 shrink-0 items-center rounded px-3 text-xs transition-colors ${
                   sheet.id === props.activeSheetId
                     ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:ring-0 dark:shadow-none"
-                    : "text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-200"
+                    : "text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-100"
                 }`}
                 onClick={() => props.onSwitchSheet(sheet.id)}
                 onContextMenu={(e) => handleContextMenu(e, sheet.id)}
@@ -175,7 +175,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
       {/* Add sheet button */}
       <button
         type="button"
-        class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+        class="flex h-8 w-8 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
         onClick={props.onAddSheet}
         title={t("addSheet")}
         aria-label={t("addSheet")}

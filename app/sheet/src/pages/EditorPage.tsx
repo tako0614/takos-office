@@ -35,7 +35,12 @@ import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
-import { isRedoKeyEvent, isUndoKeyEvent } from "../../../shared/lib/dialog-a11y";
+import {
+  isImeComposing,
+  isRedoKeyEvent,
+  isUndoKeyEvent,
+} from "../../../shared/lib/dialog-a11y";
+import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
 import { exportXlsxFile } from "../lib/xlsx-worker.ts";
 import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 import { invalidateImportedFormulaCaches, spreadsheetInputsChanged } from "../lib/imported-formula-cache.ts";
@@ -59,9 +64,26 @@ export const EditorPage: Component = () => {
   const [editingInFormulaBar, setEditingInFormulaBar] = createSignal(false);
   const [editValue, setEditValue] = createSignal("");
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [pendingRecovery, setPendingRecovery] = createSignal<"discard" | "replace" | null>(null);
+  const [pendingDeleteSheetId, setPendingDeleteSheetId] = createSignal<string | null>(null);
+  const [statusAnnouncement, setStatusAnnouncement] = createSignal("");
   const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getSpreadsheetSaveState>>("clean");
   const [recovering, setRecovering] = createSignal(false);
   const [recoveryError, setRecoveryError] = createSignal("");
+  let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
+  const announceStatus = (message: string) => {
+    setStatusAnnouncement("");
+    queueMicrotask(() => setStatusAnnouncement(message));
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    statusClearTimer = setTimeout(() => setStatusAnnouncement(""), 4000);
+  };
+  onCleanup(() => {
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+  });
+  createEffect(() => {
+    const title = spreadsheet()?.title?.trim() || t("untitledSpreadsheet");
+    document.title = `${title} — Takos ${t("officeSheets")}`;
+  });
   let owner: object | undefined;
   let writer: ReturnType<typeof captureSpreadsheetWriter> | undefined;
   let editVersion = 0;
@@ -80,11 +102,13 @@ export const EditorPage: Component = () => {
     if (!current || !binding || exporting()) return;
     const snapshot = structuredClone(current), controller = new AbortController();
     exportController = controller;setExporting(true);setExportFailed(false);setExportWarning(false);
+    announceStatus(t("exporting"));
     try {
       const result = await exportXlsxFile(snapshot, controller.signal);
       if (owner !== binding || controller.signal.aborted) return;
       downloadOfficeBlob(result.blob, `${sanitizeFilename(snapshot.title)}.xlsx`, controller.signal);
       setExportWarning(result.hasUnsupportedContent);
+      announceStatus(t("exportReady"));
     } catch { if (owner === binding && !controller.signal.aborted) setExportFailed(true); }
     finally { if (owner === binding) { setExporting(false);if (exportController === controller) exportController = undefined; } }
   };
@@ -194,6 +218,7 @@ export const EditorPage: Component = () => {
       if (version === editVersion) {
         const acknowledged = getSpreadsheet(id);
         if (acknowledged) setSpreadsheet(acknowledged);
+        announceStatus(t("saved"));
       }
       refreshSaveKind();
     }).catch(() => {
@@ -234,9 +259,14 @@ export const EditorPage: Component = () => {
     }
   }
 
-  const reconcile = async (discard: boolean) => {
+  const requestReconcile = (discard: boolean) => {
     if (recovering() || !owner) return;
-    if (!confirm(t(discard ? "discardDraftConfirm" : "replaceDraftConfirm"))) return;
+    setPendingRecovery(discard ? "discard" : "replace");
+  };
+
+  const executeReconcile = async (discard: boolean) => {
+    setPendingRecovery(null);
+    if (recovering() || !owner) return;
     const binding = owner, version = editVersion, id = params.id;
     const controller = new AbortController();
     recoveryController = controller;
@@ -539,7 +569,14 @@ export const EditorPage: Component = () => {
 
   // Keyboard shortcut handler for undo/redo + shortcut help.
   const handleGlobalKeyDown = (e: KeyboardEvent) => {
-    if (showShortcuts()) return;
+    if (
+      showShortcuts() ||
+      pendingRecovery() !== null ||
+      pendingDeleteSheetId() !== null ||
+      isImeComposing(e)
+    ) {
+      return;
+    }
     if (isTypingTarget(e.target)) return;
     if (isUndoKeyEvent(e)) {
       e.preventDefault();
@@ -603,7 +640,15 @@ export const EditorPage: Component = () => {
 
   const handleDeleteSheet = (sheetId: string) => {
     const ss = spreadsheet();
-    if (!ss || ss.sheets.length <= 1 || blockNamedStructure(ss) || !confirm(t("deleteSheetConfirm"))) return;
+    if (!ss || ss.sheets.length <= 1 || blockNamedStructure(ss)) return;
+    setPendingDeleteSheetId(sheetId);
+  };
+
+  const confirmDeleteSheet = () => {
+    const sheetId = pendingDeleteSheetId();
+    setPendingDeleteSheetId(null);
+    const ss = spreadsheet();
+    if (!sheetId || !ss || ss.sheets.length <= 1 || blockNamedStructure(ss)) return;
     const changed = mutate(() => deleteSheet(ss.id, sheetId));
     if (changed) {
       const draft = getSpreadsheet(ss.id);
@@ -636,22 +681,33 @@ export const EditorPage: Component = () => {
 
   return (
     <div class="flex h-screen flex-col bg-white dark:bg-neutral-900">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        {t("skipToMain")}
+      </a>
+      <div role="status" aria-live="polite" class="sr-only">
+        {statusAnnouncement()}
+      </div>
       <Show
         when={spreadsheet()}
         fallback={
-          <div class="flex h-screen items-center justify-center text-gray-500 dark:text-neutral-500">
-            {t("loading")}
-          </div>
+          <main id="main" tabIndex={-1} class="flex h-screen items-center justify-center text-gray-600 dark:text-neutral-300 outline-none">
+            <h1 class="sr-only">{t("untitledSpreadsheet")}</h1>
+            <span role="status">{t("loading")}</span>
+          </main>
         }
       >
         {(ss) => (
           <>
+            <h1 class="sr-only">{ss().title || t("untitledSpreadsheet")}</h1>
             {/* Office nav - return to the shell / switch apps from inside a sheet */}
             <div class="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
               <OfficeNav />
               <button
                 type="button"
-                class="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                class="flex h-9 w-9 sm:h-7 sm:w-7 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                 onClick={() => setShowShortcuts(true)}
                 aria-label={t("shortcutsOpen")}
                 title={t("shortcutsOpen")}
@@ -684,13 +740,24 @@ export const EditorPage: Component = () => {
                 <p>{t("saveRecoveryHint")}</p>
                 <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
                 <div class="mt-2 flex flex-wrap gap-3">
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(false)}>{t("replaceDraft")}</button>
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(true)}>{t("readServer")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
                 </div>
               </div>
             </Show>
 
-            <Show when={exportFailed()}><p role="alert" class="px-4 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p></Show>
+            <Show when={exportFailed()}>
+              <div role="alert" class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm text-red-700 dark:text-red-300">
+                <span>{t("exportFailed")}</span>
+                <button
+                  type="button"
+                  class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+                  onClick={() => void handleExportXlsx()}
+                >
+                  {t("retry")}
+                </button>
+              </div>
+            </Show>
             <Show when={exportWarning()}><p role="status" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p></Show>
             <Show when={namedStructureBlocked()}><p role="alert" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("namedStructureBlocked")}</p></Show>
             <Show when={ss().sheets.some(sheet => Object.values(sheet.cells).some(cell => cell.computedSource === "file" || cell.computedSource === "stale"))}>
@@ -734,6 +801,7 @@ export const EditorPage: Component = () => {
             />
 
             {/* Grid */}
+            <main id="main" tabIndex={-1} class="flex min-h-0 flex-1 flex-col outline-none">
             <Show when={activeSheet()}>
               {(sheet) => (
                 <Grid
@@ -753,6 +821,7 @@ export const EditorPage: Component = () => {
                 />
               )}
             </Show>
+            </main>
 
             {/* Sheet Tabs */}
             <SheetTabs
@@ -768,6 +837,29 @@ export const EditorPage: Component = () => {
             <Show when={showShortcuts()}>
               <ShortcutsHelp onClose={() => setShowShortcuts(false)} />
             </Show>
+
+            <ConfirmDialog
+              open={pendingRecovery() !== null}
+              title={t(saveKind() === "conflict" ? "saveConflict" : "saveUnconfirmed")}
+              message={t(pendingRecovery() === "discard" ? "discardDraftConfirm" : "replaceDraftConfirm")}
+              confirmLabel={t(pendingRecovery() === "discard" ? "readServer" : "replaceDraft")}
+              cancelLabel={t("cancel")}
+              danger={pendingRecovery() === "discard"}
+              busy={recovering()}
+              onConfirm={() => void executeReconcile(pendingRecovery() === "discard")}
+              onCancel={() => setPendingRecovery(null)}
+            />
+
+            <ConfirmDialog
+              open={pendingDeleteSheetId() !== null}
+              title={t("deleteSheetTitle")}
+              message={t("deleteSheetConfirm")}
+              confirmLabel={t("delete")}
+              cancelLabel={t("cancel")}
+              danger
+              onConfirm={confirmDeleteSheet}
+              onCancel={() => setPendingDeleteSheetId(null)}
+            />
           </>
         )}
       </Show>

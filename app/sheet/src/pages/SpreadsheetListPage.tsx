@@ -16,7 +16,13 @@ import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 import type { Spreadsheet } from "../types";
 import { createSpreadsheetImporter } from "../lib/spreadsheet-import.ts";
 import { OfficeFileError } from "../../../shared/lib/office-file.ts";
-import { handleModalKeyDown, isImeComposing } from "../../../shared/lib/dialog-a11y.ts";
+import {
+  acquireModalScrollLock,
+  handleModalKeyDown,
+  isImeComposing,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y.ts";
+import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
 
 export const SpreadsheetListPage: Component = () => {
   const navigate = useNavigate();
@@ -61,12 +67,13 @@ export const SpreadsheetListPage: Component = () => {
       return t("createUnconfirmed");
     }
   };
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [spreadsheets, setSpreadsheets] = createSignal<Spreadsheet[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
   const [deleting, setDeleting] = createSignal(new Set<string>());
+  const [deleteTargetId, setDeleteTargetId] = createSignal<string | null>(null);
 
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("");
@@ -75,17 +82,22 @@ export const SpreadsheetListPage: Component = () => {
   let previouslyFocused: HTMLElement | null = null;
 
   createEffect(() => {
+    void language();
+    document.title = `${t("officeSheets")} — Takos Office`;
+  });
+
+  createEffect(() => {
     if (!showNewDialog()) return;
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const releaseScrollLock = acquireModalScrollLock();
     queueMicrotask(() => dialogInputRef?.focus());
     const onKeyDown = (event: KeyboardEvent) =>
       handleModalKeyDown(event, dialogRef, () => setShowNewDialog(false));
     document.addEventListener("keydown", onKeyDown);
     onCleanup(() => {
       document.removeEventListener("keydown", onKeyDown);
-      if (previouslyFocused && document.contains(previouslyFocused)) {
-        previouslyFocused.focus();
-      }
+      releaseScrollLock();
+      restoreFocus(previouslyFocused);
       previouslyFocused = null;
     });
   });
@@ -177,7 +189,14 @@ export const SpreadsheetListPage: Component = () => {
 
   const handleDelete = (e: Event, id: string) => {
     e.stopPropagation();
-    if (deleting().has(id) || !confirm(t("deleteSpreadsheetConfirm"))) return;
+    if (deleting().has(id)) return;
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = () => {
+    const id = deleteTargetId();
+    setDeleteTargetId(null);
+    if (!id || deleting().has(id)) return;
     const scope = routeScope();
     setDeleteError("");
     setDeleting((previous) => new Set(previous).add(id));
@@ -194,14 +213,20 @@ export const SpreadsheetListPage: Component = () => {
 
   return (
     <div class="min-h-screen bg-white dark:bg-neutral-900">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        {t("skipToMain")}
+      </a>
       {/* Header */}
       <header class="border-b border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 sm:gap-3 px-4 sm:px-6 py-4 sm:py-5">
           <div class="flex items-center gap-3 sm:gap-4">
             <OfficeNav />
-            <div class="hidden sm:block">
-              <h1 class="text-xl font-bold text-gray-900 dark:text-neutral-100">Takos Sheets</h1>
-              <p class="mt-0.5 text-sm text-gray-600 dark:text-neutral-400">
+            <div>
+              <h1 class="sr-only sm:not-sr-only text-xl font-bold text-gray-900 dark:text-neutral-100">Takos Sheets</h1>
+              <p class="hidden sm:block mt-0.5 text-sm text-gray-600 dark:text-neutral-400">
                 {t("spreadsheetEditor")}
               </p>
             </div>
@@ -211,7 +236,7 @@ export const SpreadsheetListPage: Component = () => {
             <LanguageSwitcher />
             <button
               type="button"
-              class="flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-600 px-3 sm:px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              class="flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-700 px-3 sm:px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
               disabled={creating() || importing() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
             >
@@ -236,7 +261,7 @@ export const SpreadsheetListPage: Component = () => {
       </header>
 
       {/* Content */}
-      <main class="mx-auto max-w-5xl px-6 py-6">
+      <main id="main" tabIndex={-1} class="mx-auto max-w-5xl px-4 sm:px-6 py-6 outline-none">
         <div class="mb-6 flex flex-col items-start gap-2">
           <input ref={fileInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" aria-label={t("importXlsx")}
             onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
@@ -356,7 +381,7 @@ export const SpreadsheetListPage: Component = () => {
                 </p>
                 <button
                   type="button"
-                  class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-500"
+                  class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-600"
                   disabled={creating() || importing() || !!creationError()}
                   onClick={() => setShowNewDialog(true)}
                 >
@@ -423,7 +448,7 @@ export const SpreadsheetListPage: Component = () => {
               </button>
               <button
                 type="button"
-                class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+                class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
                 disabled={creating() || importing() || !!creationError()}
                 onClick={handleCreate}
               >
@@ -433,6 +458,16 @@ export const SpreadsheetListPage: Component = () => {
           </div>
         </div>
       </Show>
+      <ConfirmDialog
+        open={deleteTargetId() !== null}
+        title={t("deleteSpreadsheetTitle")}
+        message={t("deleteSpreadsheetConfirm")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   );
 };

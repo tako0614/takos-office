@@ -18,10 +18,13 @@ function SlideThumbnail(props: {
   slide: Slide;
   slideSize?: SlideSize;
   index: number;
+  total: number;
   selected: boolean;
   canDelete: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onDragStart: (e: DragEvent) => void;
   onDragOver: (e: DragEvent) => void;
   onDrop: (e: DragEvent) => void;
@@ -64,7 +67,13 @@ function SlideThumbnail(props: {
         onClick={props.onClick}
       >
         <div class="flex items-start gap-2">
-          <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 w-4 text-right shrink-0">
+          <span
+            class="text-xs mt-1 w-4 text-right shrink-0"
+            classList={{
+              "font-semibold text-blue-900 dark:text-blue-100": props.selected,
+              "text-gray-600 dark:text-gray-300": !props.selected,
+            }}
+          >
             {props.index + 1}
           </span>
           <div
@@ -74,17 +83,41 @@ function SlideThumbnail(props: {
           />
         </div>
       </button>
-      {/* Delete button */}
-      <Show when={props.canDelete}>
-        <button
-          type="button"
-          class="absolute top-2 right-2 w-5 h-5 rounded bg-red-600/85 text-white text-xs flex items-center justify-center opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 transition-opacity"
-          aria-label={t("deleteSlide", { number: props.index + 1 })}
-          title={t("deleteSlide", { number: props.index + 1 })}
-          onClick={() => props.onDelete()}
-        >
-          x
-        </button>
+      {/* Reorder + Delete controls */}
+      <Show when={props.total > 1}>
+        <div class="absolute top-2 right-2 flex items-center gap-1 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <button
+            type="button"
+            disabled={props.index === 0}
+            class="w-6 h-6 rounded bg-gray-800/80 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            aria-label={t("moveSlideUp", { number: props.index + 1 })}
+            title={t("moveSlideUp", { number: props.index + 1 })}
+            onClick={() => props.onMoveUp()}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            disabled={props.index === props.total - 1}
+            class="w-6 h-6 rounded bg-gray-800/80 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            aria-label={t("moveSlideDown", { number: props.index + 1 })}
+            title={t("moveSlideDown", { number: props.index + 1 })}
+            onClick={() => props.onMoveDown()}
+          >
+            ↓
+          </button>
+          <Show when={props.canDelete}>
+            <button
+              type="button"
+              class="w-6 h-6 rounded bg-red-600/90 text-white text-xs flex items-center justify-center hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              aria-label={t("deleteSlide", { number: props.index + 1 })}
+              title={t("deleteSlide", { number: props.index + 1 })}
+              onClick={() => props.onDelete()}
+            >
+              ×
+            </button>
+          </Show>
+        </div>
       </Show>
     </div>
   );
@@ -95,14 +128,14 @@ export default function SlidePanel(props: SlidePanelProps) {
   let dragFromIndex: number | null = null;
 
   return (
-    <div class="w-56 bg-white border-r border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-col h-full">
+    <div class="w-56 max-w-full bg-white border-r border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-col h-full">
       <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <span class="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
           {t("slides")}
         </span>
         <button
           type="button"
-          class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          class="min-h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           aria-label={t("addSlide")}
           onClick={() => props.onAddSlide()}
         >
@@ -116,10 +149,17 @@ export default function SlidePanel(props: SlidePanelProps) {
               slide={slide}
               slideSize={props.slideSize}
               index={i()}
+              total={props.slides.length}
               selected={i() === props.selectedIndex}
               canDelete={props.slides.length > 1}
               onClick={() => props.onSelectSlide(i())}
               onDelete={() => props.onDeleteSlide(i())}
+              onMoveUp={() => {
+                if (i() > 0) props.onReorderSlide(i(), i() - 1);
+              }}
+              onMoveDown={() => {
+                if (i() < props.slides.length - 1) props.onReorderSlide(i(), i() + 1);
+              }}
               onDragStart={(e) => {
                 dragFromIndex = i();
                 e.dataTransfer?.setData("text/plain", String(i()));

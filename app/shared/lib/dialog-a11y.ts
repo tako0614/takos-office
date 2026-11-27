@@ -93,3 +93,98 @@ export function isUndoKeyEvent(event: ShortcutKeyEvent): boolean {
   return (event.ctrlKey || event.metaKey) && !event.shiftKey &&
     event.key.toLowerCase() === "z";
 }
+
+let scrollLockCount = 0;
+let savedBodyOverflow = "";
+
+/**
+ * Ref-counted body scroll lock for modal dialogs so overlapping or sequential
+ * dialogs cannot unlock prematurely or leave the document stuck locked.
+ */
+export function acquireModalScrollLock(): () => void {
+  const body = globalThis.document?.body;
+  if (!body) return () => {};
+  if (scrollLockCount === 0) {
+    savedBodyOverflow = body.style.overflow;
+    body.style.overflow = "hidden";
+  }
+  scrollLockCount += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    scrollLockCount = Math.max(0, scrollLockCount - 1);
+    if (scrollLockCount === 0 && globalThis.document?.body) {
+      globalThis.document.body.style.overflow = savedBodyOverflow;
+      savedBodyOverflow = "";
+    }
+  };
+}
+
+/**
+ * Restores keyboard focus to the modal opener when still connected to the DOM,
+ * falling back to `#main` (or the given selector) so focus is never lost.
+ */
+export function restoreFocus(
+  opener: HTMLElement | null | undefined,
+  fallbackSelector = "#main",
+): void {
+  if (opener?.isConnected && typeof opener.focus === "function") {
+    opener.focus();
+    return;
+  }
+  const fallback = globalThis.document?.querySelector?.<HTMLElement>(
+    fallbackSelector,
+  );
+  if (fallback?.isConnected && typeof fallback.focus === "function") {
+    fallback.focus();
+  }
+}
+
+/** Validates an explicit HTTP(S) URL for inline prompt validation. */
+export function isValidHttpUrl(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(trimmed)) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Computes the next position for keyboard element nudging (`Arrow*` = 1px,
+ * `Shift+Arrow*` = 10px), returning `null` for non-arrow keys or modifier combos.
+ */
+export function getArrowNudgeDelta(
+  event: Pick<KeyboardEvent, "key" | "shiftKey"> & {
+    altKey?: boolean;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    isComposing?: boolean;
+    keyCode?: number;
+  },
+): { dx: number; dy: number } | null {
+  if (
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    isImeComposing(event)
+  ) {
+    return null;
+  }
+  const step = event.shiftKey ? 10 : 1;
+  switch (event.key) {
+    case "ArrowLeft":
+      return { dx: -step, dy: 0 };
+    case "ArrowRight":
+      return { dx: step, dy: 0 };
+    case "ArrowUp":
+      return { dx: 0, dy: -step };
+    case "ArrowDown":
+      return { dx: 0, dy: step };
+    default:
+      return null;
+  }
+}

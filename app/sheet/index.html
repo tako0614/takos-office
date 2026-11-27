@@ -20,7 +20,7 @@
          app re-syncs both after mount. */
       (function () {
         try {
-          var lang = localStorage.getItem("takos-lang");
+          var lang = localStorage.getItem("takos-language") || localStorage.getItem("takos-lang");
           if (lang !== "ja" && lang !== "en") {
             lang = (navigator.language || "").toLowerCase().startsWith("ja")
               ? "ja"

@@ -1,7 +1,11 @@
 import { createEffect, For, onCleanup, Show } from "solid-js";
 import { X } from "lucide-solid";
 import { useI18n } from "../i18n";
-import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
+import {
+  acquireModalScrollLock,
+  handleModalKeyDown,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   open: boolean;
@@ -43,7 +47,10 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
   // Close on Escape, trap focus within the dialog, and restore focus on close.
   createEffect(() => {
     if (!props.open) return;
-    previouslyFocused = document.activeElement as HTMLElement | null;
+    previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const releaseScrollLock = acquireModalScrollLock();
     const handler = (e: KeyboardEvent) => {
       handleModalKeyDown(e, dialogRef, props.onClose);
     };
@@ -51,7 +58,8 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     queueMicrotask(() => dialogRef?.focus());
     onCleanup(() => {
       globalThis.removeEventListener("keydown", handler);
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      releaseScrollLock();
+      restoreFocus(previouslyFocused);
       previouslyFocused = null;
     });
   });

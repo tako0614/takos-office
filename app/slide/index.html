@@ -7,7 +7,8 @@
     <!-- Home-screen install: one suite-wide manifest served at the Worker root. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
       content="Takos Slide — the presentation editor in the Takos Office suite."
@@ -19,13 +20,20 @@
          app re-syncs both after mount. */
       (function () {
         try {
-          var lang = localStorage.getItem("takos-lang");
+          var lang = localStorage.getItem("takos-language") || localStorage.getItem("takos-lang");
           if (lang !== "ja" && lang !== "en") {
             lang = (navigator.language || "").toLowerCase().startsWith("ja")
               ? "ja"
               : "en";
           }
           document.documentElement.lang = lang;
+          var theme = localStorage.getItem("takos-theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme = matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          }
+          document.documentElement.setAttribute("data-theme", theme);
         } catch {
           /* localStorage may be unavailable; the app will apply both. */
         }
@@ -37,12 +45,17 @@
       html,
       body {
         margin: 0;
+        background: #f9fafb;
+        color: #111827;
+      }
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
         background: #111827;
         color: #f3f4f6;
       }
     </style>
   </head>
-  <body class="bg-gray-900 text-gray-100">
+  <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

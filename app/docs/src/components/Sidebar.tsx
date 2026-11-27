@@ -112,7 +112,7 @@ export default function Sidebar(props: SidebarProps) {
     >
       <div class="docs-outline-header flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-neutral-800">
         <span
-          class="text-xs font-medium text-gray-400 dark:text-neutral-500 uppercase tracking-wider"
+          class="text-xs font-medium text-gray-600 dark:text-neutral-300 uppercase tracking-wider"
           classList={{ "sr-only": !phone() && collapsed() }}
         >
           {t("outline")}
@@ -120,7 +120,7 @@ export default function Sidebar(props: SidebarProps) {
         <button
           ref={toggleButton}
           type="button"
-          class="p-1 rounded text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="p-1 rounded text-gray-600 dark:text-neutral-300 hover:text-gray-800 dark:hover:text-neutral-100 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={toggle}
           title={expanded() ? t("collapse") : t("expand")}
           aria-label={t("toggleOutline")}
@@ -139,7 +139,7 @@ export default function Sidebar(props: SidebarProps) {
         <Show
           when={headings().length > 0}
           fallback={
-            <p class="text-gray-400 dark:text-neutral-500 text-xs italic">
+            <p class="text-gray-600 dark:text-neutral-300 text-xs italic">
               {t("noHeadings")}
             </p>
           }

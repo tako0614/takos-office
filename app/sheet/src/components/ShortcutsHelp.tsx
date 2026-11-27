@@ -1,6 +1,10 @@
 import { Component, For, onCleanup, onMount } from "solid-js";
 import { useI18n } from "../i18n";
-import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
+import {
+  acquireModalScrollLock,
+  handleModalKeyDown,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   onClose: () => void;
@@ -16,6 +20,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
   const { t } = useI18n();
   let dialogRef: HTMLDivElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
+  let releaseScrollLock: (() => void) | undefined;
 
   const shortcuts: { labelKey: Parameters<typeof t>[0]; keysKey: Parameters<typeof t>[0] }[] = [
     { labelKey: "shortcutNavigate", keysKey: "shortcutNavigateKeys" },
@@ -38,14 +43,19 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
   };
 
   onMount(() => {
-    previouslyFocused = document.activeElement as HTMLElement | null;
+    previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    releaseScrollLock = acquireModalScrollLock();
     dialogRef?.focus();
     document.addEventListener("keydown", handleKeyDown, true);
   });
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown, true);
-    if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    releaseScrollLock?.();
+    releaseScrollLock = undefined;
+    restoreFocus(previouslyFocused);
     previouslyFocused = null;
   });
 
