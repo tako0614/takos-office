@@ -115,7 +115,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     <button
       type="button"
       disabled={btnProps.disabled}
-      class={`flex h-7 min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      class={`flex min-h-9 min-w-9 sm:min-h-7 sm:min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         btnProps.active
           ? "bg-gray-300 text-gray-900 dark:bg-neutral-600 dark:text-white"
           : "text-gray-700 hover:bg-gray-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
@@ -132,12 +132,12 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   );
 
   const Separator = () => (
-    <div class="mx-1 h-5 w-px bg-gray-300 dark:bg-neutral-600" />
+    <div class="hidden sm:block mx-1 h-5 w-px bg-gray-300 dark:bg-neutral-600" />
   );
 
   return (
     <div
-      class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
+      class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-2 sm:px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
     >
       {/* Home button */}
       <button

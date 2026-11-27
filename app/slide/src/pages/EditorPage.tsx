@@ -27,10 +27,16 @@ import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import {
+  acquireModalScrollLock,
+  getArrowNudgeDelta,
   handleModalKeyDown,
+  isImeComposing,
   isRedoKeyEvent,
   isUndoKeyEvent,
+  isValidHttpUrl,
+  restoreFocus,
 } from "../../../shared/lib/dialog-a11y";
+import { ConfirmDialog, PromptDialog } from "../../../shared/components/OfficeDialog";
 import { exportPptxFile } from "../lib/pptx-worker.ts";
 import { downloadOfficeBlob, sanitizeFilename } from "../../../shared/lib/office-download.ts";
 
@@ -51,18 +57,42 @@ export default function EditorPage() {
   const [redoStack, setRedoStack] = createSignal<Presentation[]>([]);
   const [editingTextId, setEditingTextId] = createSignal<string | null>(null);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [showImagePrompt, setShowImagePrompt] = createSignal(false);
+  const [pendingRecovery, setPendingRecovery] = createSignal<"discard" | "replace" | null>(null);
+  const [statusAnnouncement, setStatusAnnouncement] = createSignal("");
   const [mobilePanel, setMobilePanel] = createSignal<"slides" | "properties" | null>(null);
   let mobilePanelButton: HTMLButtonElement | undefined;
   let textEditorDialogRef: HTMLDivElement | undefined;
   let textEditorPreviouslyFocused: HTMLElement | null = null;
+  let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const announceStatus = (message: string) => {
+    setStatusAnnouncement("");
+    queueMicrotask(() => setStatusAnnouncement(message));
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+    statusClearTimer = setTimeout(() => setStatusAnnouncement(""), 4000);
+  };
+
+  onCleanup(() => {
+    if (statusClearTimer) clearTimeout(statusClearTimer);
+  });
+
+  createEffect(() => {
+    if (!editingTextId()) return;
+    const release = acquireModalScrollLock();
+    onCleanup(release);
+  });
+
+  createEffect(() => {
+    const title = presentation()?.title?.trim() || t("untitledPresentation");
+    document.title = `${title} — Takos ${t("officeSlides")}`;
+  });
 
   const closeTextEditor = () => {
     setEditingTextId(null);
     const prev = textEditorPreviouslyFocused;
     textEditorPreviouslyFocused = null;
-    queueMicrotask(() => {
-      if (prev?.isConnected) prev.focus();
-    });
+    queueMicrotask(() => restoreFocus(prev));
   };
 
   const [saveKind, setSaveKind] = createSignal<ReturnType<typeof getPresentationSaveState>>("clean");
@@ -95,6 +125,8 @@ export default function EditorPage() {
     setSelectedSlideIndex(0);
     setSelectedElementId(null);
     setEditingTextId(null);
+    setShowImagePrompt(false);
+    setPendingRecovery(null);
     setMobilePanel(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -151,15 +183,21 @@ export default function EditorPage() {
         if (version === editVersion) {
           const acknowledged = getPresentation(id);
           if (acknowledged) setPresentation(acknowledged);
+          announceStatus(t("saved"));
         }
         refreshSaveKind();
       }).catch(() => { if (owner === binding) refreshSaveKind(true); });
     } catch { refreshSaveKind(true); }
   };
 
-  const reconcile = async (discard: boolean) => {
+  const requestReconcile = (discard: boolean) => {
     if (recovering() || !owner) return;
-    if (!confirm(t(discard ? "discardDraftConfirm" : "replaceDraftConfirm"))) return;
+    setPendingRecovery(discard ? "discard" : "replace");
+  };
+
+  const executeReconcile = async (discard: boolean) => {
+    setPendingRecovery(null);
+    if (recovering() || !owner) return;
     const binding = owner, version = editVersion, id = params.id;
     const controller = new AbortController();
     recoveryController = controller;
@@ -220,8 +258,11 @@ export default function EditorPage() {
   };
 
   const handleInsertImage = () => {
-    const url = prompt(t("enterImageUrl"));
-    if (!url) return;
+    setShowImagePrompt(true);
+  };
+
+  const submitInsertImage = (url: string) => {
+    setShowImagePrompt(false);
     const el = createImageElement(url, 330, 170);
     updateSlide((elements) => [...elements, el]);
     setSelectedElementId(el.id);
@@ -309,12 +350,21 @@ export default function EditorPage() {
   const handleReorderSlide = (from: number, to: number) => {
     const pres = presentation();
     if (!pres) return;
+    if (from < 0 || to < 0 || from >= pres.slides.length || to >= pres.slides.length || from === to) {
+      return;
+    }
     pushUndo();
     const newSlides = [...pres.slides];
     const [moved] = newSlides.splice(from, 1);
     newSlides.splice(to, 0, moved);
     persist({ ...pres, slides: newSlides });
     setSelectedSlideIndex(to);
+    announceStatus(
+      t("slideMovedAnnouncement", {
+        current: to + 1,
+        total: newSlides.length,
+      }),
+    );
   };
 
   const handleTitleChange = (title: string) => {
@@ -354,11 +404,13 @@ export default function EditorPage() {
     const snapshot = structuredClone(current), controller = new AbortController();
     exportController = controller;
     setExporting(true);setExportFailed(false);setExportWarning(false);
+    announceStatus(t("exporting"));
     try {
       const result = await exportPptxFile(snapshot,controller.signal);
       if (owner!==binding || controller.signal.aborted) return;
       downloadOfficeBlob(result.blob,`${sanitizeFilename(snapshot.title)}.pptx`,controller.signal);
       setExportWarning(result.hasUnsupportedContent);
+      announceStatus(t("exportReady"));
     } catch {
       if (owner===binding && !controller.signal.aborted) setExportFailed(true);
     } finally {
@@ -368,39 +420,70 @@ export default function EditorPage() {
   };
 
   const handleEditText = (elementId: string) => {
-    textEditorPreviouslyFocused = document.activeElement as HTMLElement | null;
+    textEditorPreviouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setEditingTextId(elementId);
     setSelectedElementId(elementId);
   };
 
   // Keyboard shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (showImagePrompt() || pendingRecovery() !== null || showShortcuts()) return;
     if (editingTextId()) {
       handleModalKeyDown(e, textEditorDialogRef, closeTextEditor);
       return;
     }
+    if (isImeComposing(e)) return;
     if (e.key === "Escape" && mobilePanel()) {
       e.preventDefault();
       setMobilePanel(null);
-      if (mobilePanelButton?.isConnected) mobilePanelButton.focus();
+      restoreFocus(mobilePanelButton);
       return;
     }
     // Don't handle if editing text in an input
     if (
       e.target instanceof HTMLInputElement ||
-      e.target instanceof HTMLTextAreaElement
+      e.target instanceof HTMLTextAreaElement ||
+      e.target instanceof HTMLSelectElement ||
+      (e.target instanceof HTMLElement && e.target.isContentEditable)
     ) {
       return;
     }
-
-    // While the shortcuts help is open, let it own the keyboard (it handles its
-    // own Esc / focus trap) and don't run editor shortcuts underneath it.
-    if (showShortcuts()) return;
 
     // "?" (Shift + /) opens the shortcuts help when not typing in a field.
     if (e.key === "?") {
       e.preventDefault();
       setShowShortcuts(true);
+      return;
+    }
+
+    // Alt + ArrowUp / ArrowDown reorders the active slide.
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      const pres = presentation();
+      if (pres && pres.slides.length > 1) {
+        const currentIdx = selectedSlideIndex();
+        const targetIdx = e.key === "ArrowUp" ? currentIdx - 1 : currentIdx + 1;
+        if (targetIdx >= 0 && targetIdx < pres.slides.length) {
+          e.preventDefault();
+          handleReorderSlide(currentIdx, targetIdx);
+        }
+      }
+      return;
+    }
+
+    // Arrow / Shift+Arrow nudges the selected element (1px / 10px).
+    const nudge = getArrowNudgeDelta(e);
+    if (nudge) {
+      const el = selectedElement();
+      if (el) {
+        e.preventDefault();
+        handleUpdateElement({
+          ...el,
+          x: Math.round(el.x + nudge.dx),
+          y: Math.round(el.y + nudge.dy),
+        });
+      }
       return;
     }
 
@@ -433,6 +516,16 @@ export default function EditorPage() {
       }
     >
       <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
+        <a
+          href="#main"
+          class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+        >
+          {t("skipToMain")}
+        </a>
+        <h1 class="sr-only">{presentation()!.title || t("untitledPresentation")}</h1>
+        <div role="status" aria-live="polite" class="sr-only">
+          {statusAnnouncement()}
+        </div>
         {/* Office nav - return to the shell / switch apps from inside a deck */}
         <div class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 py-2">
           <OfficeNav />
@@ -447,8 +540,8 @@ export default function EditorPage() {
                 <p>{t("saveRecoveryHint")}</p>
                 <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
                 <div class="mt-2 flex flex-wrap gap-3">
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(false)}>{t("replaceDraft")}</button>
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => void reconcile(true)}>{t("readServer")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
                 </div>
               </div>
             </Show>
@@ -471,19 +564,41 @@ export default function EditorPage() {
           canRedo={redoStack().length > 0}
           hasSelection={selectedElementId() !== null}
         />
-        <Show when={exportFailed()}><p role="alert" class="px-4 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p></Show>
+        <Show when={exportFailed()}>
+          <div role="alert" class="flex flex-wrap items-center gap-3 px-4 py-2 text-sm text-red-700 dark:text-red-300">
+            <span>{t("exportFailed")}</span>
+            <button
+              type="button"
+              class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+              onClick={() => void handleExportPptx()}
+            >
+              {t("retry")}
+            </button>
+          </div>
+        </Show>
         <Show when={exportWarning()}><p role="status" class="px-4 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p></Show>
 
-        <div class="flex shrink-0 gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-800 md:hidden">
-          <button type="button" class="rounded border px-3 py-1 text-sm text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-navigation-panel" aria-expanded={mobilePanel() === "slides"}
+        <div class="flex shrink-0 gap-2 border-b border-gray-200 bg-white px-4 py-1.5 dark:border-gray-700 dark:bg-gray-800 md:hidden">
+          <button type="button" class="min-h-11 flex-1 rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-navigation-panel" aria-expanded={mobilePanel() === "slides"}
             onClick={(event) => { mobilePanelButton = event.currentTarget;setMobilePanel(mobilePanel() === "slides" ? null : "slides"); }}>{t("slides")}</button>
-          <button type="button" class="rounded border px-3 py-1 text-sm text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-properties-panel" aria-expanded={mobilePanel() === "properties"}
+          <button type="button" class="min-h-11 flex-1 rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100" aria-controls="slide-properties-panel" aria-expanded={mobilePanel() === "properties"}
             onClick={(event) => { mobilePanelButton = event.currentTarget;setMobilePanel(mobilePanel() === "properties" ? null : "properties"); }}>{t("properties")}</button>
         </div>
 
-        <div class="relative min-h-0 flex-1 flex overflow-hidden">
+        <main id="main" tabIndex={-1} class="relative min-h-0 flex-1 flex overflow-hidden outline-none">
+          <Show when={mobilePanel() !== null}>
+            <button
+              type="button"
+              aria-label={t("closePanel")}
+              class="absolute inset-0 z-10 bg-black/30 md:hidden"
+              onClick={() => {
+                setMobilePanel(null);
+                restoreFocus(mobilePanelButton);
+              }}
+            />
+          </Show>
           {/* Left Panel - Slide thumbnails */}
-          <div id="slide-navigation-panel" class="absolute inset-y-0 left-0 z-10 shrink-0 md:static md:block" classList={{ hidden: mobilePanel() !== "slides" }}>
+          <div id="slide-navigation-panel" class="absolute inset-y-0 left-0 z-20 max-w-[85vw] shrink-0 md:static md:z-auto md:block" classList={{ hidden: mobilePanel() !== "slides" }}>
           <SlidePanel
             slides={presentation()!.slides}
             slideSize={presentation()!.slideSize}
@@ -512,7 +627,7 @@ export default function EditorPage() {
           </Show>
 
           {/* Right Panel - Properties */}
-          <div id="slide-properties-panel" class="absolute inset-y-0 right-0 z-10 shrink-0 md:static md:block" classList={{ hidden: mobilePanel() !== "properties" }}>
+          <div id="slide-properties-panel" class="absolute inset-y-0 right-0 z-20 max-w-[85vw] shrink-0 md:static md:z-auto md:block" classList={{ hidden: mobilePanel() !== "properties" }}>
           <PropertyPanel
             element={selectedElement()}
             onUpdateElement={handleUpdateElement}
@@ -521,7 +636,7 @@ export default function EditorPage() {
             onReorderElement={handleReorderElement}
           />
           </div>
-        </div>
+        </main>
 
         {/* Inline text editor overlay */}
         <Show when={editingTextId()}>
@@ -602,6 +717,31 @@ export default function EditorPage() {
             onClose={() => setShowShortcuts(false)}
           />
         </Show>
+
+        <ConfirmDialog
+          open={pendingRecovery() !== null}
+          title={t(saveKind() === "conflict" ? "saveConflict" : "saveUnconfirmed")}
+          message={t(pendingRecovery() === "discard" ? "discardDraftConfirm" : "replaceDraftConfirm")}
+          confirmLabel={t(pendingRecovery() === "discard" ? "readServer" : "replaceDraft")}
+          cancelLabel={t("cancel")}
+          danger={pendingRecovery() === "discard"}
+          busy={recovering()}
+          onConfirm={() => void executeReconcile(pendingRecovery() === "discard")}
+          onCancel={() => setPendingRecovery(null)}
+        />
+
+        <PromptDialog
+          open={showImagePrompt()}
+          title={t("insertImageTitle")}
+          label={t("enterImageUrl")}
+          inputType="url"
+          placeholder={t("imageUrlPlaceholder")}
+          confirmLabel={t("add")}
+          cancelLabel={t("cancel")}
+          validate={(val) => (isValidHttpUrl(val) ? null : t("invalidImageUrl"))}
+          onSubmit={submitInsertImage}
+          onCancel={() => setShowImagePrompt(false)}
+        />
 
         {/* Bottom bar */}
         <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">

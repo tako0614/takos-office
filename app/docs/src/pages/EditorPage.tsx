@@ -22,6 +22,8 @@ import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
+import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
+import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 
 /**
  * Whether keyboard input is currently going into an editable field (an input,
@@ -93,8 +95,16 @@ export default function EditorPage() {
     "failed",
   );
   const [recovering, setRecovering] = createSignal(false);
+  const [pendingRecovery, setPendingRecovery] = createSignal<
+    "reload" | "replace" | null
+  >(null);
   const [showFind, setShowFind] = createSignal(false);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+
+  createEffect(() => {
+    const name = title().trim() || t("untitledDocument");
+    document.title = `${name} — Takos ${t("doc")}`;
+  });
 
   let saveTimeout: ReturnType<typeof setTimeout> | undefined;
   let saveStatusResetTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -157,7 +167,14 @@ export default function EditorPage() {
   // and the shortcuts help on `?` (Shift+/) when not typing in a field.
   onMount(() => {
     const handler = (e: KeyboardEvent) => {
-      if (recovering()) return;
+      if (
+        recovering() ||
+        pendingRecovery() !== null ||
+        showShortcuts() ||
+        isImeComposing(e)
+      ) {
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setShowFind(true);
@@ -194,6 +211,7 @@ export default function EditorPage() {
     setTitle("");
     setSaveStatus("idle");
     setRecovering(false);
+    setPendingRecovery(null);
     void loadDocumentFromApi(id, {
       isActive: () => routeVersion === selectedRoute,
     })
@@ -242,14 +260,14 @@ export default function EditorPage() {
     saveTimeout = setTimeout(flushSave, 500);
   };
 
-  const recoverSave = async (reload: boolean) => {
+  const requestRecoverSave = (reload: boolean) => {
     if (recovering()) return;
-    if (
-      !globalThis.confirm(
-        reload ? recoveryLabels().confirm : recoveryLabels().replaceConfirm,
-      )
-    )
-      return;
+    setPendingRecovery(reload ? "reload" : "replace");
+  };
+
+  const executeRecoverSave = async (reload: boolean) => {
+    setPendingRecovery(null);
+    if (recovering()) return;
     const selectedRoute = routeVersion;
     const selectedEdit = ++editVersion;
     const id = doc()?.id ?? params.id;
@@ -313,11 +331,18 @@ export default function EditorPage() {
 
   return (
     <div class="h-screen flex flex-col bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        {t("skipToMain")}
+      </a>
+      <h1 class="sr-only">{title().trim() || t("untitledDocument")}</h1>
       {/* Header bar */}
       <header class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
         <button
           type="button"
-          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="flex min-h-9 min-w-9 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => navigate(withCurrentSpaceId("/"))}
           title={t("backToDocuments")}
           aria-label={t("backToDocuments")}
@@ -334,29 +359,34 @@ export default function EditorPage() {
             disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
             aria-label={t("documentTitle")}
-            class="w-full min-w-0 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
+            class="w-full min-w-0 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-500 dark:placeholder-neutral-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />
         </div>
 
         {/* Save indicator */}
-        <div class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-neutral-500 shrink-0 pr-2">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-neutral-300 shrink-0 pr-2"
+        >
           <Show when={saveStatus() === "saving"}>
-            <CloudOff size={14} />
+            <CloudOff size={14} aria-hidden="true" />
             <span>{t("saving")}</span>
           </Show>
           <Show when={saveStatus() === "saved"}>
-            <Cloud size={14} class="text-green-600" />
-            <span class="text-green-600">{t("saved")}</span>
+            <Cloud size={14} aria-hidden="true" class="text-green-700 dark:text-green-400" />
+            <span class="text-green-700 dark:text-green-400">{t("saved")}</span>
           </Show>
           <Show when={saveStatus() === "failed"}>
-            <CloudOff size={14} class="text-red-600" />
-            <span class="text-red-600">{recoveryLabels().status}</span>
+            <CloudOff size={14} aria-hidden="true" class="text-red-700 dark:text-red-400" />
+            <span class="text-red-700 dark:text-red-400">{recoveryLabels().status}</span>
           </Show>
         </div>
         <button
           type="button"
-          class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="flex min-h-9 min-w-9 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => setShowShortcuts(true)}
           disabled={recovering()}
           title={t("keyboardShortcuts")}
@@ -378,14 +408,14 @@ export default function EditorPage() {
           <button
             type="button"
             class="underline"
-            onClick={() => void recoverSave(false)}
+            onClick={() => requestRecoverSave(false)}
           >
             {recoveryLabels().retry}
           </button>
           <button
             type="button"
             class="underline"
-            onClick={() => void recoverSave(true)}
+            onClick={() => requestRecoverSave(true)}
           >
             {recoveryLabels().reload}
           </button>
@@ -414,7 +444,11 @@ export default function EditorPage() {
         />
 
         {/* Main area: sidebar + paper */}
-        <div class="docs-editor-main flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        <main
+          id="main"
+          tabIndex={-1}
+          class="docs-editor-main flex flex-1 min-h-0 min-w-0 overflow-hidden outline-none"
+        >
           <Sidebar editor={editor()} />
 
           {/* Document area — gray background with centered white paper */}
@@ -424,7 +458,7 @@ export default function EditorPage() {
                 keyed
                 when={doc()}
                 fallback={
-                  <div role="status" aria-live="polite" class="p-6">
+                  <div role="status" class="p-6 text-sm text-gray-600 dark:text-neutral-300">
                     {t("loadingDocuments")}
                   </div>
                 }
@@ -437,11 +471,27 @@ export default function EditorPage() {
               </Show>
             </div>
           </div>
-        </div>
+        </main>
 
         {/* Footer — word count */}
         <WordCount editor={editor()} />
       </div>
+
+      <ConfirmDialog
+        open={pendingRecovery() !== null}
+        title={recoveryLabels().status}
+        message={pendingRecovery() === "reload"
+          ? recoveryLabels().confirm
+          : recoveryLabels().replaceConfirm}
+        confirmLabel={pendingRecovery() === "reload"
+          ? recoveryLabels().reload
+          : recoveryLabels().retry}
+        cancelLabel={t("cancel")}
+        danger={pendingRecovery() === "reload"}
+        busy={recovering()}
+        onConfirm={() => void executeRecoverSave(pendingRecovery() === "reload")}
+        onCancel={() => setPendingRecovery(null)}
+      />
     </div>
   );
 }

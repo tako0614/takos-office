@@ -38,7 +38,7 @@ export default function OfficeNav() {
                 href={withCurrentSpaceId(app.path)}
                 class="rounded-md px-2 sm:px-2.5 py-1 text-xs font-medium transition-colors"
                 classList={{
-                  "bg-emerald-600 text-white": isCurrent,
+                  "bg-emerald-700 text-white": isCurrent,
                   "text-gray-600 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-neutral-100":
                     !isCurrent,
                 }}

@@ -12,7 +12,12 @@ import { createSignal } from "solid-js";
 export type Language = "ja" | "en";
 export type TranslationParams = Record<string, string | number>;
 
-const STORAGE_KEY = "takos-lang";
+const PRIMARY_STORAGE_KEY = "takos-language";
+const LEGACY_STORAGE_KEY = "takos-lang";
+
+function parseStoredLanguage(value: string | null | undefined): Language | null {
+  return value === "ja" || value === "en" ? value : null;
+}
 
 export interface I18n<Key extends string> {
   language: () => Language;
@@ -38,8 +43,10 @@ export function createI18n<Catalog extends Record<string, string>>(catalogs: {
 
   function detectInitialLanguage(): Language {
     try {
-      const stored = globalThis.localStorage?.getItem(STORAGE_KEY);
-      if (stored === "ja" || stored === "en") return stored;
+      const stored =
+        parseStoredLanguage(globalThis.localStorage?.getItem(PRIMARY_STORAGE_KEY)) ??
+        parseStoredLanguage(globalThis.localStorage?.getItem(LEGACY_STORAGE_KEY));
+      if (stored) return stored;
     } catch {
       // Ignore storage access failures and fall back to browser language.
     }
@@ -60,16 +67,37 @@ export function createI18n<Catalog extends Record<string, string>>(catalogs: {
     });
   }
 
-  function setLanguage(lang: Language): void {
-    setLanguageSignal(lang);
-    try {
-      globalThis.localStorage?.setItem(STORAGE_KEY, lang);
-    } catch {
-      // Ignore storage access failures.
-    }
+  function applyDocumentLang(lang: Language): void {
     if (globalThis.document?.documentElement) {
       globalThis.document.documentElement.lang = lang;
     }
+  }
+
+  function setLanguage(lang: Language): void {
+    setLanguageSignal(lang);
+    try {
+      globalThis.localStorage?.setItem(PRIMARY_STORAGE_KEY, lang);
+      globalThis.localStorage?.setItem(LEGACY_STORAGE_KEY, lang);
+    } catch {
+      // Ignore storage access failures.
+    }
+    applyDocumentLang(lang);
+  }
+
+  if (typeof globalThis.addEventListener === "function") {
+    globalThis.addEventListener("storage", (event: StorageEvent) => {
+      if (
+        event.key !== PRIMARY_STORAGE_KEY &&
+        event.key !== LEGACY_STORAGE_KEY
+      ) {
+        return;
+      }
+      const next = parseStoredLanguage(event.newValue);
+      if (next && next !== language()) {
+        setLanguageSignal(next);
+        applyDocumentLang(next);
+      }
+    });
   }
 
   function t(key: Key, params?: TranslationParams): string {

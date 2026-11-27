@@ -16,15 +16,17 @@ import OfficeNav from "../components/OfficeNav";
 import { useI18n } from "../i18n";
 import { createDocumentImporter } from "../lib/document-import.ts";
 import { OfficeFileError } from "../../../shared/lib/office-file.ts";
+import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
 
 export default function DocumentListPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [documents, setDocuments] = createSignal<Document[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal(false);
   const [search, setSearch] = createSignal("");
+  const [deleteTargetId, setDeleteTargetId] = createSignal<string | null>(null);
   const [importing, setImporting] = createSignal(false);
   const [importSaving, setImportSaving] = createSignal(false);
   const [importError, setImportError] = createSignal<"invalid" | "too-large" | "unsafe" | "unsupported" | "timeout" | "save" | null>(null);
@@ -113,8 +115,19 @@ export default function DocumentListPage() {
     }
   });
 
+  createEffect(() => {
+    void language();
+    document.title = `${t("doc")} — Takos Office`;
+  });
+
   const handleDelete = (id: string) => {
-    if (!confirm(t("deleteDocumentConfirm"))) return;
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = () => {
+    const id = deleteTargetId();
+    setDeleteTargetId(null);
+    if (!id) return;
     void removeDocument(id).catch((error) => {
       console.error("[takos-docs] Failed to delete document", error);
     });
@@ -133,6 +146,12 @@ export default function DocumentListPage() {
 
   return (
     <div class="min-h-screen bg-white dark:bg-neutral-900 text-gray-800 dark:text-neutral-100">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        {t("skipToMain")}
+      </a>
       {/* Header */}
       <header class="border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 sticky top-0 z-10">
         <div class="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -165,7 +184,8 @@ export default function DocumentListPage() {
       </header>
 
       {/* Content */}
-      <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+      <main id="main" tabIndex={-1} class="max-w-5xl mx-auto px-4 sm:px-6 py-8 outline-none">
+        <h1 class="sr-only">Takos {t("doc")}</h1>
         {/* New document section */}
         <div class="mb-8">
           <h2 class="text-sm font-medium text-gray-500 dark:text-neutral-400 mb-3">
@@ -309,6 +329,16 @@ export default function DocumentListPage() {
           </Show>
         </Show>
       </main>
+      <ConfirmDialog
+        open={deleteTargetId() !== null}
+        title={t("deleteDocumentTitle")}
+        message={t("deleteDocumentConfirm")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   );
 }

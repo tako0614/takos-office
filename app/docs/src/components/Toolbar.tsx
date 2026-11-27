@@ -33,7 +33,7 @@ import {
   Undo,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
-import { isImeComposing } from "../../../shared/lib/dialog-a11y";
+import { isImeComposing, isValidHttpUrl } from "../../../shared/lib/dialog-a11y";
 import {
   downloadDocument,
   type ExportFormat,
@@ -118,27 +118,37 @@ export default function Toolbar(props: ToolbarProps) {
   const location = useLocation();
   const [showLinkInput, setShowLinkInput] = createSignal(false);
   const [linkUrl, setLinkUrl] = createSignal("");
+  const [linkError, setLinkError] = createSignal(false);
   const [showImageInput, setShowImageInput] = createSignal(false);
   const [imageUrl, setImageUrl] = createSignal("");
+  const [imageError, setImageError] = createSignal(false);
   const [showTextColor, setShowTextColor] = createSignal(false);
   const [showHighlight, setShowHighlight] = createSignal(false);
   const [showExport, setShowExport] = createSignal(false);
   const [exporting, setExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal(false);
   const [exportWarning, setExportWarning] = createSignal(false);
+  const [exportReady, setExportReady] = createSignal(false);
+  const [lastExportFormat, setLastExportFormat] = createSignal<ExportFormat | null>(null);
   let textColorRef: HTMLDivElement | undefined;
   let highlightRef: HTMLDivElement | undefined;
   let exportRef: HTMLDivElement | undefined;
   let exportController: AbortController | undefined;
-  onCleanup(() => exportController?.abort());
+  let exportReadyTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    exportController?.abort();
+    if (exportReadyTimer) clearTimeout(exportReadyTimer);
+  });
   createEffect(() => {
     void location.pathname;
     void location.search;
     exportController?.abort();
     exportController = undefined;
+    if (exportReadyTimer) clearTimeout(exportReadyTimer);
     setExporting(false);
     setExportError(false);
     setExportWarning(false);
+    setExportReady(false);
     setShowExport(false);
   });
 
@@ -188,13 +198,20 @@ export default function Toolbar(props: ToolbarProps) {
     if (exporting()) return;
     const controller = new AbortController();
     exportController = controller;
+    if (exportReadyTimer) clearTimeout(exportReadyTimer);
+    setLastExportFormat(format);
     setExporting(true);
     setExportError(false);
     setExportWarning(false);
+    setExportReady(false);
     setShowExport(false);
     try {
       const result = await downloadDocument(format, props.documentTitle ?? "", currentContent(), controller.signal);
-      if (!controller.signal.aborted) setExportWarning(result.hasUnsupportedContent);
+      if (!controller.signal.aborted) {
+        setExportWarning(result.hasUnsupportedContent);
+        setExportReady(true);
+        exportReadyTimer = setTimeout(() => setExportReady(false), 4000);
+      }
     } catch {
       if (!controller.signal.aborted) setExportError(true);
     } finally {
@@ -233,36 +250,48 @@ export default function Toolbar(props: ToolbarProps) {
     props.editor?.getAttributes("heading").textAlign === align;
 
   const btn = (active: boolean) =>
-    `p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+    `inline-flex min-h-9 min-w-9 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
       active
         ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
         : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
     }`;
 
-  const sep = () => "w-px h-5 bg-gray-300 dark:bg-neutral-700 mx-0.5 self-center";
+  const sep = () => "hidden sm:block w-px h-5 bg-gray-300 dark:bg-neutral-700 mx-0.5 self-center";
 
   const closePopups = () => {
     setShowTextColor(false);
     setShowHighlight(false);
     setShowLinkInput(false);
+    setLinkError(false);
     setShowImageInput(false);
+    setImageError(false);
     setShowExport(false);
   };
 
   const handleSetLink = () => {
     const url = linkUrl().trim();
     if (url) {
+      if (!isValidHttpUrl(url)) {
+        setLinkError(true);
+        return;
+      }
       props.editor?.chain().focus().setLink({ href: url }).run();
     } else {
       props.editor?.chain().focus().unsetLink().run();
     }
+    setLinkError(false);
     setShowLinkInput(false);
     setLinkUrl("");
   };
 
   const handleInsertImage = () => {
     const url = imageUrl().trim();
-    if (url) props.editor?.chain().focus().setImage({ src: url }).run();
+    if (!url || !isValidHttpUrl(url)) {
+      setImageError(true);
+      return;
+    }
+    props.editor?.chain().focus().setImage({ src: url }).run();
+    setImageError(false);
     setShowImageInput(false);
     setImageUrl("");
   };
@@ -612,8 +641,9 @@ export default function Toolbar(props: ToolbarProps) {
             if (isActive("link")) {
               props.editor?.chain().focus().unsetLink().run();
             } else {
+              const next = !showLinkInput();
               closePopups();
-              setShowLinkInput(!showLinkInput());
+              setShowLinkInput(next);
             }
           }}
           title={t("link")}
@@ -627,8 +657,9 @@ export default function Toolbar(props: ToolbarProps) {
           type="button"
           class={btn(false)}
           onClick={() => {
+            const next = !showImageInput();
             closePopups();
-            setShowImageInput(!showImageInput());
+            setShowImageInput(next);
           }}
           title={t("insertImage")}
           aria-label={t("insertImage")}
@@ -718,75 +749,125 @@ export default function Toolbar(props: ToolbarProps) {
       </div>
 
       <Show when={exportError()}>
-        <p role="alert" class="px-3 py-2 text-sm text-red-700 dark:text-red-300">{t("exportFailed")}</p>
+        <div role="alert" class="flex flex-wrap items-center gap-3 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <span>{t("exportFailed")}</span>
+          <Show when={lastExportFormat()}>
+            {(fmt) => (
+              <button
+                type="button"
+                class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+                onClick={() => void handleExport(fmt())}
+              >
+                {t("retry")}
+              </button>
+            )}
+          </Show>
+        </div>
       </Show>
       <Show when={exportWarning()}>
         <p role="status" class="px-3 py-2 text-sm text-amber-800 dark:text-amber-300">{t("fileFormattingWarning")}</p>
       </Show>
+      <div role="status" aria-live="polite" class="sr-only">
+        {exporting() ? t("exporting") : exportReady() ? t("exportReady") : ""}
+      </div>
 
       {/* Link URL input */}
       <Show when={showLinkInput()}>
-        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
             type="url"
             placeholder={t("linkPlaceholder")}
             aria-label={t("link")}
+            aria-invalid={linkError() ? "true" : undefined}
+            aria-describedby={linkError() ? "docs-link-error" : undefined}
             value={linkUrl()}
-            onInput={(e) => setLinkUrl(e.currentTarget.value)}
+            onInput={(e) => {
+              setLinkUrl(e.currentTarget.value);
+              if (linkError()) setLinkError(false);
+            }}
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleSetLink();
-              if (e.key === "Escape") setShowLinkInput(false);
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setShowLinkInput(false);
+                setLinkError(false);
+              }
             }}
-            class="flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
             onClick={handleSetLink}
-            class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("apply")}
           </button>
           <button
             type="button"
-            onClick={() => setShowLinkInput(false)}
-            class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            onClick={() => {
+              setShowLinkInput(false);
+              setLinkError(false);
+            }}
+            class="min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
+          <Show when={linkError()}>
+            <p id="docs-link-error" role="alert" class="basis-full text-xs text-red-700 dark:text-red-300">
+              {t("invalidUrl")}
+            </p>
+          </Show>
         </div>
       </Show>
 
       {/* Image URL input */}
       <Show when={showImageInput()}>
-        <div class="flex items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
             type="url"
             placeholder={t("imagePlaceholder")}
             aria-label={t("insertImage")}
+            aria-invalid={imageError() ? "true" : undefined}
+            aria-describedby={imageError() ? "docs-image-error" : undefined}
             value={imageUrl()}
-            onInput={(e) => setImageUrl(e.currentTarget.value)}
+            onInput={(e) => {
+              setImageUrl(e.currentTarget.value);
+              if (imageError()) setImageError(false);
+            }}
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleInsertImage();
-              if (e.key === "Escape") setShowImageInput(false);
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setShowImageInput(false);
+                setImageError(false);
+              }
             }}
-            class="flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
             onClick={handleInsertImage}
-            class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("insert")}
           </button>
           <button
             type="button"
-            onClick={() => setShowImageInput(false)}
-            class="px-3 py-1.5 text-gray-500 dark:text-neutral-400 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            onClick={() => {
+              setShowImageInput(false);
+              setImageError(false);
+            }}
+            class="min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
+          <Show when={imageError()}>
+            <p id="docs-image-error" role="alert" class="basis-full text-xs text-red-700 dark:text-red-300">
+              {t("invalidUrl")}
+            </p>
+          </Show>
         </div>
       </Show>
     </div>

@@ -1,6 +1,10 @@
 import { createEffect, For, onCleanup } from "solid-js";
 import { useI18n } from "../i18n";
-import { handleModalKeyDown } from "../../../shared/lib/dialog-a11y";
+import {
+  acquireModalScrollLock,
+  handleModalKeyDown,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y";
 
 interface ShortcutsHelpProps {
   open: boolean;
@@ -11,6 +15,8 @@ type Row = { keys: string; descKey: ShortcutDescKey };
 
 type ShortcutDescKey =
   | "shortcutDeleteElement"
+  | "shortcutNudgeElement"
+  | "shortcutReorderSlide"
   | "shortcutUndo"
   | "shortcutRedo"
   | "shortcutDeselect"
@@ -25,6 +31,8 @@ type ShortcutDescKey =
 // handle (see EditorPage.tsx and PresentPage.tsx). Keep these in sync with the
 // real key handlers.
 const EDITOR_ROWS: Row[] = [
+  { keys: "Arrow / Shift + Arrow", descKey: "shortcutNudgeElement" },
+  { keys: "Alt + ↑ / ↓", descKey: "shortcutReorderSlide" },
   { keys: "Delete / Backspace", descKey: "shortcutDeleteElement" },
   { keys: "Ctrl/⌘ + Z", descKey: "shortcutUndo" },
   { keys: "Ctrl/⌘ + Shift + Z · Ctrl/⌘ + Y", descKey: "shortcutRedo" },
@@ -78,28 +86,21 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     handleModalKeyDown(e, dialogRef, props.onClose);
   };
 
-  const restoreFocus = () => {
-    if (previouslyFocused?.isConnected) previouslyFocused.focus();
-    previouslyFocused = null;
-  };
-
   createEffect(() => {
-    if (props.open) {
-      previouslyFocused = document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-      document.addEventListener("keydown", handleKeyDown);
-      // Move focus into the dialog once it is mounted.
-      queueMicrotask(() => closeRef?.focus());
-    } else {
+    if (!props.open) return;
+    previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const releaseScrollLock = acquireModalScrollLock();
+    document.addEventListener("keydown", handleKeyDown);
+    // Move focus into the dialog once it is mounted.
+    queueMicrotask(() => closeRef?.focus());
+    onCleanup(() => {
       document.removeEventListener("keydown", handleKeyDown);
-      restoreFocus();
-    }
-  });
-
-  onCleanup(() => {
-    document.removeEventListener("keydown", handleKeyDown);
-    restoreFocus();
+      releaseScrollLock();
+      restoreFocus(previouslyFocused);
+      previouslyFocused = null;
+    });
   });
 
   return (

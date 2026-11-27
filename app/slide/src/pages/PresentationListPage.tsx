@@ -17,7 +17,13 @@ import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import { captureCreateReceipt } from "../../../shared/lib/create-receipt";
 import { createPresentationImporter } from "../lib/presentation-import.ts";
 import { OfficeFileError } from "../../../shared/lib/office-file.ts";
-import { handleModalKeyDown, isImeComposing } from "../../../shared/lib/dialog-a11y.ts";
+import {
+  acquireModalScrollLock,
+  handleModalKeyDown,
+  isImeComposing,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y.ts";
+import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
 
 export default function PresentationListPage() {
   const navigate = useNavigate();
@@ -61,12 +67,13 @@ export default function PresentationListPage() {
       return t("createUnconfirmed");
     }
   };
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [presentations, setPresentations] = createSignal<Presentation[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
   const [deleting, setDeleting] = createSignal(new Set<string>());
+  const [deleteTargetId, setDeleteTargetId] = createSignal<string | null>(null);
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal(t("untitledPresentation"));
   let dialogRef: HTMLDivElement | undefined;
@@ -74,17 +81,22 @@ export default function PresentationListPage() {
   let previouslyFocused: HTMLElement | null = null;
 
   createEffect(() => {
+    void language();
+    document.title = `${t("officeSlides")} — Takos Office`;
+  });
+
+  createEffect(() => {
     if (!showNewDialog()) return;
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const releaseScrollLock = acquireModalScrollLock();
     queueMicrotask(() => dialogInputRef?.focus());
     const onKeyDown = (event: KeyboardEvent) =>
       handleModalKeyDown(event, dialogRef, () => setShowNewDialog(false));
     document.addEventListener("keydown", onKeyDown);
     onCleanup(() => {
       document.removeEventListener("keydown", onKeyDown);
-      if (previouslyFocused && document.contains(previouslyFocused)) {
-        previouslyFocused.focus();
-      }
+      releaseScrollLock();
+      restoreFocus(previouslyFocused);
       previouslyFocused = null;
     });
   });
@@ -186,7 +198,14 @@ export default function PresentationListPage() {
   };
 
   const handleDelete = (id: string) => {
-    if (deleting().has(id) || !confirm(t("deletePresentationConfirm"))) return;
+    if (deleting().has(id)) return;
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = () => {
+    const id = deleteTargetId();
+    setDeleteTargetId(null);
+    if (!id || deleting().has(id)) return;
     const scope = routeScope();
     setDeleteError("");setDeleting((previous) => new Set(previous).add(id));
     void deletePresentation(id).then(() => {
@@ -202,6 +221,12 @@ export default function PresentationListPage() {
 
   return (
     <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[130] focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg"
+      >
+        {t("skipToMain")}
+      </a>
       {/* Header */}
       <header class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 sm:px-6 py-3 sm:py-4">
         <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3">
@@ -222,7 +247,8 @@ export default function PresentationListPage() {
       </header>
 
       {/* Content */}
-      <main class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <main id="main" tabIndex={-1} class="max-w-6xl mx-auto px-4 sm:px-6 py-8 outline-none">
+        <h1 class="sr-only">Takos {t("officeSlides")}</h1>
         <div class="mb-6 flex flex-col items-start gap-2">
           <input ref={fileInput} type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden" aria-label={t("importPptx")}
             onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
@@ -391,6 +417,16 @@ export default function PresentationListPage() {
           </div>
         </div>
       </Show>
+      <ConfirmDialog
+        open={deleteTargetId() !== null}
+        title={t("deletePresentation")}
+        message={t("deletePresentationConfirm")}
+        confirmLabel={t("delete")}
+        cancelLabel={t("cancel")}
+        danger
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   );
 }
