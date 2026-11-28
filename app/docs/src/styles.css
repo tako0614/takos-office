@@ -75,7 +75,7 @@ body {
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: #bdc1c6;
+  color: #6b7280;
   pointer-events: none;
   height: 0;
 }
@@ -360,7 +360,7 @@ body {
 }
 
 [data-theme="dark"] .tiptap p.is-editor-empty:first-child::before {
-  color: #6b7280;
+  color: #9ca3af;
 }
 
 [data-theme="dark"] .tiptap h1,

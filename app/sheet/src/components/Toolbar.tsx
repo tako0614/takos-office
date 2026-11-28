@@ -1,4 +1,4 @@
-import { Component, createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { Component, createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { CellFormat } from "../types";
@@ -8,7 +8,10 @@ import {
   getNextColorPopupIndex,
   handlePortalPopupTab,
   isImeComposing,
+  observeHorizontalScrollEdges,
   restoreFocus,
+  setupToolbarRovingTabIndex,
+  type HorizontalScrollEdges,
 } from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
 
@@ -48,11 +51,26 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   const [editingTitle, setEditingTitle] = createSignal(false);
   const [titleValue, setTitleValue] = createSignal(props.title);
   const [filterInput, setFilterInput] = createSignal(props.filterQuery ?? "");
+  const [scrollEdges, setScrollEdges] = createSignal<HorizontalScrollEdges>({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
   let toolbarRowRef: HTMLDivElement | undefined;
+  let titleBtnRef: HTMLButtonElement | undefined;
   let textColorRef: HTMLDivElement | undefined;
   let textColorPopupRef: HTMLDivElement | undefined;
   let bgColorRef: HTMLDivElement | undefined;
   let bgColorPopupRef: HTMLDivElement | undefined;
+
+  onMount(() => {
+    if (!toolbarRowRef) return;
+    const stopRoving = setupToolbarRovingTabIndex(toolbarRowRef);
+    const stopEdges = observeHorizontalScrollEdges(toolbarRowRef, setScrollEdges);
+    onCleanup(() => {
+      stopRoving();
+      stopEdges();
+    });
+  });
 
   const positionColorPopup = (wrapper: HTMLDivElement | undefined) => {
     const opener = wrapper?.querySelector<HTMLElement>("button");
@@ -254,6 +272,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           when={editingTitle()}
           fallback={
             <button
+              ref={titleBtnRef}
               type="button"
               class="sm:mr-2 inline-flex min-h-11 sm:min-h-7 items-center max-w-[240px] sm:max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
               onClick={() => {
@@ -273,26 +292,37 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
             value={titleValue()}
             onInput={(e) => setTitleValue(e.currentTarget.value)}
             onBlur={() => {
+              if (!editingTitle()) return;
               if (titleValue().trim()) props.onTitleChange(titleValue().trim());
               setEditingTitle(false);
             }}
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") {
+                e.preventDefault();
                 if (titleValue().trim()) {
                   props.onTitleChange(titleValue().trim());
                 }
                 setEditingTitle(false);
+                queueMicrotask(() => restoreFocus(titleBtnRef));
               }
-              if (e.key === "Escape") setEditingTitle(false);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditingTitle(false);
+                queueMicrotask(() => restoreFocus(titleBtnRef));
+              }
             }}
-            ref={(el) => setTimeout(() => el.focus(), 0)}
+            ref={(el) => setTimeout(() => {
+              el.focus();
+              el.select();
+            }, 0)}
           />
         </Show>
       </div>
 
       <Separator />
 
+      <div class="relative min-w-0 sm:flex-1">
       <div
         ref={toolbarRowRef}
         role="toolbar"
@@ -457,7 +487,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Show when={props.onApplyFilter}>
         <input
           type="search"
-          class="shrink-0 ml-1 min-h-11 sm:min-h-7 sm:h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-500 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-400"
+          class="shrink-0 ml-1 min-h-11 sm:min-h-7 sm:h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-500 outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-400"
           placeholder={t("filterPlaceholder")}
           title={t("filterColumn")}
           aria-label={t("filterColumn")}
@@ -761,6 +791,25 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           </option>
         ))}
       </select>
+      </div>
+      <div
+        aria-hidden="true"
+        data-scroll-fade="left"
+        class="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-gray-50 via-gray-50/75 to-transparent dark:from-neutral-800 dark:via-neutral-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollLeft,
+          "opacity-0": !scrollEdges().canScrollLeft,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        data-scroll-fade="right"
+        class="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-gray-50 via-gray-50/75 to-transparent dark:from-neutral-800 dark:via-neutral-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollRight,
+          "opacity-0": !scrollEdges().canScrollRight,
+        }}
+      />
       </div>
     </div>
   );

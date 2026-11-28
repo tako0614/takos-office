@@ -14,6 +14,7 @@ interface ShortcutsHelpProps {
 type Row = { keys: string; descKey: ShortcutDescKey };
 
 type ShortcutDescKey =
+  | "shortcutCycleElements"
   | "shortcutDeleteElement"
   | "shortcutEditText"
   | "shortcutNudgeElement"
@@ -32,6 +33,7 @@ type ShortcutDescKey =
 // handle (see EditorPage.tsx and PresentPage.tsx). Keep these in sync with the
 // real key handlers.
 const EDITOR_ROWS: Row[] = [
+  { keys: "Tab / Shift + Tab", descKey: "shortcutCycleElements" },
   { keys: "Enter", descKey: "shortcutEditText" },
   { keys: "Arrow / Shift + Arrow", descKey: "shortcutNudgeElement" },
   { keys: "Alt + ↑ / ↓", descKey: "shortcutReorderSlide" },

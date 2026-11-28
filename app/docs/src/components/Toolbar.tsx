@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useLocation } from "@solidjs/router";
 import type { Editor } from "@tiptap/core";
@@ -41,7 +41,10 @@ import {
   handlePortalPopupTab,
   isImeComposing,
   isValidHttpUrl,
+  observeHorizontalScrollEdges,
   restoreFocus,
+  setupToolbarRovingTabIndex,
+  type HorizontalScrollEdges,
 } from "../../../shared/lib/dialog-a11y";
 import {
   downloadDocument,
@@ -143,6 +146,10 @@ export default function Toolbar(props: ToolbarProps) {
   const [exportWarning, setExportWarning] = createSignal(false);
   const [exportReady, setExportReady] = createSignal(false);
   const [lastExportFormat, setLastExportFormat] = createSignal<ExportFormat | null>(null);
+  const [scrollEdges, setScrollEdges] = createSignal<HorizontalScrollEdges>({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
   let toolbarRowRef: HTMLDivElement | undefined;
   let textColorRef: HTMLDivElement | undefined;
   let textColorBtnRef: HTMLButtonElement | undefined;
@@ -185,6 +192,16 @@ export default function Toolbar(props: ToolbarProps) {
     setImageError(false);
     setShowExport(false);
   };
+
+  onMount(() => {
+    if (!toolbarRowRef) return;
+    const stopRoving = setupToolbarRovingTabIndex(toolbarRowRef);
+    const stopEdges = observeHorizontalScrollEdges(toolbarRowRef, setScrollEdges);
+    onCleanup(() => {
+      stopRoving();
+      stopEdges();
+    });
+  });
 
   onCleanup(() => {
     exportController?.abort();
@@ -478,6 +495,7 @@ export default function Toolbar(props: ToolbarProps) {
     <div
       class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800"
     >
+      <div class="relative min-w-0">
       <div
         ref={toolbarRowRef}
         role="toolbar"
@@ -1019,6 +1037,25 @@ export default function Toolbar(props: ToolbarProps) {
             </Portal>
           </Show>
         </div>
+      </div>
+      <div
+        aria-hidden="true"
+        data-scroll-fade="left"
+        class="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-gray-50 via-gray-50/75 to-transparent dark:from-neutral-800 dark:via-neutral-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollLeft,
+          "opacity-0": !scrollEdges().canScrollLeft,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        data-scroll-fade="right"
+        class="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-gray-50 via-gray-50/75 to-transparent dark:from-neutral-800 dark:via-neutral-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollRight,
+          "opacity-0": !scrollEdges().canScrollRight,
+        }}
+      />
       </div>
 
       <Show when={exportError()}>

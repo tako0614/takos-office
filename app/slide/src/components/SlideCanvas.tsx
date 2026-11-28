@@ -10,6 +10,10 @@ import {
 import { resizeRotatedBox } from "../lib/geometry";
 
 import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
+import {
+  getNextCanvasElementId,
+  isImeComposing,
+} from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
 
 interface SlideCanvasProps {
@@ -19,6 +23,7 @@ interface SlideCanvasProps {
   onSelectElement: (id: string | null) => void;
   onUpdateElement: (element: SlideElement) => void;
   onEditText: (elementId: string) => void;
+  onAnnounceSelection?: (message: string) => void;
 }
 
 export default function SlideCanvas(props: SlideCanvasProps) {
@@ -101,6 +106,7 @@ export default function SlideCanvas(props: SlideCanvasProps) {
   });
 
   const handleMouseDown = (e: MouseEvent) => {
+    canvasRef?.focus({ preventScroll: true });
     const pos = toSlideCoords(e.clientX, e.clientY);
 
     // Check resize handles first
@@ -199,6 +205,68 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     }
   };
 
+  const describeElement = (el: SlideElement): string => {
+    if (el.type === "text") {
+      const snippet = (el.text ?? "").replace(/\s+/g, " ").trim();
+      if (!snippet) return t("text");
+      const short = snippet.length > 40 ? `${snippet.slice(0, 40)}…` : snippet;
+      return `${t("text")}: ${short}`;
+    }
+    if (el.type === "image") return t("image");
+    switch (el.shapeType) {
+      case "rect":
+        return t("rect");
+      case "ellipse":
+        return t("ellipse");
+      case "triangle":
+        return t("triangle");
+      case "arrow":
+        return t("arrow");
+      default:
+        return t("shape");
+    }
+  };
+
+  const canvasAriaLabel = () => {
+    const elements = props.slide.elements;
+    if (props.selectedElementId && elements.length > 0) {
+      const idx = elements.findIndex((el) => el.id === props.selectedElementId);
+      if (idx >= 0) {
+        return t("slideCanvasSelectedLabel", {
+          canvas: t("slideCanvasLabel"),
+          kind: describeElement(elements[idx]),
+          current: idx + 1,
+          total: elements.length,
+        });
+      }
+    }
+    return t("slideCanvasLabel");
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (isImeComposing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== "Tab") return;
+    const elements = props.slide.elements;
+    const nextId = getNextCanvasElementId(
+      elements,
+      props.selectedElementId,
+      e.shiftKey,
+    );
+    if (nextId === undefined) return;
+    e.preventDefault();
+    props.onSelectElement(nextId);
+    const nextIdx = elements.findIndex((el) => el.id === nextId);
+    if (nextIdx >= 0) {
+      props.onAnnounceSelection?.(
+        t("elementSelectedAnnouncement", {
+          kind: describeElement(elements[nextIdx]),
+          current: nextIdx + 1,
+          total: elements.length,
+        }),
+      );
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -208,7 +276,7 @@ export default function SlideCanvas(props: SlideCanvasProps) {
         ref={canvasRef}
         tabIndex={0}
         role="img"
-        aria-label={t("slideCanvasLabel")}
+        aria-label={canvasAriaLabel()}
         class="shadow-2xl rounded-lg cursor-default outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         style={{
           "max-width": "100%",
@@ -219,6 +287,7 @@ export default function SlideCanvas(props: SlideCanvasProps) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onDblClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
       />
     </div>
   );

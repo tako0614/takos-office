@@ -356,3 +356,294 @@ export function getArrowNudgeDelta(
       return null;
   }
 }
+
+const ALL_TOOLBAR_CONTROLS_SELECTOR = [
+  "button",
+  "select",
+  'input:not([type="hidden"])',
+  "a[href]",
+].join(", ");
+
+const ENABLED_TOOLBAR_CONTROLS_SELECTOR = [
+  "button:not([disabled])",
+  "select:not([disabled])",
+  'input:not([disabled]):not([type="hidden"])',
+  "a[href]",
+].join(", ");
+
+/**
+ * Returns visible, enabled top-level interactive controls inside a
+ * `role="toolbar"` container in DOM order.
+ */
+export function getToolbarControls(toolbar: HTMLElement): HTMLElement[] {
+  return Array.from(
+    toolbar.querySelectorAll<HTMLElement>(ENABLED_TOOLBAR_CONTROLS_SELECTOR),
+  ).filter((el) => {
+    if (el.hasAttribute("disabled")) return false;
+    if (el.closest?.("[hidden], [inert]")) return false;
+    const style = globalThis.getComputedStyle?.(el);
+    if (style && (style.display === "none" || style.visibility === "hidden")) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Computes the next focused toolbar control index for horizontal WAI-ARIA
+ * toolbar arrow/Home/End navigation, wrapping cleanly at the ends.
+ */
+export function getNextToolbarIndex(
+  key: string,
+  currentIndex: number,
+  totalItems: number,
+): number | null {
+  if (totalItems <= 0) return null;
+  switch (key) {
+    case "ArrowRight":
+      return currentIndex >= 0 ? (currentIndex + 1) % totalItems : 0;
+    case "ArrowLeft":
+      return currentIndex >= 0
+        ? (currentIndex - 1 + totalItems) % totalItems
+        : totalItems - 1;
+    case "Home":
+      return 0;
+    case "End":
+      return totalItems - 1;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Returns true when an arrow/Home/End key pressed inside a toolbar text/search
+ * `<input>` should exit the input to an adjacent toolbar item instead of moving
+ * the text caret.
+ */
+export function shouldLeaveToolbarInput(
+  input: Pick<HTMLInputElement, "value" | "selectionStart" | "selectionEnd">,
+  key: string,
+): boolean {
+  const len = input.value.length;
+  if (len === 0) {
+    return (
+      key === "ArrowLeft" ||
+      key === "ArrowRight" ||
+      key === "Home" ||
+      key === "End"
+    );
+  }
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  if (start === null || end === null || start !== end) return false;
+  if (key === "ArrowLeft") return start === 0;
+  if (key === "ArrowRight") return end === len;
+  return false;
+}
+
+/**
+ * Ensures exactly one enabled control inside a `role="toolbar"` has
+ * `tabIndex = 0` and all other controls (enabled or disabled) have
+ * `tabIndex = -1`, implementing a single-tab-stop WAI-ARIA roving tabindex.
+ */
+export function syncToolbarRovingTabIndex(
+  toolbar: HTMLElement,
+  preferred?: HTMLElement | null,
+): HTMLElement | null {
+  const enabled = getToolbarControls(toolbar);
+  const activeEl = globalThis.document?.activeElement as HTMLElement | null;
+  let chosen: HTMLElement | null = null;
+  if (preferred && enabled.includes(preferred)) {
+    chosen = preferred;
+  } else if (activeEl && enabled.includes(activeEl)) {
+    chosen = activeEl;
+  } else {
+    chosen =
+      enabled.find((el) => el.getAttribute?.("tabindex") === "0") ??
+      enabled[0] ??
+      null;
+  }
+
+  const allControls = Array.from(
+    toolbar.querySelectorAll<HTMLElement>(ALL_TOOLBAR_CONTROLS_SELECTOR),
+  );
+  for (const control of allControls) {
+    const nextTab = control === chosen ? 0 : -1;
+    if (control.tabIndex !== nextTab || control.getAttribute?.("tabindex") !== String(nextTab)) {
+      control.tabIndex = nextTab;
+    }
+  }
+  return chosen;
+}
+
+/**
+ * Attaches WAI-ARIA horizontal toolbar roving tabindex (ArrowLeft/ArrowRight/
+ * Home/End, focusin tracking, and dynamic disabled/childList synchronization)
+ * to a `role="toolbar"` element.
+ */
+export function setupToolbarRovingTabIndex(toolbar: HTMLElement): () => void {
+  syncToolbarRovingTabIndex(toolbar);
+
+  const onFocusIn = (e: FocusEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (!target || typeof target !== "object") return;
+    const enabled = getToolbarControls(toolbar);
+    if (enabled.includes(target)) {
+      syncToolbarRovingTabIndex(toolbar, target);
+    }
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (
+      isImeComposing(e) ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.shiftKey
+    ) {
+      return;
+    }
+    if (
+      e.key !== "ArrowLeft" &&
+      e.key !== "ArrowRight" &&
+      e.key !== "Home" &&
+      e.key !== "End"
+    ) {
+      return;
+    }
+    const enabled = getToolbarControls(toolbar);
+    if (enabled.length === 0) return;
+
+    const docActive = globalThis.document?.activeElement as HTMLElement | null;
+    const targetEl = e.target as HTMLElement | null;
+    const active =
+      (docActive && enabled.includes(docActive) ? docActive : null) ??
+      (targetEl && enabled.includes(targetEl) ? targetEl : null);
+    const currentIdx = active ? enabled.indexOf(active) : -1;
+    if (currentIdx < 0) return;
+
+    const isInput =
+      typeof HTMLInputElement !== "undefined"
+        ? active instanceof HTMLInputElement
+        : active?.tagName?.toUpperCase() === "INPUT";
+    if (
+      isInput &&
+      !shouldLeaveToolbarInput(active as HTMLInputElement, e.key)
+    ) {
+      return;
+    }
+
+    const nextIdx = getNextToolbarIndex(e.key, currentIdx, enabled.length);
+    if (nextIdx === null) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    const next = enabled[nextIdx];
+    if (!next) return;
+    syncToolbarRovingTabIndex(toolbar, next);
+    next.focus();
+    next.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  };
+
+  toolbar.addEventListener("focusin", onFocusIn);
+  toolbar.addEventListener("keydown", onKeyDown);
+
+  let observer: MutationObserver | undefined;
+  if (typeof MutationObserver !== "undefined") {
+    observer = new MutationObserver(() => {
+      syncToolbarRovingTabIndex(toolbar);
+    });
+    observer.observe(toolbar, {
+      attributes: true,
+      attributeFilter: ["disabled", "hidden"],
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  return () => {
+    toolbar.removeEventListener("focusin", onFocusIn);
+    toolbar.removeEventListener("keydown", onKeyDown);
+    observer?.disconnect();
+  };
+}
+
+export interface HorizontalScrollEdges {
+  canScrollLeft: boolean;
+  canScrollRight: boolean;
+}
+
+/**
+ * Computes whether a horizontally scrollable container has hidden content off
+ * its left and/or right edges (used for mobile toolbar scroll-affordance fades).
+ */
+export function computeHorizontalScrollEdges(
+  metrics: { scrollLeft: number; clientWidth: number; scrollWidth: number },
+  tolerance = 1,
+): HorizontalScrollEdges {
+  const overflows = metrics.scrollWidth > metrics.clientWidth + tolerance;
+  return {
+    canScrollLeft: overflows && metrics.scrollLeft > tolerance,
+    canScrollRight:
+      overflows &&
+      metrics.scrollLeft + metrics.clientWidth < metrics.scrollWidth - tolerance,
+  };
+}
+
+/**
+ * Tracks left/right horizontal scroll overflow on a scrollable toolbar strip
+ * across scrolls, container resizes, and window resizes.
+ */
+export function observeHorizontalScrollEdges(
+  el: HTMLElement,
+  onChange: (edges: HorizontalScrollEdges) => void,
+): () => void {
+  let prevLeft: boolean | null = null;
+  let prevRight: boolean | null = null;
+  const update = () => {
+    const next = computeHorizontalScrollEdges(el);
+    if (next.canScrollLeft !== prevLeft || next.canScrollRight !== prevRight) {
+      prevLeft = next.canScrollLeft;
+      prevRight = next.canScrollRight;
+      onChange(next);
+    }
+  };
+  update();
+  const raf = globalThis.requestAnimationFrame?.(update);
+  el.addEventListener("scroll", update, { passive: true });
+  globalThis.addEventListener?.("resize", update);
+  let resizeObserver: ResizeObserver | undefined;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(el);
+  }
+  return () => {
+    if (raf !== undefined) globalThis.cancelAnimationFrame?.(raf);
+    el.removeEventListener("scroll", update);
+    globalThis.removeEventListener?.("resize", update);
+    resizeObserver?.disconnect();
+  };
+}
+
+/**
+ * Computes the next slide element ID when pressing `Tab` or `Shift+Tab` while
+ * the slide canvas has focus. Returns `undefined` at the boundary so focus
+ * leaves the canvas cleanly without creating a keyboard trap.
+ */
+export function getNextCanvasElementId(
+  elements: readonly { id: string }[],
+  selectedId: string | null,
+  shiftKey: boolean,
+): string | undefined {
+  if (elements.length === 0) return undefined;
+  const currentIdx = selectedId
+    ? elements.findIndex((el) => el.id === selectedId)
+    : -1;
+  if (!shiftKey) {
+    if (currentIdx === -1) return elements[0]?.id;
+    if (currentIdx < elements.length - 1) return elements[currentIdx + 1]?.id;
+    return undefined;
+  }
+  if (currentIdx > 0) return elements[currentIdx - 1]?.id;
+  return undefined;
+}

@@ -142,7 +142,8 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
         return;
       }
       if (e.key === "Tab") {
-        closeContextMenu();
+        e.preventDefault();
+        closeContextMenu(true);
         return;
       }
       if (
@@ -333,14 +334,14 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
             class="context-menu"
             style={{
               left: `${Math.max(8, Math.min(menu().x, globalThis.innerWidth - 150))}px`,
-              top: `${Math.max(8, menu().y - 84)}px`,
+              top: `${Math.max(8, menu().y - ((globalThis.innerWidth ?? 1024) < 640 ? 112 : 84))}px`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               role="menuitem"
-              class="context-menu-item w-full text-left"
+              class="context-menu-item flex min-h-11 sm:min-h-8 w-full items-center text-left"
               onClick={() => {
                 const sheet = props.spreadsheet.sheets.find(
                   (s) => s.id === menu().sheetId,
@@ -354,7 +355,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
               <button
                 type="button"
                 role="menuitem"
-                class="context-menu-item w-full text-left text-red-600 dark:text-red-400"
+                class="context-menu-item flex min-h-11 sm:min-h-8 w-full items-center text-left text-red-600 dark:text-red-400"
                 onClick={() => handleDelete(menu().sheetId)}
               >
                 {t("delete")}
