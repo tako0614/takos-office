@@ -455,7 +455,7 @@ export const Grid: Component<GridProps> = (props) => {
   return (
     <div
       ref={containerRef}
-      role="grid"
+      role="region"
       aria-label={`${props.sheet.name} — ${t("spreadsheetGrid")}`}
       class="relative flex-1 overflow-auto bg-white dark:bg-neutral-900"
       onScroll={handleScroll}

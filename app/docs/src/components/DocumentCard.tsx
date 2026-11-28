@@ -61,7 +61,7 @@ export default function DocumentCard(props: DocumentCardProps) {
 
       <button
         type="button"
-        class="absolute top-2 right-2 inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-500 dark:text-neutral-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
+        class="absolute top-2 right-2 inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-500 dark:text-neutral-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
         onClick={(e) => {
           e.stopPropagation();
           props.onDelete(e);

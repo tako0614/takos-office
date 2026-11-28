@@ -63,7 +63,7 @@ export default function PresentationCard(props: PresentationCardProps) {
           class="w-full bg-gray-100 dark:bg-gray-700"
           style={{ "aspect-ratio": `${logicalSlideSize(props.presentation.slideSize).width}/${logicalSlideSize(props.presentation.slideSize).height}` }}
         />
-        <div class="p-4 pb-10">
+        <div class="p-4 pb-12 sm:pb-10">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
             {props.presentation.title}
           </h3>
@@ -76,7 +76,7 @@ export default function PresentationCard(props: PresentationCardProps) {
       </button>
       <button
         type="button"
-        class="absolute bottom-2 right-2 min-h-10 sm:min-h-7 text-xs text-red-600 dark:text-red-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-red-700 dark:hover:text-red-300 transition-opacity px-2.5 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        class="absolute bottom-2 right-2 min-h-11 sm:min-h-7 text-xs text-red-600 dark:text-red-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-red-700 dark:hover:text-red-300 transition-opacity px-2.5 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
         aria-label={t("deletePresentationLabel", {
           title: props.presentation.title,
         })}

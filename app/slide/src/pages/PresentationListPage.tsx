@@ -42,6 +42,7 @@ export default function PresentationListPage() {
   const [imported, setImported] = createSignal<{presentation: Presentation; hasUnsupportedContent: boolean} | null>(null);
   const importer = createPresentationImporter();
   let importGeneration = 0, fileInput!: HTMLInputElement;
+  let searchInputRef: HTMLInputElement | undefined;
   const cancelImport = () => {importGeneration++;importer.retire();setImporting(false);setImportSaving(false);};
   onCleanup(() => importer.retire());
   const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
@@ -282,6 +283,7 @@ export default function PresentationListPage() {
         </div>
         <div class="w-full sm:w-64 shrink-0">
           <input
+            ref={searchInputRef}
             type="search"
             value={search()}
             onInput={(e) => setSearch(e.currentTarget.value)}
@@ -372,8 +374,11 @@ export default function PresentationListPage() {
                     </p>
                     <button
                       type="button"
-                      class="min-h-10 sm:min-h-8 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                      onClick={() => setSearch("")}
+                      class="min-h-11 sm:min-h-8 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => {
+                        setSearch("");
+                        queueMicrotask(() => searchInputRef?.focus());
+                      }}
                     >
                       {t("clearSearch")}
                     </button>

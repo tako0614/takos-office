@@ -61,8 +61,9 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     onCleanup(() => {
       document.removeEventListener("keydown", handler, true);
       releaseScrollLock();
-      queueMicrotask(() => restoreFocus(previouslyFocused));
+      const prev = previouslyFocused;
       previouslyFocused = null;
+      queueMicrotask(() => restoreFocus(prev));
     });
   });
 
@@ -95,7 +96,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
             <h2 class="text-base font-medium">{t("shortcutsTitle")}</h2>
             <button
               type="button"
-              class="inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              class="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               onClick={props.onClose}
               title={t("shortcutClose")}
               aria-label={t("shortcutClose")}

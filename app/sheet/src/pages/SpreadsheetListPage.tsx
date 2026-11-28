@@ -41,6 +41,7 @@ export const SpreadsheetListPage: Component = () => {
   const [imported, setImported] = createSignal<{spreadsheet: Spreadsheet;hasUnsupportedContent: boolean} | null>(null);
   const importer = createSpreadsheetImporter();
   let importGeneration = 0, fileInput!: HTMLInputElement;
+  let searchInputRef: HTMLInputElement | undefined;
   const cancelImport = () => { importGeneration++;importer.retire();setImporting(false);setImportSaving(false); };
   onCleanup(() => importer.retire());
 
@@ -292,6 +293,7 @@ export const SpreadsheetListPage: Component = () => {
         </div>
         <div class="w-full sm:w-64 shrink-0">
           <input
+            ref={searchInputRef}
             type="search"
             value={search()}
             onInput={(e) => setSearch(e.currentTarget.value)}
@@ -384,8 +386,11 @@ export const SpreadsheetListPage: Component = () => {
                     </p>
                     <button
                       type="button"
-                      class="min-h-10 sm:min-h-8 rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-                      onClick={() => setSearch("")}
+                      class="min-h-11 sm:min-h-8 rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                      onClick={() => {
+                        setSearch("");
+                        queueMicrotask(() => searchInputRef?.focus());
+                      }}
                     >
                       {t("clearSearch")}
                     </button>

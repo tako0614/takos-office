@@ -18,7 +18,7 @@ export function LanguageSwitcher() {
         {(lang) => (
           <button
             type="button"
-            class="min-h-10 sm:min-h-7 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            class="min-h-11 sm:min-h-7 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
             classList={{
               "bg-white text-gray-900 shadow-sm dark:bg-neutral-700 dark:text-neutral-100 dark:shadow-none":
                 language() === lang.value,

@@ -31,6 +31,7 @@ import {
   getArrowNudgeDelta,
   handleModalKeyDown,
   isImeComposing,
+  isInteractiveShortcutTarget,
   isRedoKeyEvent,
   isUndoKeyEvent,
   isValidHttpUrl,
@@ -488,7 +489,14 @@ export default function EditorPage() {
       return;
     }
 
-    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    if (
+      e.key === "Enter" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      !isInteractiveShortcutTarget(e.target)
+    ) {
       const el = selectedElement();
       if (el && el.type === "text") {
         e.preventDefault();

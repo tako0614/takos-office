@@ -88,7 +88,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
           </h2>
           <button
             type="button"
-            class="inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            class="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             onClick={() => props.onClose()}
             aria-label={t("shortcutsClose")}
             title={t("shortcutsClose")}

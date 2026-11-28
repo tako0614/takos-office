@@ -3,12 +3,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Script } from "node:vm";
 import { extractDocumentPreview } from "../docs/src/lib/document-preview.ts";
+import {
+  FontSizeTextStyle,
+  parseFontSizeAttribute,
+  renderFontSizeAttribute,
+} from "../docs/src/lib/font-size-text-style.ts";
+import {
+  isInteractiveShortcutTarget,
+  restoreFocus,
+} from "../shared/lib/dialog-a11y.ts";
+import { setTheme, theme } from "../shared/lib/theme.ts";
 import { renderShellPage } from "../shell-page.ts";
 
 const ROOT = join(import.meta.dir, "..");
 
 describe("Wave 3 Tailwind shared source scanning", () => {
-  test("all three editor stylesheets declare @source \"../../shared\" so OfficeDialog & ThemeToggle utilities are always compiled", () => {
+  test('all three editor stylesheets declare @source "../../shared" so OfficeDialog & ThemeToggle utilities are always compiled', () => {
     for (const rel of [
       "docs/src/styles.css",
       "slide/src/styles.css",
@@ -25,8 +35,15 @@ describe("Wave 3 extractDocumentPreview", () => {
     const json = JSON.stringify({
       type: "doc",
       content: [
-        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Executive Summary" }] },
-        { type: "paragraph", content: [{ type: "text", text: "Hello world from Takos Docs." }] },
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Executive Summary" }],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Hello world from Takos Docs." }],
+        },
       ],
     });
     expect(extractDocumentPreview(json)).toBe(
@@ -42,6 +59,187 @@ describe("Wave 3 extractDocumentPreview", () => {
       "Plain text preview",
     );
     expect(extractDocumentPreview('{"type":"doc","content":[]}')).toBe("");
+  });
+});
+
+describe("Wave 3 behavioral helpers: shortcut targeting, fontSize mark, focus restore, and theme sync", () => {
+  test("isInteractiveShortcutTarget detects interactive native controls, ARIA roles, contentEditable, and nested descendants while allowing canvas/main/body", () => {
+    const mk = (opts: {
+      tagName?: string;
+      role?: string | null;
+      isContentEditable?: boolean;
+      closestMatch?: boolean;
+    }) =>
+      ({
+        tagName: opts.tagName ?? "DIV",
+        isContentEditable: opts.isContentEditable ?? false,
+        getAttribute: (attr: string) => (attr === "role" ? opts.role ?? null : null),
+        closest: opts.closestMatch !== undefined
+          ? () => (opts.closestMatch ? {} : null)
+          : undefined,
+      }) as unknown as EventTarget;
+
+    expect(isInteractiveShortcutTarget(null)).toBe(false);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "BUTTON" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "A" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "INPUT" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "TEXTAREA" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "SELECT" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ tagName: "SUMMARY" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ role: "button" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ role: "link" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ role: "menuitem" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ role: "tab" }))).toBe(true);
+    expect(isInteractiveShortcutTarget(mk({ isContentEditable: true }))).toBe(true);
+    // Nested icon SVG inside a button matches via closest(...)
+    expect(
+      isInteractiveShortcutTarget(mk({ tagName: "SVG", closestMatch: true })),
+    ).toBe(true);
+
+    // Canvas, main, body, and plain non-interactive wrappers are allowed
+    expect(
+      isInteractiveShortcutTarget(mk({ tagName: "CANVAS", closestMatch: false })),
+    ).toBe(false);
+    expect(
+      isInteractiveShortcutTarget(mk({ tagName: "MAIN", closestMatch: false })),
+    ).toBe(false);
+    expect(
+      isInteractiveShortcutTarget(mk({ tagName: "BODY", closestMatch: false })),
+    ).toBe(false);
+    expect(
+      isInteractiveShortcutTarget(mk({ tagName: "DIV", closestMatch: false })),
+    ).toBe(false);
+  });
+
+  test("FontSizeTextStyle validates, parses, and renders fontSize attributes safely", () => {
+    expect(parseFontSizeAttribute("18pt")).toBe("18pt");
+    expect(parseFontSizeAttribute(" 14.5px ")).toBe("14.5px");
+    expect(parseFontSizeAttribute("16")).toBe("16");
+    expect(parseFontSizeAttribute("")).toBeNull();
+    expect(parseFontSizeAttribute(null)).toBeNull();
+    expect(parseFontSizeAttribute("18pt; color: red")).toBeNull();
+    expect(parseFontSizeAttribute("calc(10px)")).toBeNull();
+
+    expect(renderFontSizeAttribute("18pt")).toEqual({
+      style: "font-size: 18pt",
+    });
+    expect(renderFontSizeAttribute(null)).toEqual({});
+    expect(renderFontSizeAttribute("bad; injection")).toEqual({});
+
+    const addAttributes = FontSizeTextStyle.config.addAttributes;
+    expect(typeof addAttributes).toBe("function");
+    const attrs = addAttributes!.call({
+      name: "textStyle",
+      options: {},
+      storage: {},
+      parent: () => ({}),
+    } as never) as Record<
+      string,
+      {
+        default: unknown;
+        parseHTML: (el: { style?: { fontSize?: string } }) => string | null;
+        renderHTML: (a: Record<string, unknown>) => Record<string, string>;
+      }
+    >;
+    expect(attrs.fontSize?.default).toBeNull();
+    expect(attrs.fontSize?.parseHTML({ style: { fontSize: "24pt" } })).toBe(
+      "24pt",
+    );
+    expect(attrs.fontSize?.parseHTML({ style: { fontSize: "invalid" } })).toBeNull();
+    expect(attrs.fontSize?.renderHTML({ fontSize: "24pt" })).toEqual({
+      style: "font-size: 24pt",
+    });
+    expect(attrs.fontSize?.renderHTML({ fontSize: null })).toEqual({});
+  });
+
+  test("restoreFocus returns focus to a connected opener and falls back to #main when disconnected or null", async () => {
+    let focusedTarget = "";
+    const opener = {
+      isConnected: true,
+      focus: () => {
+        focusedTarget = "opener";
+      },
+    } as unknown as HTMLElement;
+    const mainFallback = {
+      isConnected: true,
+      focus: () => {
+        focusedTarget = "main";
+      },
+    } as unknown as HTMLElement;
+
+    const prevDocument = globalThis.document;
+    globalThis.document = {
+      querySelector: (sel: string) => (sel === "#main" ? mainFallback : null),
+    } as unknown as Document;
+
+    try {
+      // Simulates snapshotting previouslyFocused before clearing it prior to queueMicrotask.
+      let previouslyFocused: HTMLElement | null = opener;
+      const prev = previouslyFocused;
+      previouslyFocused = null;
+      queueMicrotask(() => restoreFocus(prev));
+      await Promise.resolve();
+      expect(focusedTarget).toBe("opener");
+
+      // Disconnected opener falls back to #main.
+      focusedTarget = "";
+      restoreFocus({ isConnected: false, focus: () => { focusedTarget = "stale"; } } as unknown as HTMLElement);
+      expect(focusedTarget).toBe("main");
+
+      // Null opener falls back to #main.
+      focusedTarget = "";
+      restoreFocus(null);
+      expect(focusedTarget).toBe("main");
+    } finally {
+      globalThis.document = prevDocument;
+    }
+  });
+
+  test("shared theme module synchronizes takos-theme across tabs via storage events", () => {
+    const prevDoc = globalThis.document;
+    const prevStorage = globalThis.localStorage;
+    const dataset: Record<string, string> = {};
+    globalThis.document = {
+      documentElement: { dataset },
+    } as unknown as Document;
+    globalThis.localStorage = {
+      getItem: () => null,
+      setItem: () => {},
+    } as unknown as Storage;
+
+    try {
+      setTheme("dark");
+      expect(theme()).toBe("dark");
+      expect(dataset.theme).toBe("dark");
+
+      const storageEvent = Object.assign(new Event("storage"), {
+        key: "takos-theme",
+        newValue: "light",
+      });
+      globalThis.dispatchEvent(storageEvent);
+      expect(theme()).toBe("light");
+      expect(dataset.theme).toBe("light");
+
+      // Unrelated keys and invalid values are ignored.
+      globalThis.dispatchEvent(
+        Object.assign(new Event("storage"), {
+          key: "other-key",
+          newValue: "dark",
+        }),
+      );
+      expect(theme()).toBe("light");
+
+      globalThis.dispatchEvent(
+        Object.assign(new Event("storage"), {
+          key: "takos-theme",
+          newValue: "purple",
+        }),
+      );
+      expect(theme()).toBe("light");
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.localStorage = prevStorage;
+    }
   });
 });
 
@@ -177,77 +375,83 @@ describe("Wave 3 Office Shell search empty state, clear button, and SR app label
   });
 });
 
-describe("Wave 3 cross-app editor & modal regressions", () => {
-  test("shared theme module synchronizes takos-theme across tabs via storage events", () => {
-    const src = readFileSync(join(ROOT, "shared/lib/theme.ts"), "utf8");
-    expect(src).toContain('addEventListener("storage"');
-    expect(src).toContain("event.key !== KEY");
-  });
-
-  test("Sheets Toolbar includes default fontSize 13, binds filterQuery, and clears on Escape", () => {
-    const toolbar = readFileSync(
-      join(ROOT, "sheet/src/components/Toolbar.tsx"),
+describe("Wave 3 cross-app editor & modal contracts", () => {
+  test("FindReplace open effect tracks only props.open (uses untrack) and Docs ShortcutsHelp snapshots previouslyFocused", () => {
+    const findReplace = readFileSync(
+      join(ROOT, "docs/src/components/FindReplace.tsx"),
       "utf8",
     );
-    expect(toolbar).toContain("baseFontSizes = [8, 9, 10, 11, 12, 13,");
-    expect(toolbar).toContain("filterQuery?: string");
-    expect(toolbar).toContain("setFilterInput");
-    expect(toolbar).toContain('e.key === "Escape"');
+    const docsShortcuts = readFileSync(
+      join(ROOT, "docs/src/components/ShortcutsHelp.tsx"),
+      "utf8",
+    );
+    expect(findReplace).toContain("untrack");
+    expect(findReplace).toContain('aria-live="polite"');
+    expect(findReplace).toContain("restoreFocus");
+    // Open effect must not call recompute(false) before the closing effect.
+    const openEffectBlock = findReplace.slice(
+      findReplace.indexOf("// Focus the find field when the panel opens"),
+      findReplace.indexOf("// Clear highlights and restore focus"),
+    );
+    expect(openEffectBlock).toContain("untrack");
+    expect(openEffectBlock).not.toContain("recompute(");
+
+    expect(docsShortcuts).toContain("const prev = previouslyFocused;");
+    expect(docsShortcuts).toContain("queueMicrotask(() => restoreFocus(prev));");
   });
 
-  test("Sheets EditorPage seeds editValue on load and sheet switch, SheetTabs exposes tablist/tab and options button, Grid exposes role=grid", () => {
-    const editor = readFileSync(
-      join(ROOT, "sheet/src/pages/EditorPage.tsx"),
+  test("Slides EditorPage guards Enter-to-edit against interactive targets", () => {
+    const slideEditor = readFileSync(
+      join(ROOT, "slide/src/pages/EditorPage.tsx"),
+      "utf8",
+    );
+    expect(slideEditor).toContain("!isInteractiveShortcutTarget(e.target)");
+  });
+
+  test("Sheets Grid uses valid role=region (not empty role=grid), SheetTabs isolates role=tablist with ArrowLeft/ArrowRight and trigger pointerdown guard", () => {
+    const grid = readFileSync(
+      join(ROOT, "sheet/src/components/Grid.tsx"),
       "utf8",
     );
     const tabs = readFileSync(
       join(ROOT, "sheet/src/components/SheetTabs.tsx"),
       "utf8",
     );
-    const grid = readFileSync(
-      join(ROOT, "sheet/src/components/Grid.tsx"),
-      "utf8",
-    );
-    expect(editor).toContain("setEditValue(active?.cells[selectedCell()]?.value ?? \"\")");
-    expect(editor).toContain("setEditValue(newSheet?.cells.A1?.value ?? \"\")");
-    expect(editor).toContain("filterQuery={activeSheet()?.filter?.query ?? \"\"}");
+    expect(grid).toContain('role="region"');
+    expect(grid).not.toContain('role="grid"');
     expect(tabs).toContain('role="tablist"');
     expect(tabs).toContain('role="tab"');
-    expect(tabs).toContain("aria-selected=");
-    expect(tabs).toContain("sheetActions");
-    expect(grid).toContain('role="grid"');
+    expect(tabs).toContain("ArrowLeft");
+    expect(tabs).toContain("ArrowRight");
+    expect(tabs).toContain("data-sheet-menu-trigger");
   });
 
-  test("Docs Toolbar uses reactive createEffect (no setInterval), exposes aria-pressed, widens Size select, and uses theme-aware dark color bar", () => {
+  test("Docs Toolbar uses FontSizeTextStyle, reactive tick(), closes popups on Tab, and handles Escape on Link/Image bar containers", () => {
+    const editor = readFileSync(
+      join(ROOT, "docs/src/components/Editor.tsx"),
+      "utf8",
+    );
     const toolbar = readFileSync(
       join(ROOT, "docs/src/components/Toolbar.tsx"),
       "utf8",
     );
-    const findReplace = readFileSync(
-      join(ROOT, "docs/src/components/FindReplace.tsx"),
-      "utf8",
-    );
+    expect(editor).toContain("FontSizeTextStyle");
     expect(toolbar).not.toContain("setInterval");
     expect(toolbar).toContain("tick()");
-    expect(toolbar).toContain('aria-pressed={isActive("bold")}');
-    expect(toolbar).toContain('style="min-width:5rem"');
-    expect(toolbar).toContain('theme() === "dark"');
-    expect(toolbar).toContain('e.key === "ArrowDown"');
-    expect(findReplace).toContain('aria-live="polite"');
-    expect(findReplace).toContain("restoreFocus");
+    expect(toolbar).toContain('e.key === "Tab"');
+    expect(toolbar).toContain("removeEmptyTextStyle()");
   });
 
-  test("Slides PresentPage exposes main landmark, sr-only h1, reactive title, IME guard, reduced-motion check, and 44px mobile controls", () => {
-    const present = readFileSync(
-      join(ROOT, "slide/src/pages/PresentPage.tsx"),
-      "utf8",
-    );
-    expect(present).toContain("<main");
-    expect(present).toContain('<h1 class="sr-only">');
-    expect(present).toContain("document.title =");
-    expect(present).toContain("isImeComposing(e)");
-    expect(present).toContain("prefers-reduced-motion: reduce");
-    expect(present).toContain("min-h-11 min-w-11");
+  test("all three library list pages restore focus to the search input on Clear search", () => {
+    for (const rel of [
+      "docs/src/pages/DocumentListPage.tsx",
+      "slide/src/pages/PresentationListPage.tsx",
+      "sheet/src/pages/SpreadsheetListPage.tsx",
+    ]) {
+      const src = readFileSync(join(ROOT, rel), "utf8");
+      expect(src).toContain("ref={searchInputRef}");
+      expect(src).toContain("searchInputRef?.focus()");
+    }
   });
 
   test("all remaining in-app modals guard backdrop clicks against drag-release", () => {

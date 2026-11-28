@@ -221,6 +221,10 @@ export default function Toolbar(props: ToolbarProps) {
         queueMicrotask(() => restoreFocus(opener));
         return;
       }
+      if (e.key === "Tab") {
+        closePopups();
+        return;
+      }
       if (
         isExport &&
         (e.key === "ArrowDown" ||
@@ -335,6 +339,12 @@ export default function Toolbar(props: ToolbarProps) {
     return match ? match[1] : "";
   };
 
+  const fontSizeOptions = () => {
+    const cur = currentFontSize();
+    if (!cur || FONT_SIZES.includes(cur)) return FONT_SIZES;
+    return [...FONT_SIZES, cur].sort((a, b) => Number(a) - Number(b));
+  };
+
   const currentTextColor = () => {
     tick();
     const color = props.editor?.getAttributes("textStyle")?.color;
@@ -445,11 +455,15 @@ export default function Toolbar(props: ToolbarProps) {
               props.editor?.chain().focus().setMark("textStyle", {
                 fontSize: val + "pt",
               }).run();
+            } else {
+              props.editor?.chain().focus().setMark("textStyle", {
+                fontSize: null,
+              }).removeEmptyTextStyle().run();
             }
           }}
         >
           <option value="">{t("size")}</option>
-          <For each={FONT_SIZES}>
+          <For each={fontSizeOptions()}>
             {(s) => <option value={s}>{s}</option>}
           </For>
         </select>
@@ -894,7 +908,19 @@ export default function Toolbar(props: ToolbarProps) {
 
       {/* Link URL input */}
       <Show when={showLinkInput()}>
-        <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div
+          class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowLinkInput(false);
+              setLinkError(false);
+              queueMicrotask(() => restoreFocus(linkBtnRef));
+            }
+          }}
+        >
           <input
             ref={linkInputRef}
             type="url"
@@ -910,19 +936,13 @@ export default function Toolbar(props: ToolbarProps) {
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleSetLink();
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setShowLinkInput(false);
-                setLinkError(false);
-                queueMicrotask(() => restoreFocus(linkBtnRef));
-              }
             }}
             class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
             onClick={handleSetLink}
-            class="min-h-10 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-11 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("apply")}
           </button>
@@ -933,7 +953,7 @@ export default function Toolbar(props: ToolbarProps) {
               setLinkError(false);
               queueMicrotask(() => restoreFocus(linkBtnRef));
             }}
-            class="min-h-10 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="min-h-11 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
@@ -947,7 +967,19 @@ export default function Toolbar(props: ToolbarProps) {
 
       {/* Image URL input */}
       <Show when={showImageInput()}>
-        <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div
+          class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowImageInput(false);
+              setImageError(false);
+              queueMicrotask(() => restoreFocus(imageBtnRef));
+            }
+          }}
+        >
           <input
             ref={imageInputRef}
             type="url"
@@ -963,19 +995,13 @@ export default function Toolbar(props: ToolbarProps) {
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleInsertImage();
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                setShowImageInput(false);
-                setImageError(false);
-                queueMicrotask(() => restoreFocus(imageBtnRef));
-              }
             }}
             class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
             onClick={handleInsertImage}
-            class="min-h-10 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-11 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("insert")}
           </button>
@@ -986,7 +1012,7 @@ export default function Toolbar(props: ToolbarProps) {
               setImageError(false);
               queueMicrotask(() => restoreFocus(imageBtnRef));
             }}
-            class="min-h-10 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="min-h-11 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>

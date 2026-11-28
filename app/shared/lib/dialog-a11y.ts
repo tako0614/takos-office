@@ -33,6 +33,57 @@ export function isImeComposing(
   return Boolean(event.isComposing) || event.keyCode === 229;
 }
 
+const INTERACTIVE_SHORTCUT_SELECTOR = [
+  "input",
+  "textarea",
+  "select",
+  "button",
+  "a[href]",
+  '[role="button"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+  '[role="tab"]',
+  "summary",
+  '[contenteditable]:not([contenteditable="false"])',
+].join(", ");
+
+/**
+ * Returns true when a keyboard event originated on or inside a native or ARIA
+ * interactive control (button, link, input, menuitem, tab, summary, or
+ * contenteditable) whose own activation or editing behavior must not be
+ * hijacked by global shortcuts such as Enter-to-edit on a canvas.
+ */
+export function isInteractiveShortcutTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!target || typeof target !== "object") return false;
+  const el = target as Partial<HTMLElement>;
+  if (el.isContentEditable) return true;
+  if (typeof el.closest === "function") {
+    return Boolean(el.closest(INTERACTIVE_SHORTCUT_SELECTOR));
+  }
+  const tag = typeof el.tagName === "string" ? el.tagName.toUpperCase() : "";
+  if (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    tag === "BUTTON" ||
+    tag === "A" ||
+    tag === "SUMMARY"
+  ) {
+    return true;
+  }
+  const role = typeof el.getAttribute === "function"
+    ? el.getAttribute("role")
+    : null;
+  return (
+    role === "button" ||
+    role === "link" ||
+    role === "menuitem" ||
+    role === "tab"
+  );
+}
+
 export function handleModalKeyDown(
   event: KeyboardEvent,
   container: HTMLElement | undefined,

@@ -1,4 +1,4 @@
-import { Component, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { Component, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { Sheet, Spreadsheet } from "../types";
 import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
@@ -23,8 +23,74 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
   >(null);
   const [renamingId, setRenamingId] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
+  let tablistRef: HTMLDivElement | undefined;
   let menuRef: HTMLDivElement | undefined;
   let menuOpener: HTMLElement | null = null;
+
+  const sheetIds = createMemo(() => props.spreadsheet.sheets.map((s) => s.id));
+  const sheetById = (id: string) =>
+    props.spreadsheet.sheets.find((s) => s.id === id);
+  const activeSheet = () => sheetById(props.activeSheetId);
+
+  const focusTabById = (sheetId: string | null) => {
+    queueMicrotask(() => {
+      const tabs = Array.from(
+        tablistRef?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [],
+      );
+      const idx = sheetId
+        ? props.spreadsheet.sheets.findIndex((s) => s.id === sheetId)
+        : -1;
+      const target = idx >= 0
+        ? tabs[idx]
+        : tablistRef?.querySelector<HTMLElement>(
+          '[role="tab"][aria-selected="true"]',
+        );
+      target?.focus();
+    });
+  };
+
+  const handleTabKeyDown = (
+    e: KeyboardEvent,
+    sheetId: string,
+    index: number,
+  ) => {
+    if (isImeComposing(e)) return;
+    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+      e.preventDefault();
+      openMenuAtElement(e.currentTarget as HTMLElement, sheetId);
+      return;
+    }
+    if (
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      (e.key === "ArrowRight" ||
+        e.key === "ArrowLeft" ||
+        e.key === "Home" ||
+        e.key === "End")
+    ) {
+      const sheets = props.spreadsheet.sheets;
+      if (sheets.length === 0) return;
+      e.preventDefault();
+      let nextIdx = index;
+      if (e.key === "ArrowRight") {
+        nextIdx = (index + 1) % sheets.length;
+      } else if (e.key === "ArrowLeft") {
+        nextIdx = (index - 1 + sheets.length) % sheets.length;
+      } else if (e.key === "Home") {
+        nextIdx = 0;
+      } else {
+        nextIdx = sheets.length - 1;
+      }
+      const nextSheet = sheets[nextIdx];
+      if (!nextSheet) return;
+      props.onSwitchSheet(nextSheet.id);
+      queueMicrotask(() => {
+        const tabs = tablistRef?.querySelectorAll<HTMLElement>('[role="tab"]');
+        tabs?.[nextIdx]?.focus();
+      });
+    }
+  };
 
   const handleContextMenu = (e: MouseEvent, sheetId: string) => {
     e.preventDefault();
@@ -48,12 +114,21 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
   };
 
   createEffect(() => {
-    if (!contextMenu()) return;
+    const activeMenu = contextMenu();
+    if (!activeMenu) return;
     queueMicrotask(() => {
       menuRef?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     });
     const onPointerDown = (e: PointerEvent) => {
       if (menuRef && e.target instanceof Node && menuRef.contains(e.target)) {
+        return;
+      }
+      if (
+        e.target instanceof Element &&
+        e.target.closest("[data-sheet-menu-trigger]")?.getAttribute(
+          "data-sheet-menu-trigger",
+        ) === activeMenu.sheetId
+      ) {
         return;
       }
       closeContextMenu();
@@ -139,82 +214,96 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
 
   return (
     <div
-      role="tablist"
-      aria-label={t("sheetTabsLabel")}
-      class="flex min-h-11 sm:h-8 items-center overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
+      class="flex min-h-11 sm:h-8 items-center gap-1 overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
       onClick={handleWindowClick}
     >
-      <For each={props.spreadsheet.sheets}>
-        {(sheet) => (
-          <Show
-            when={renamingId() === sheet.id}
-            fallback={
-              <div class="mr-0.5 inline-flex shrink-0 items-center">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sheet.id === props.activeSheetId}
-                  class={`flex min-h-10 sm:min-h-6 sm:h-6 shrink-0 items-center rounded px-3 text-xs transition-colors ${
-                    sheet.id === props.activeSheetId
-                      ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:ring-0 dark:shadow-none"
-                      : "text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-100"
-                  }`}
-                  onClick={() => props.onSwitchSheet(sheet.id)}
-                  onContextMenu={(e) => handleContextMenu(e, sheet.id)}
-                  onKeyDown={(e) => {
-                    if (isImeComposing(e)) return;
-                    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-                      e.preventDefault();
-                      openMenuAtElement(e.currentTarget, sheet.id);
-                    }
-                  }}
-                >
-                  {sheet.name}
-                </button>
-                <Show when={sheet.id === props.activeSheetId}>
-                  <button
-                    type="button"
-                    aria-label={t("sheetActions", { name: sheet.name })}
-                    title={t("sheetActions", { name: sheet.name })}
-                    aria-haspopup="menu"
-                    aria-expanded={contextMenu()?.sheetId === sheet.id}
-                    class="flex h-10 w-10 sm:h-6 sm:w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (contextMenu()?.sheetId === sheet.id) {
-                        closeContextMenu();
-                      } else {
-                        openMenuAtElement(e.currentTarget, sheet.id);
-                      }
-                    }}
-                  >
-                    ⋮
-                  </button>
-                </Show>
-              </div>
+      <div
+        ref={tablistRef}
+        role="tablist"
+        aria-label={t("sheetTabsLabel")}
+        class="flex items-center gap-0.5 shrink-0"
+      >
+        <For each={sheetIds()}>
+          {(sheetId, index) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sheetId === props.activeSheetId}
+              tabIndex={sheetId === props.activeSheetId ? 0 : -1}
+              class={`flex min-h-11 sm:min-h-6 sm:h-6 shrink-0 items-center rounded px-3 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                sheetId === props.activeSheetId
+                  ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:ring-0 dark:shadow-none"
+                  : "text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-100"
+              }`}
+              onClick={() => props.onSwitchSheet(sheetId)}
+              onContextMenu={(e) => handleContextMenu(e, sheetId)}
+              onKeyDown={(e) => handleTabKeyDown(e, sheetId, index())}
+            >
+              {sheetById(sheetId)?.name ?? ""}
+            </button>
+          )}
+        </For>
+      </div>
+
+      {/* Inline rename input (outside role="tablist" to preserve WAI-ARIA required children) */}
+      <Show when={renamingId()}>
+        <input
+          class="h-9 sm:h-6 w-28 shrink-0 rounded bg-white px-2 text-xs text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
+          aria-label={t("renameSheet")}
+          value={renameValue()}
+          onInput={(e) => setRenameValue(e.currentTarget.value)}
+          onBlur={finishRename}
+          onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
+            if (e.key === "Enter") {
+              const id = renamingId();
+              e.preventDefault();
+              finishRename();
+              focusTabById(id);
             }
+            if (e.key === "Escape") {
+              const id = renamingId();
+              e.preventDefault();
+              setRenamingId(null);
+              focusTabById(id);
+            }
+          }}
+          ref={(el) => setTimeout(() => {
+            el.focus();
+            el.select();
+          }, 0)}
+        />
+      </Show>
+
+      {/* Active sheet actions menu trigger (outside role="tablist") */}
+      <Show when={!renamingId() ? activeSheet() : undefined}>
+        {(active) => (
+          <button
+            type="button"
+            data-sheet-menu-trigger={active().id}
+            aria-label={t("sheetActions", { name: active().name })}
+            title={t("sheetActions", { name: active().name })}
+            aria-haspopup="menu"
+            aria-expanded={contextMenu()?.sheetId === active().id}
+            class="flex h-11 w-11 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (contextMenu()?.sheetId === active().id) {
+                closeContextMenu();
+              } else {
+                openMenuAtElement(e.currentTarget, active().id);
+              }
+            }}
           >
-            <input
-              class="mr-0.5 h-8 sm:h-6 w-24 shrink-0 rounded bg-white px-2 text-xs text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
-              aria-label={t("renameSheet")}
-              value={renameValue()}
-              onInput={(e) => setRenameValue(e.currentTarget.value)}
-              onBlur={finishRename}
-              onKeyDown={(e) => {
-                if (isImeComposing(e)) return;
-                if (e.key === "Enter") finishRename();
-                if (e.key === "Escape") setRenamingId(null);
-              }}
-              ref={(el) => setTimeout(() => el.focus(), 0)}
-            />
-          </Show>
+            ⋮
+          </button>
         )}
-      </For>
+      </Show>
 
       {/* Add sheet button */}
       <button
         type="button"
-        class="flex h-10 w-10 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+        class="flex h-11 w-11 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         onClick={props.onAddSheet}
         title={t("addSheet")}
         aria-label={t("addSheet")}

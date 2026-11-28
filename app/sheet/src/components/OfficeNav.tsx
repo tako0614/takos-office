@@ -25,7 +25,7 @@ export default function OfficeNav() {
       {/* Brand returns to the Office shell (NOT /sheet). */}
       <a
         href={withCurrentSpaceId("/")}
-        class="inline-flex min-h-10 sm:min-h-7 items-center text-lg font-bold text-gray-900 transition-colors hover:text-black dark:text-neutral-100 dark:hover:text-white"
+        class="inline-flex min-h-11 sm:min-h-7 items-center text-lg font-bold text-gray-900 transition-colors hover:text-black dark:text-neutral-100 dark:hover:text-white"
       >
         Takos
       </a>
@@ -36,7 +36,7 @@ export default function OfficeNav() {
             return (
               <a
                 href={withCurrentSpaceId(app.path)}
-                class="inline-flex min-h-10 sm:min-h-7 items-center rounded-md px-2 sm:px-2.5 py-1 text-xs font-medium transition-colors"
+                class="inline-flex min-h-11 sm:min-h-7 items-center rounded-md px-2 sm:px-2.5 py-1 text-xs font-medium transition-colors"
                 classList={{
                   "bg-emerald-700 text-white": isCurrent,
                   "text-gray-600 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-neutral-100":
