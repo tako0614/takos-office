@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { computeFixedPopupPosition } from "../shared/lib/dialog-a11y.ts";
+import {
+  computeFixedPopupPosition,
+  getNextColorPopupIndex,
+  handlePortalPopupTab,
+} from "../shared/lib/dialog-a11y.ts";
 import { renderShellPage } from "../shell-page.ts";
 
 const ROOT = join(import.meta.dir, "..");
@@ -89,7 +93,10 @@ describe("Wave 4 Sheets virtualized WAI-ARIA grid and labeled CellEditor", () =>
     expect(grid).toContain("aria-activedescendant=");
     expect(grid).toContain('aria-multiselectable="true"');
     expect(grid).toContain('ariaLabel={t("formulaInput", { cell: props.selectedCell })}');
+    expect(grid).toContain("containerRef?.focus({ preventScroll: true })");
     expect(cellEditor).toContain("aria-label={props.ariaLabel}");
+    expect(cellEditor).toContain("z-[15]");
+    expect(cellEditor).not.toContain("z-20");
   });
 });
 
@@ -143,15 +150,128 @@ describe("Wave 4 mobile single-row scrollable 44px toolbars & Portal popups", ()
     }
   });
 
-  test("Docs and Sheets toolbar dropdown popups render via Portal with clamped fixed coordinates", () => {
-    for (const rel of [
-      "docs/src/components/Toolbar.tsx",
-      "sheet/src/components/Toolbar.tsx",
-    ]) {
-      const src = readFileSync(join(ROOT, rel), "utf8");
+  test("Docs and Sheets toolbar dropdown popups render via Portal with clamped fixed coordinates, focus entry, arrow/grid nav, and bounded Tab restoration", () => {
+    const docsToolbar = readFileSync(
+      join(ROOT, "docs/src/components/Toolbar.tsx"),
+      "utf8",
+    );
+    const sheetToolbar = readFileSync(
+      join(ROOT, "sheet/src/components/Toolbar.tsx"),
+      "utf8",
+    );
+
+    for (const src of [docsToolbar, sheetToolbar]) {
       expect(src).toContain("<Portal>");
       expect(src).toContain("computeFixedPopupPosition");
-      expect(src).toContain('e.key === "Tab"');
+      expect(src).toContain('activePopup()?.querySelector<HTMLElement>("button")?.focus()');
+      expect(src).toContain("getNextColorPopupIndex");
+      expect(src).toContain("handlePortalPopupTab");
+      expect(src).toContain("restoreFocus(opener)");
+    }
+
+    // Docs route-change effect closes all popups (including color pickers)
+    expect(docsToolbar).toMatch(/void location\.search;[\s\S]*?closePopups\(\);/);
+    // Export menu passes allowInternalTab = !isExport (false for menu, true for color pickers)
+    expect(docsToolbar).toContain("handlePortalPopupTab(e, activePopup(), closeAndRestore, !isExport)");
+    // Sheets restores focus to trigger after swatch/Reset activation
+    expect(sheetToolbar).toContain("handlePortalPopupTab(e, activePopup(), closeAndRestore, true)");
+    expect(sheetToolbar.match(/queueMicrotask\(\(\) => restoreFocus\(opener\)\)/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  test("getNextColorPopupIndex navigates 6-column Sheets and 8-column Docs color grids cleanly", () => {
+    const sheetsOpts = { columns: 6, resetPosition: "last" as const };
+    // 18 swatches (0..17) + Reset (18)
+    expect(getNextColorPopupIndex("ArrowRight", 0, 19, sheetsOpts)).toBe(1);
+    expect(getNextColorPopupIndex("ArrowRight", 18, 19, sheetsOpts)).toBe(0);
+    expect(getNextColorPopupIndex("ArrowLeft", 0, 19, sheetsOpts)).toBe(18);
+    expect(getNextColorPopupIndex("ArrowDown", 0, 19, sheetsOpts)).toBe(6);
+    expect(getNextColorPopupIndex("ArrowDown", 14, 19, sheetsOpts)).toBe(18);
+    expect(getNextColorPopupIndex("ArrowDown", 18, 19, sheetsOpts)).toBe(0);
+    expect(getNextColorPopupIndex("ArrowUp", 18, 19, sheetsOpts)).toBe(12);
+    expect(getNextColorPopupIndex("ArrowUp", 2, 19, sheetsOpts)).toBe(18);
+    expect(getNextColorPopupIndex("Home", 10, 19, sheetsOpts)).toBe(0);
+    expect(getNextColorPopupIndex("End", 2, 19, sheetsOpts)).toBe(18);
+    expect(getNextColorPopupIndex("Enter", 2, 19, sheetsOpts)).toBeNull();
+
+    const docsOpts = { columns: 8, resetPosition: "first" as const };
+    // Reset (0) + 40 swatches (1..40)
+    expect(getNextColorPopupIndex("ArrowDown", 0, 41, docsOpts)).toBe(1);
+    expect(getNextColorPopupIndex("ArrowUp", 0, 41, docsOpts)).toBe(40);
+    expect(getNextColorPopupIndex("ArrowDown", 1, 41, docsOpts)).toBe(9);
+    expect(getNextColorPopupIndex("ArrowDown", 35, 41, docsOpts)).toBe(0);
+    expect(getNextColorPopupIndex("ArrowUp", 3, 41, docsOpts)).toBe(0);
+    expect(getNextColorPopupIndex("ArrowUp", 11, 41, docsOpts)).toBe(3);
+    expect(getNextColorPopupIndex("ArrowLeft", 0, 41, docsOpts)).toBe(40);
+    expect(getNextColorPopupIndex("ArrowRight", 40, 41, docsOpts)).toBe(0);
+  });
+
+  test("handlePortalPopupTab closes menus immediately and keeps Tab inside color pickers until boundaries", () => {
+    const makeBtn = () => ({
+      tagName: "BUTTON",
+      tabIndex: 0,
+      hasAttribute: () => false,
+      closest: () => null,
+    });
+    const b0 = makeBtn();
+    const b1 = makeBtn();
+    const b2 = makeBtn();
+    const popup = {
+      querySelectorAll: () => [b0, b1, b2],
+    } as unknown as HTMLElement;
+
+    const prevDoc = (globalThis as { document?: unknown }).document;
+    try {
+      // Export menu (allowInternalTab = false): Tab immediately closes & prevents default
+      let closed = 0;
+      let prevented = 0;
+      (globalThis as { document?: unknown }).document = { activeElement: b1 };
+      handlePortalPopupTab(
+        { key: "Tab", shiftKey: false, preventDefault: () => { prevented++; } },
+        popup,
+        () => { closed++; },
+        false,
+      );
+      expect(closed).toBe(1);
+      expect(prevented).toBe(1);
+
+      // Color picker (allowInternalTab = true): Tab on middle button stays open
+      closed = 0;
+      prevented = 0;
+      (globalThis as { document?: unknown }).document = { activeElement: b1 };
+      handlePortalPopupTab(
+        { key: "Tab", shiftKey: false, preventDefault: () => { prevented++; } },
+        popup,
+        () => { closed++; },
+        true,
+      );
+      expect(closed).toBe(0);
+      expect(prevented).toBe(0);
+
+      // Tab on last button closes & prevents default
+      (globalThis as { document?: unknown }).document = { activeElement: b2 };
+      handlePortalPopupTab(
+        { key: "Tab", shiftKey: false, preventDefault: () => { prevented++; } },
+        popup,
+        () => { closed++; },
+        true,
+      );
+      expect(closed).toBe(1);
+      expect(prevented).toBe(1);
+
+      // Shift+Tab on first button closes & prevents default
+      closed = 0;
+      prevented = 0;
+      (globalThis as { document?: unknown }).document = { activeElement: b0 };
+      handlePortalPopupTab(
+        { key: "Tab", shiftKey: true, preventDefault: () => { prevented++; } },
+        popup,
+        () => { closed++; },
+        true,
+      );
+      expect(closed).toBe(1);
+      expect(prevented).toBe(1);
+    } finally {
+      (globalThis as { document?: unknown }).document = prevDoc;
     }
   });
 

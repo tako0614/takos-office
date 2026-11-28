@@ -24,7 +24,7 @@ export const CellEditor: Component<CellEditorProps> = (props) => {
     <input
       ref={inputRef}
       aria-label={props.ariaLabel}
-      class="absolute z-20 border-2 border-blue-500 bg-white px-1 text-sm text-gray-900 outline-none dark:bg-neutral-900 dark:text-neutral-100"
+      class="absolute z-[15] border-2 border-blue-500 bg-white px-1 text-sm text-gray-900 outline-none dark:bg-neutral-900 dark:text-neutral-100"
       style={{
         left: `${props.left}px`,
         top: `${props.top}px`,

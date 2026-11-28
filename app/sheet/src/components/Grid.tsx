@@ -1,5 +1,6 @@
 import {
   Component,
+  createEffect,
   createMemo,
   createSignal,
   createUniqueId,
@@ -409,6 +410,31 @@ export const Grid: Component<GridProps> = (props) => {
       width: getColWidth(col),
       height: getRowHeight(row),
     };
+  });
+
+  // Restore focus to the role="grid" container when CellEditor exits via
+  // Enter / Escape / Tab so aria-activedescendant remains tracked by AT,
+  // without stealing focus when blur-commit moves focus to FormulaBar/Toolbar
+  // (using a macrotask so the browser finishes blur -> focus transfer first).
+  let wasEditing = false;
+  let focusRestoreTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const editing = props.isEditing;
+    if (wasEditing && !editing) {
+      if (focusRestoreTimer !== undefined) clearTimeout(focusRestoreTimer);
+      focusRestoreTimer = setTimeout(() => {
+        focusRestoreTimer = undefined;
+        if (props.isEditing) return;
+        const active = document.activeElement;
+        if (!active || active === document.body || !active.isConnected) {
+          containerRef?.focus({ preventScroll: true });
+        }
+      }, 0);
+    }
+    wasEditing = editing;
+  });
+  onCleanup(() => {
+    if (focusRestoreTimer !== undefined) clearTimeout(focusRestoreTimer);
   });
 
   // Observe container size

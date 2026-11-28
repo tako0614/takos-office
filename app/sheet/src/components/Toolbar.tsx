@@ -5,6 +5,8 @@ import type { CellFormat } from "../types";
 import { theme } from "../../../shared/lib/theme";
 import {
   computeFixedPopupPosition,
+  getNextColorPopupIndex,
+  handlePortalPopupTab,
   isImeComposing,
   restoreFocus,
 } from "../../../shared/lib/dialog-a11y";
@@ -72,6 +74,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
   createEffect(() => {
     if (!showTextColor() && !showBgColor()) return;
+    let active = true;
     const activeWrapper = showTextColor() ? textColorRef : bgColorRef;
     const activePopup = () =>
       showTextColor() ? textColorPopupRef : bgColorPopupRef;
@@ -80,6 +83,14 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       setShowTextColor(false);
       setShowBgColor(false);
     };
+    const closeAndRestore = () => {
+      closeColors();
+      queueMicrotask(() => restoreFocus(opener));
+    };
+    queueMicrotask(() => {
+      if (!active) return;
+      activePopup()?.querySelector<HTMLElement>("button")?.focus();
+    });
     const onScrollOrResize = () => {
       if (!opener) return;
       const rect = opener.getBoundingClientRect();
@@ -105,10 +116,25 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        closeColors();
-        queueMicrotask(() => restoreFocus(opener));
-      } else if (e.key === "Tab") {
-        closeColors();
+        closeAndRestore();
+        return;
+      }
+      if (e.key === "Tab") {
+        handlePortalPopupTab(e, activePopup(), closeAndRestore, true);
+        return;
+      }
+      const popup = activePopup();
+      if (!popup) return;
+      const items = Array.from(popup.querySelectorAll<HTMLElement>("button"));
+      const activeIdx = items.indexOf(document.activeElement as HTMLElement);
+      const nextIdx = getNextColorPopupIndex(e.key, activeIdx, items.length, {
+        columns: 6,
+        resetPosition: "last",
+      });
+      if (nextIdx !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        items[nextIdx]?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -116,6 +142,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     toolbarRowRef?.addEventListener("scroll", onScrollOrResize, { passive: true });
     globalThis.addEventListener("resize", onScrollOrResize);
     onCleanup(() => {
+      active = false;
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
       toolbarRowRef?.removeEventListener("scroll", onScrollOrResize);
@@ -555,8 +582,10 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                   aria-label={color}
                   title={color}
                   onClick={() => {
+                    const opener = textColorRef?.querySelector<HTMLButtonElement>("button");
                     props.onFormatChange({ textColor: color });
                     setShowTextColor(false);
+                    queueMicrotask(() => restoreFocus(opener));
                   }}
                 />
               ))}
@@ -564,8 +593,10 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                 type="button"
                 class="col-span-6 mt-1 min-h-11 sm:min-h-7 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
                 onClick={() => {
+                  const opener = textColorRef?.querySelector<HTMLButtonElement>("button");
                   props.onFormatChange({ textColor: undefined });
                   setShowTextColor(false);
+                  queueMicrotask(() => restoreFocus(opener));
                 }}
               >
                 {t("reset")}
@@ -617,8 +648,10 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                   aria-label={color}
                   title={color}
                   onClick={() => {
+                    const opener = bgColorRef?.querySelector<HTMLButtonElement>("button");
                     props.onFormatChange({ bgColor: color });
                     setShowBgColor(false);
+                    queueMicrotask(() => restoreFocus(opener));
                   }}
                 />
               ))}
@@ -626,8 +659,10 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
                 type="button"
                 class="col-span-6 mt-1 min-h-11 sm:min-h-7 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
                 onClick={() => {
+                  const opener = bgColorRef?.querySelector<HTMLButtonElement>("button");
                   props.onFormatChange({ bgColor: undefined });
                   setShowBgColor(false);
+                  queueMicrotask(() => restoreFocus(opener));
                 }}
               >
                 {t("reset")}

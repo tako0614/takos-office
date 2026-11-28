@@ -37,6 +37,8 @@ import { useI18n } from "../i18n";
 import { theme } from "../../../shared/lib/theme";
 import {
   computeFixedPopupPosition,
+  getNextColorPopupIndex,
+  handlePortalPopupTab,
   isImeComposing,
   isValidHttpUrl,
   restoreFocus,
@@ -174,6 +176,16 @@ export default function Toolbar(props: ToolbarProps) {
       ),
     );
   };
+  const closePopups = () => {
+    setShowTextColor(false);
+    setShowHighlight(false);
+    setShowLinkInput(false);
+    setLinkError(false);
+    setShowImageInput(false);
+    setImageError(false);
+    setShowExport(false);
+  };
+
   onCleanup(() => {
     exportController?.abort();
     if (exportReadyTimer) clearTimeout(exportReadyTimer);
@@ -188,7 +200,7 @@ export default function Toolbar(props: ToolbarProps) {
     setExportError(false);
     setExportWarning(false);
     setExportReady(false);
-    setShowExport(false);
+    closePopups();
   });
 
   createEffect(() => {
@@ -213,6 +225,7 @@ export default function Toolbar(props: ToolbarProps) {
     const anyPopupOpen =
       showTextColor() || showHighlight() || showExport();
     if (!anyPopupOpen) return;
+    let active = true;
     const isExport = showExport();
     const activeWrapper = showTextColor()
       ? textColorRef
@@ -233,11 +246,18 @@ export default function Toolbar(props: ToolbarProps) {
     const popupAlign: "left" | "right" = isExport ? "right" : "left";
     const popupWidth = () =>
       isExport ? 184 : (globalThis.innerWidth ?? 1024) < 640 ? 260 : 198;
-    if (isExport) {
-      queueMicrotask(() => {
+    const closeAndRestore = () => {
+      closePopups();
+      queueMicrotask(() => restoreFocus(opener));
+    };
+    queueMicrotask(() => {
+      if (!active) return;
+      if (isExport) {
         exportMenuRef?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-      });
-    }
+      } else {
+        activePopup()?.querySelector<HTMLElement>("button")?.focus();
+      }
+    });
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Node)) return;
@@ -263,12 +283,11 @@ export default function Toolbar(props: ToolbarProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        closePopups();
-        queueMicrotask(() => restoreFocus(opener));
+        closeAndRestore();
         return;
       }
       if (e.key === "Tab") {
-        closePopups();
+        handlePortalPopupTab(e, activePopup(), closeAndRestore, !isExport);
         return;
       }
       if (
@@ -299,6 +318,22 @@ export default function Toolbar(props: ToolbarProps) {
           nextIdx = items.length - 1;
         }
         items[nextIdx]?.focus();
+        return;
+      }
+      if (!isExport) {
+        const popup = activePopup();
+        if (!popup) return;
+        const items = Array.from(popup.querySelectorAll<HTMLElement>("button"));
+        const activeIdx = items.indexOf(document.activeElement as HTMLElement);
+        const nextIdx = getNextColorPopupIndex(e.key, activeIdx, items.length, {
+          columns: 8,
+          resetPosition: "first",
+        });
+        if (nextIdx !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          items[nextIdx]?.focus();
+        }
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -306,6 +341,7 @@ export default function Toolbar(props: ToolbarProps) {
     toolbarRowRef?.addEventListener("scroll", onScrollOrResize, { passive: true });
     globalThis.addEventListener("resize", onScrollOrResize);
     onCleanup(() => {
+      active = false;
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
       toolbarRowRef?.removeEventListener("scroll", onScrollOrResize);
@@ -409,16 +445,6 @@ export default function Toolbar(props: ToolbarProps) {
     }`;
 
   const sep = () => "hidden sm:block w-px h-5 bg-gray-300 dark:bg-neutral-700 mx-0.5 self-center";
-
-  const closePopups = () => {
-    setShowTextColor(false);
-    setShowHighlight(false);
-    setShowLinkInput(false);
-    setLinkError(false);
-    setShowImageInput(false);
-    setImageError(false);
-    setShowExport(false);
-  };
 
   const handleSetLink = () => {
     const url = linkUrl().trim();
@@ -612,10 +638,22 @@ export default function Toolbar(props: ToolbarProps) {
                   onSelect={(c) => {
                     props.editor?.chain().focus().setColor(c).run();
                     setShowTextColor(false);
+                    queueMicrotask(() => {
+                      const active = document.activeElement;
+                      if (!active || active === document.body || !active.isConnected) {
+                        restoreFocus(textColorBtnRef);
+                      }
+                    });
                   }}
                   onClear={() => {
                     props.editor?.chain().focus().unsetColor().run();
                     setShowTextColor(false);
+                    queueMicrotask(() => {
+                      const active = document.activeElement;
+                      if (!active || active === document.body || !active.isConnected) {
+                        restoreFocus(textColorBtnRef);
+                      }
+                    });
                   }}
                 />
               </div>
@@ -661,10 +699,22 @@ export default function Toolbar(props: ToolbarProps) {
                     props.editor?.chain().focus().toggleHighlight({ color: c })
                       .run();
                     setShowHighlight(false);
+                    queueMicrotask(() => {
+                      const active = document.activeElement;
+                      if (!active || active === document.body || !active.isConnected) {
+                        restoreFocus(highlightBtnRef);
+                      }
+                    });
                   }}
                   onClear={() => {
                     props.editor?.chain().focus().unsetHighlight().run();
                     setShowHighlight(false);
+                    queueMicrotask(() => {
+                      const active = document.activeElement;
+                      if (!active || active === document.body || !active.isConnected) {
+                        restoreFocus(highlightBtnRef);
+                      }
+                    });
                   }}
                 />
               </div>
