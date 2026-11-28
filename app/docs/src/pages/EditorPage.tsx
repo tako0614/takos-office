@@ -342,7 +342,7 @@ export default function EditorPage() {
       <header class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shrink-0">
         <button
           type="button"
-          class="flex min-h-9 min-w-9 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => navigate(withCurrentSpaceId("/"))}
           title={t("backToDocuments")}
           aria-label={t("backToDocuments")}
@@ -359,7 +359,7 @@ export default function EditorPage() {
             disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
             aria-label={t("documentTitle")}
-            class="w-full min-w-0 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-500 dark:placeholder-neutral-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
+            class="w-full min-w-0 min-h-10 sm:min-h-8 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-500 dark:placeholder-neutral-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />
         </div>
@@ -386,7 +386,7 @@ export default function EditorPage() {
         </div>
         <button
           type="button"
-          class="flex min-h-9 min-w-9 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={() => setShowShortcuts(true)}
           disabled={recovering()}
           title={t("keyboardShortcuts")}

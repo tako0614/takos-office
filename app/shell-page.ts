@@ -106,8 +106,13 @@ export function renderShellPage(): string {
   }
   [data-theme="dark"] body { background: #0f1115; color: #e5e7eb; }
   a { color: inherit; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
   .skip-link {
     position: absolute; left: -9999px; top: 8px; z-index: 100;
+    display: inline-flex; align-items: center; min-height: 44px;
     padding: 10px 14px; border-radius: 8px; background: #2563eb; color: #fff;
     font-size: 14px; font-weight: 600; text-decoration: none;
   }
@@ -120,7 +125,7 @@ export function renderShellPage(): string {
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; text-decoration: none; }
   .brand .mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#2563eb,#16a34a); }
   .brand b { color: #111827; } .brand span { color: #52525b; font-weight: 500; }
-  .brand:focus-visible, header nav a:focus-visible, .theme-toggle:focus-visible, .lang-toggle:focus-visible, .card-new:focus-visible, li.item a:focus-visible, #retry:focus-visible {
+  .brand:focus-visible, header nav a:focus-visible, .theme-toggle:focus-visible, .lang-toggle:focus-visible, .card-new:focus-visible, li.item a:focus-visible, #retry:focus-visible, #clear-search:focus-visible {
     outline: 2px solid #2563eb; outline-offset: 2px;
   }
   .spacer { flex: 1; }
@@ -142,7 +147,7 @@ export function renderShellPage(): string {
     transition: border-color .15s, box-shadow .15s, transform .1s;
   }
   .card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.07); transform: translateY(-1px); }
-  .card-open-link { display: flex; align-items: flex-start; gap: 12px; text-decoration: none; color: inherit; }
+  .card-open-link { display: flex; flex: 1; align-items: flex-start; gap: 12px; text-decoration: none; color: inherit; }
   .card-open-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
   .card-icon {
     display: flex; align-items: center; justify-content: center;
@@ -192,11 +197,12 @@ export function renderShellPage(): string {
   }
   #load-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
   #partial { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
-  #retry {
+  #retry, #clear-search {
     margin-top: 4px; padding: 8px 14px; font-size: 13px; font-weight: 500;
     border-radius: 8px; border: 1px solid #d1d5db; background: #fff; color: #111827; cursor: pointer;
   }
-  #retry:hover { background: #f3f4f6; }
+  #retry:hover, #clear-search:hover { background: #f3f4f6; }
+  .empty-actions { text-align: center; margin-top: -12px; margin-bottom: 16px; }
   .theme-toggle, .lang-toggle {
     display: inline-flex; align-items: center; justify-content: center;
     height: 34px; border-radius: 8px; border: 1px solid #e5e7eb;
@@ -221,8 +227,8 @@ export function renderShellPage(): string {
   [data-theme="dark"] .item-time, [data-theme="dark"] h2, [data-theme="dark"] .empty, [data-theme="dark"] .loading { color: #a1a1aa; }
   [data-theme="dark"] #load-error { background: rgba(127,29,29,.25); border-color: rgba(248,113,113,.4); color: #fecaca; }
   [data-theme="dark"] #partial { background: rgba(120,53,15,.25); border-color: rgba(251,191,36,.4); color: #fde68a; }
-  [data-theme="dark"] #retry { background: #1b2029; border-color: #374151; color: #f3f4f6; }
-  [data-theme="dark"] #retry:hover { background: #262e3a; }
+  [data-theme="dark"] #retry, [data-theme="dark"] #clear-search { background: #1b2029; border-color: #374151; color: #f3f4f6; }
+  [data-theme="dark"] #retry:hover, [data-theme="dark"] #clear-search:hover { background: #262e3a; }
   @media (max-width: 640px) {
     .cards { grid-template-columns: 1fr; }
     header { flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; }
@@ -234,7 +240,8 @@ export function renderShellPage(): string {
     }
     .theme-toggle { width: 44px; height: 44px; }
     .lang-toggle { min-width: 44px; height: 44px; }
-    .card-new { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 14px; }
+    .card-new { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; }
+    #retry, #clear-search { min-height: 44px; padding: 10px 16px; }
   }
 </style>
 </head>
@@ -262,7 +269,8 @@ export function renderShellPage(): string {
     <h2 id="list-heading">Recent</h2>
     <ul class="items" id="items"></ul>
     <div class="loading" id="loading" role="status" aria-live="polite" data-i18n="loading">Loading…</div>
-    <div class="empty" id="empty" hidden data-i18n="empty">Nothing here yet — open an app above to get started.</div>
+    <div class="empty" id="empty" hidden>Nothing here yet — open an app above to get started.</div>
+    <div class="empty-actions"><button id="clear-search" type="button" hidden data-i18n="clearSearch">Clear search</button></div>
     <div id="load-error" role="alert" hidden data-i18n="loadError">Couldn't load your files. Try again.</div>
     <div id="partial" role="status" hidden data-i18n="partial">Some apps couldn't be loaded. Results may be incomplete.</div>
     <button id="retry" type="button" hidden data-i18n="retry">Try again</button>
@@ -282,6 +290,8 @@ export function renderShellPage(): string {
       results: "Results",
       loading: "Loading…",
       empty: "Nothing here yet — open an app above to get started.",
+      emptySearch: "No matching files found.",
+      clearSearch: "Clear search",
       loadError: "Couldn't load your files. Try again.",
       partial: "Some apps couldn't be loaded. Results may be incomplete.",
       retry: "Try again",
@@ -315,6 +325,8 @@ export function renderShellPage(): string {
       results: "検索結果",
       loading: "読み込み中…",
       empty: "まだファイルはありません。上のアプリから作成してください。",
+      emptySearch: "一致するファイルが見つかりませんでした。",
+      clearSearch: "検索をクリア",
       loadError: "ファイルを読み込めませんでした。もう一度お試しください。",
       partial: "一部のアプリを読み込めませんでした。結果が不完全な場合があります。",
       retry: "再試行",
@@ -373,6 +385,7 @@ export function renderShellPage(): string {
   var itemsEl = document.getElementById("items");
   var loadingEl = document.getElementById("loading");
   var emptyEl = document.getElementById("empty");
+  var clearSearchEl = document.getElementById("clear-search");
   var errorEl = document.getElementById("load-error");
   var partialEl = document.getElementById("partial");
   var retryEl = document.getElementById("retry");
@@ -409,6 +422,7 @@ export function renderShellPage(): string {
       setAttr(langBtn, "title", tr("switchLanguage"));
     }
     headingEl.textContent = tr(currentHeadingKey);
+    emptyEl.textContent = tr(currentHeadingKey === "results" ? "emptySearch" : "empty");
     if (lastData) render(lastData);
   }
 
@@ -454,13 +468,21 @@ export function renderShellPage(): string {
     retryEl.hidden = !incomplete;
     loadingEl.hidden = true;
     itemsEl.innerHTML = "";
-    if (!items.length) { emptyEl.hidden = incomplete; return; }
+    if (!items.length) {
+      emptyEl.textContent = tr(currentHeadingKey === "results" ? "emptySearch" : "empty");
+      emptyEl.hidden = incomplete;
+      if (clearSearchEl) clearSearchEl.hidden = incomplete || currentHeadingKey !== "results";
+      return;
+    }
     emptyEl.hidden = true;
+    if (clearSearchEl) clearSearchEl.hidden = true;
     items.forEach(function (it) {
       var li = document.createElement("li");
       li.className = "item";
+      var appLabel = tr("app." + it.app + ".label");
       li.innerHTML = '<a href="' + withSpace("/" + it.app + "/" + encodeURIComponent(it.id)) + '">' +
         '<span class="badge ' + it.app + '">' + (ICON[it.app] || "") + '</span>' +
+        (appLabel ? '<span class="sr-only">' + esc(appLabel) + ': </span>' : '') +
         '<span class="item-title">' + esc(it.title) + '</span>' +
         '<span class="item-time">' + relTime(it.updatedAt) + '</span></a>';
       itemsEl.appendChild(li);
@@ -473,6 +495,7 @@ export function renderShellPage(): string {
     lastData = null;
     loadingEl.hidden = false;
     emptyEl.hidden = true;
+    if (clearSearchEl) clearSearchEl.hidden = true;
     errorEl.hidden = true;
     partialEl.hidden = true;
     retryEl.hidden = true;
@@ -492,6 +515,7 @@ export function renderShellPage(): string {
       if (sequence !== loadSequence) return;
       loadingEl.hidden = true;
       emptyEl.hidden = true;
+      if (clearSearchEl) clearSearchEl.hidden = true;
       errorEl.hidden = false;
       retryEl.hidden = false;
     });
@@ -510,6 +534,21 @@ export function renderShellPage(): string {
     clearTimeout(timer);
     timer = setTimeout(loadCurrent, 200);
   });
+  input.addEventListener("keydown", function (e) {
+    if (!e || e.isComposing || e.keyCode === 229) return;
+    if (e.key === "Escape" && input.value) {
+      if (typeof e.preventDefault === "function") e.preventDefault();
+      input.value = "";
+      loadCurrent();
+    }
+  });
+  if (clearSearchEl) {
+    clearSearchEl.addEventListener("click", function () {
+      input.value = "";
+      loadCurrent();
+      if (typeof input.focus === "function") input.focus();
+    });
+  }
   retryEl.addEventListener("click", loadCurrent);
 
   applyLanguage(currentLang, false);

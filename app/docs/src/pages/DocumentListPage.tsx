@@ -17,6 +17,7 @@ import { useI18n } from "../i18n";
 import { createDocumentImporter } from "../lib/document-import.ts";
 import { OfficeFileError } from "../../../shared/lib/office-file.ts";
 import { ConfirmDialog } from "../../../shared/components/OfficeDialog";
+import { isImeComposing } from "../../../shared/lib/dialog-a11y";
 
 export default function DocumentListPage() {
   const navigate = useNavigate();
@@ -33,6 +34,7 @@ export default function DocumentListPage() {
   const [imported, setImported] = createSignal<{document: Document; hasUnsupportedContent: boolean} | null>(null);
   const importer = createDocumentImporter();
   let fileInput!: HTMLInputElement;
+  let searchInputRef: HTMLInputElement | undefined;
   let viewGeneration = 0, importGeneration = 0;
 
   const cancelImport = () => {
@@ -166,12 +168,20 @@ export default function DocumentListPage() {
                 class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-neutral-400 pointer-events-none"
               />
               <input
-                type="text"
+                ref={searchInputRef}
+                type="search"
                 placeholder={t("searchDocuments")}
                 aria-label={t("searchDocuments")}
                 value={search()}
                 onInput={(e) => setSearch(e.currentTarget.value)}
-                class="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-neutral-800 rounded-lg text-sm text-gray-800 dark:text-neutral-100 placeholder-gray-500 dark:placeholder-neutral-400 outline-none focus:bg-white dark:focus:bg-neutral-800 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
+                onKeyDown={(e) => {
+                  if (isImeComposing(e)) return;
+                  if (e.key === "Escape" && search()) {
+                    e.preventDefault();
+                    setSearch("");
+                  }
+                }}
+                class="w-full min-h-11 sm:min-h-9 pl-10 pr-4 py-2 bg-gray-100 dark:bg-neutral-800 rounded-lg text-sm text-gray-800 dark:text-neutral-100 placeholder-gray-500 dark:placeholder-neutral-400 outline-none focus:bg-white dark:focus:bg-neutral-800 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 border border-transparent transition-all"
               />
             </div>
           </div>
@@ -289,8 +299,11 @@ export default function DocumentListPage() {
                       </p>
                       <button
                         type="button"
-                        class="rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
-                        onClick={() => setSearch("")}
+                        class="min-h-11 sm:min-h-8 rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                        onClick={() => {
+                          setSearch("");
+                          queueMicrotask(() => searchInputRef?.focus());
+                        }}
                       >
                         {t("clearSearch")}
                       </button>

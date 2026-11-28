@@ -31,6 +31,7 @@ import {
   getArrowNudgeDelta,
   handleModalKeyDown,
   isImeComposing,
+  isInteractiveShortcutTarget,
   isRedoKeyEvent,
   isUndoKeyEvent,
   isValidHttpUrl,
@@ -64,6 +65,7 @@ export default function EditorPage() {
   let mobilePanelButton: HTMLButtonElement | undefined;
   let textEditorDialogRef: HTMLDivElement | undefined;
   let textEditorPreviouslyFocused: HTMLElement | null = null;
+  let textEditorPointerDownOnBackdrop = false;
   let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 
   const announceStatus = (message: string) => {
@@ -487,8 +489,28 @@ export default function EditorPage() {
       return;
     }
 
+    if (
+      e.key === "Enter" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      !isInteractiveShortcutTarget(e.target)
+    ) {
+      const el = selectedElement();
+      if (el && el.type === "text") {
+        e.preventDefault();
+        handleEditText(el.id);
+        return;
+      }
+    }
+
     if (e.key === "Delete" || e.key === "Backspace") {
-      handleDelete();
+      if (selectedElementId()) {
+        e.preventDefault();
+        handleDelete();
+        announceStatus(t("elementDeleted"));
+      }
     }
     if (isUndoKeyEvent(e)) {
       e.preventDefault();
@@ -647,14 +669,22 @@ export default function EditorPage() {
               <Show when={el()}>
                 <div
                   class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-                  onClick={closeTextEditor}
+                  onPointerDown={(e) => {
+                    textEditorPointerDownOnBackdrop = e.target === e.currentTarget;
+                  }}
+                  onClick={(e) => {
+                    const started = textEditorPointerDownOnBackdrop;
+                    textEditorPointerDownOnBackdrop = false;
+                    if (started && e.target === e.currentTarget) closeTextEditor();
+                  }}
                 >
                   <div
                     ref={textEditorDialogRef}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="edit-text-dialog-title"
-                    class="w-full max-w-md bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-4 border shadow-xl"
+                    tabIndex={-1}
+                    class="w-full max-w-md bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-600 rounded-lg p-4 border shadow-xl outline-none"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3
@@ -744,7 +774,7 @@ export default function EditorPage() {
         />
 
         {/* Bottom bar */}
-        <div class="h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">
+        <div class="min-h-10 sm:h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">
           <span>
             {t("slideCount", {
               current: selectedSlideIndex() + 1,
@@ -754,7 +784,7 @@ export default function EditorPage() {
           <span class="mx-2">|</span>
           <button
             type="button"
-            class="hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            class="inline-flex min-h-10 sm:min-h-6 items-center px-1 hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
             aria-label={t("backToList")}
             onClick={() => navigate(withCurrentSpaceId("/"))}
           >

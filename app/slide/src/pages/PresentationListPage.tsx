@@ -42,6 +42,7 @@ export default function PresentationListPage() {
   const [imported, setImported] = createSignal<{presentation: Presentation; hasUnsupportedContent: boolean} | null>(null);
   const importer = createPresentationImporter();
   let importGeneration = 0, fileInput!: HTMLInputElement;
+  let searchInputRef: HTMLInputElement | undefined;
   const cancelImport = () => {importGeneration++;importer.retire();setImporting(false);setImportSaving(false);};
   onCleanup(() => importer.retire());
   const [creationFailures, setCreationFailures] = createSignal(new Set<string>());
@@ -69,6 +70,7 @@ export default function PresentationListPage() {
   };
   const { t, language } = useI18n();
   const [presentations, setPresentations] = createSignal<Presentation[]>([]);
+  const [search, setSearch] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
@@ -79,6 +81,14 @@ export default function PresentationListPage() {
   let dialogRef: HTMLDivElement | undefined;
   let dialogInputRef: HTMLInputElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
+  let pointerDownOnBackdrop = false;
+
+  const filteredPresentations = createMemo(() => {
+    const q = search().trim().toLowerCase();
+    const list = presentations();
+    if (!q) return list;
+    return list.filter((p) => p.title.toLowerCase().includes(q));
+  });
 
   createEffect(() => {
     void language();
@@ -87,17 +97,22 @@ export default function PresentationListPage() {
 
   createEffect(() => {
     if (!showNewDialog()) return;
+    pointerDownOnBackdrop = false;
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const releaseScrollLock = acquireModalScrollLock();
-    queueMicrotask(() => dialogInputRef?.focus());
+    queueMicrotask(() => {
+      dialogInputRef?.focus();
+      dialogInputRef?.select();
+    });
     const onKeyDown = (event: KeyboardEvent) =>
       handleModalKeyDown(event, dialogRef, () => setShowNewDialog(false));
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     onCleanup(() => {
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       releaseScrollLock();
-      restoreFocus(previouslyFocused);
+      const prev = previouslyFocused;
       previouslyFocused = null;
+      queueMicrotask(() => restoreFocus(prev));
     });
   });
 
@@ -236,7 +251,7 @@ export default function PresentationListPage() {
             <ThemeToggle t={t} />
             <button
               type="button"
-              class="whitespace-nowrap bg-blue-600 hover:bg-blue-500 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+              class="min-h-11 sm:min-h-9 whitespace-nowrap bg-blue-600 hover:bg-blue-500 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
               disabled={creating() || importing() || !!creationError()}
               onClick={openNewDialog}
             >
@@ -249,11 +264,12 @@ export default function PresentationListPage() {
       {/* Content */}
       <main id="main" tabIndex={-1} class="max-w-6xl mx-auto px-4 sm:px-6 py-8 outline-none">
         <h1 class="sr-only">Takos {t("officeSlides")}</h1>
-        <div class="mb-6 flex flex-col items-start gap-2">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="flex flex-col items-start gap-2">
           <input ref={fileInput} type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden" aria-label={t("importPptx")}
             onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
           <button type="button" disabled={creating() || importing() || !!creationError()} onClick={() => fileInput.click()}
-            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800">{t("importPptx")}</button>
+            class="min-h-11 sm:min-h-9 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800">{t("importPptx")}</button>
           <p class="max-w-xl text-xs text-gray-500 dark:text-gray-400">{t("fileImportHelp")}</p>
           <Show when={importing()}><div role="status" aria-busy="true" class="text-sm text-gray-700 dark:text-gray-200">
             {t(importSaving() ? "importSaving" : "importing")}
@@ -264,6 +280,25 @@ export default function PresentationListPage() {
             <p>{t(result().hasUnsupportedContent ? "fileFormattingWarning" : "importComplete")}</p>
             <button type="button" class="mt-2 text-blue-700 underline dark:text-blue-300" onClick={() => navigate(withCurrentSpaceId(`/${result().presentation.id}`))}>{t("openImportedPresentation")}</button>
           </div>}</Show>
+        </div>
+        <div class="w-full sm:w-64 shrink-0">
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={search()}
+            onInput={(e) => setSearch(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
+              if (e.key === "Escape" && search()) {
+                e.preventDefault();
+                setSearch("");
+              }
+            }}
+            placeholder={t("searchPresentations")}
+            aria-label={t("searchPresentations")}
+            class="w-full min-h-11 sm:min-h-9 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
+          />
+        </div>
         </div>
         <Show when={deleteError()}>
           <div role="alert" class="mb-4 rounded-lg border border-amber-300 p-3 text-sm dark:text-gray-100">
@@ -327,31 +362,52 @@ export default function PresentationListPage() {
         </Show>
 
         <Show
-          when={presentations().length > 0}
+          when={filteredPresentations().length > 0}
           fallback={
             <Show when={!isLoading() && !loadError()}>
-              <div class="text-center py-24">
-                <div class="text-6xl mb-4 text-gray-300 dark:text-gray-600">&#9657;</div>
-                <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  {t("noPresentationsTitle")}
-                </h2>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                  {t("noPresentationsDescription")}
-                </p>
-                <button
-                  type="button"
-                  class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
-                  disabled={creating() || importing() || !!creationError()}
-                  onClick={openNewDialog}
-                >
-                  {t("createPresentation")}
-                </button>
-              </div>
+              <Show
+                when={presentations().length === 0}
+                fallback={
+                  <div class="flex flex-col items-center justify-center py-16 text-center">
+                    <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+                      {t("noMatchingPresentations")}
+                    </p>
+                    <button
+                      type="button"
+                      class="min-h-11 sm:min-h-8 rounded-md border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => {
+                        setSearch("");
+                        queueMicrotask(() => searchInputRef?.focus());
+                      }}
+                    >
+                      {t("clearSearch")}
+                    </button>
+                  </div>
+                }
+              >
+                <div class="text-center py-24">
+                  <div class="text-6xl mb-4 text-gray-300 dark:text-gray-600">&#9657;</div>
+                  <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    {t("noPresentationsTitle")}
+                  </h2>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                    {t("noPresentationsDescription")}
+                  </p>
+                  <button
+                    type="button"
+                    class="min-h-11 sm:min-h-10 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+                    disabled={creating() || importing() || !!creationError()}
+                    onClick={openNewDialog}
+                  >
+                    {t("createPresentation")}
+                  </button>
+                </div>
+              </Show>
             </Show>
           }
         >
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            <For each={presentations()}>
+            <For each={filteredPresentations()}>
               {(pres) => (
                 <PresentationCard
                   presentation={pres}
@@ -368,14 +424,22 @@ export default function PresentationListPage() {
       <Show when={showNewDialog()}>
         <div
           class="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
-          onClick={() => setShowNewDialog(false)}
+          onPointerDown={(e) => {
+            pointerDownOnBackdrop = e.target === e.currentTarget;
+          }}
+          onClick={(e) => {
+            const started = pointerDownOnBackdrop;
+            pointerDownOnBackdrop = false;
+            if (started && e.target === e.currentTarget) setShowNewDialog(false);
+          }}
         >
           <div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-presentation-dialog-title"
-            class="bg-white border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl"
+            tabIndex={-1}
+            class="bg-white border border-gray-200 dark:bg-gray-800 dark:border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             <h2

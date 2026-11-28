@@ -21,6 +21,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
   let dialogRef: HTMLDivElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
   let releaseScrollLock: (() => void) | undefined;
+  let pointerDownOnBackdrop = false;
 
   const shortcuts: { labelKey: Parameters<typeof t>[0]; keysKey: Parameters<typeof t>[0] }[] = [
     { labelKey: "shortcutNavigate", keysKey: "shortcutNavigateKeys" },
@@ -55,14 +56,22 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
     document.removeEventListener("keydown", handleKeyDown, true);
     releaseScrollLock?.();
     releaseScrollLock = undefined;
-    restoreFocus(previouslyFocused);
+    const prev = previouslyFocused;
     previouslyFocused = null;
+    queueMicrotask(() => restoreFocus(prev));
   });
 
   return (
     <div
       class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
-      onClick={() => props.onClose()}
+      onPointerDown={(e) => {
+        pointerDownOnBackdrop = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        const started = pointerDownOnBackdrop;
+        pointerDownOnBackdrop = false;
+        if (started && e.target === e.currentTarget) props.onClose();
+      }}
     >
       <div
         ref={dialogRef}
@@ -79,7 +88,7 @@ export const ShortcutsHelp: Component<ShortcutsHelpProps> = (props) => {
           </h2>
           <button
             type="button"
-            class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            class="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             onClick={() => props.onClose()}
             aria-label={t("shortcutsClose")}
             title={t("shortcutsClose")}

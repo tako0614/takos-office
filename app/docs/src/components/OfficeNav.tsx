@@ -39,7 +39,7 @@ export default function OfficeNav() {
       {/* Brand → Office shell (home, NOT the docs list) */}
       <a
         href={withCurrentSpaceId("/")}
-        class="flex items-center gap-2.5 mr-1 rounded-lg px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+        class="flex min-h-11 min-w-11 sm:min-h-9 sm:min-w-0 items-center justify-center gap-2.5 mr-1 rounded-lg px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
         title={t("openOffice")}
         aria-label={t("openOffice")}
       >
@@ -63,7 +63,7 @@ export default function OfficeNav() {
                 href={withCurrentSpaceId(app.href)}
                 aria-current={active ? "page" : undefined}
                 title={t(app.labelKey)}
-                class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                class="flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
                 classList={{
                   "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300":
                     active,

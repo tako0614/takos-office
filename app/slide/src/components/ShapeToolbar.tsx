@@ -30,7 +30,7 @@ function ToolButton(props: {
   return (
     <button
       type="button"
-      class="shrink-0 whitespace-nowrap min-h-9 sm:min-h-7 px-3 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      class="shrink-0 whitespace-nowrap min-h-10 sm:min-h-7 px-3 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       classList={{
         "bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200":
           variant() === "default",
@@ -53,7 +53,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
     <div class="min-h-12 shrink-0 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-wrap items-center px-3 sm:px-4 py-2 gap-1.5 sm:gap-2">
       {/* Title */}
       <input
-        class="bg-transparent text-sm font-semibold text-gray-900 dark:text-gray-100 border-none outline-none hover:bg-gray-100 focus:bg-gray-100 dark:hover:bg-gray-700 dark:focus:bg-gray-700 px-2 py-1 rounded min-w-0 w-full sm:w-48 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500"
+        class="min-h-10 sm:min-h-7 bg-transparent text-sm font-semibold text-gray-900 dark:text-gray-100 border-none outline-none hover:bg-gray-100 focus:bg-gray-100 dark:hover:bg-gray-700 dark:focus:bg-gray-700 px-2 py-1 rounded min-w-0 w-full sm:w-48 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500"
         value={props.presentationTitle}
         aria-label={t("presentationTitleLabel")}
         onInput={(e) => props.onTitleChange(e.currentTarget.value)}
@@ -109,7 +109,7 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
       <ThemeToggle t={t} />
       <button
         type="button"
-        class="flex h-9 w-9 sm:h-7 sm:w-7 items-center justify-center rounded-full text-sm font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
+        class="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-full text-sm font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
         onClick={() => props.onShowHelp()}
         title={t("shortcutsTitle")}
         aria-label={t("shortcutsHelpButton")}

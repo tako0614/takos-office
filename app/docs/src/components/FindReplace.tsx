@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import type { Editor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
-import { isImeComposing } from "../../../shared/lib/dialog-a11y";
+import { isImeComposing, restoreFocus } from "../../../shared/lib/dialog-a11y";
 import {
   findMatches,
   type MatchRange,
@@ -75,6 +75,8 @@ export default function FindReplace(props: FindReplaceProps) {
   const [activeIndex, setActiveIndex] = createSignal(-1);
 
   let findInputRef: HTMLInputElement | undefined;
+  let opener: HTMLElement | null = null;
+  let wasOpen = false;
   let pluginActive = false;
 
   const removePlugin = () => {
@@ -198,35 +200,64 @@ export default function FindReplace(props: FindReplaceProps) {
   };
 
   // Focus the find field when the panel opens; seed from the current selection.
+  // Only track `props.open` so typing/navigating matches never re-selects the
+  // input or overwrites the captured opener.
   createEffect(() => {
     if (!props.open) return;
-    const editor = props.editor;
-    if (editor && !editor.isDestroyed) {
-      const { from, to } = editor.state.selection;
-      const selected = editor.state.doc.textBetween(from, to);
-      if (selected && !selected.includes("\n")) setQuery(selected);
-    }
+    wasOpen = true;
+    opener = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    untrack(() => {
+      const editor = props.editor;
+      if (editor && !editor.isDestroyed) {
+        const { from, to } = editor.state.selection;
+        const selected = editor.state.doc.textBetween(from, to);
+        if (selected && !selected.includes("\n")) setQuery(selected);
+      }
+    });
     queueMicrotask(() => {
       findInputRef?.focus();
       findInputRef?.select();
     });
-    recompute(false);
   });
 
-  // Clear highlights when the panel closes.
+  // Clear highlights and restore focus when the panel closes.
   createEffect(() => {
     if (!props.open) {
       setMatches([]);
       setActiveIndex(-1);
-      removePlugin();
+      untrack(() => removePlugin());
+      if (wasOpen) {
+        wasOpen = false;
+        const prev = opener;
+        opener = null;
+        queueMicrotask(() => {
+          const editor = untrack(() => props.editor);
+          if (
+            editor &&
+            !editor.isDestroyed &&
+            (!prev || prev.closest(".tiptap"))
+          ) {
+            editor.commands.focus();
+          } else {
+            restoreFocus(prev);
+          }
+        });
+      }
     }
   });
 
-  // Re-run search when the query or case-sensitivity toggles.
+  // Re-run search when the panel opens, editor attaches, query changes, or
+  // case-sensitivity toggles (untracking activeIndex inside recompute).
   createEffect(() => {
+    const isOpen = props.open;
+    const editor = props.editor;
     query();
     caseSensitive();
-    if (props.open) recompute(false);
+    if (isOpen && editor) {
+      untrack(() => recompute(false));
+    }
   });
 
   onCleanup(removePlugin);
@@ -271,14 +302,19 @@ export default function FindReplace(props: FindReplaceProps) {
             aria-label={t("find")}
             class="w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
-          <span class="text-xs text-gray-500 dark:text-neutral-400 min-w-12 tabular-nums">
+          <span
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            class="text-xs text-gray-500 dark:text-neutral-400 min-w-12 tabular-nums"
+          >
             {counterLabel()}
           </span>
         </div>
 
         <button
           type="button"
-          class={`p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+          class={`inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
             caseSensitive()
               ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
               : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -293,7 +329,7 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
+          class="inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={goPrevious}
           disabled={matches().length === 0}
           title={t("previousMatch")}
@@ -303,7 +339,7 @@ export default function FindReplace(props: FindReplaceProps) {
         </button>
         <button
           type="button"
-          class="p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
+          class="inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded text-gray-600 dark:text-neutral-300 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={goNext}
           disabled={matches().length === 0}
           title={t("nextMatch")}
@@ -331,7 +367,7 @@ export default function FindReplace(props: FindReplaceProps) {
         />
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
+          class="min-h-11 sm:min-h-7 px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={replaceCurrent}
           disabled={matches().length === 0}
         >
@@ -339,7 +375,7 @@ export default function FindReplace(props: FindReplaceProps) {
         </button>
         <button
           type="button"
-          class="px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
+          class="min-h-11 sm:min-h-7 px-3 py-1.5 text-gray-700 dark:text-neutral-200 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40"
           onClick={replaceAll}
           disabled={matches().length === 0}
         >
@@ -348,7 +384,7 @@ export default function FindReplace(props: FindReplaceProps) {
 
         <button
           type="button"
-          class="ml-auto p-1.5 rounded text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="ml-auto inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={props.onClose}
           title={t("closeFind")}
           aria-label={t("closeFind")}

@@ -190,6 +190,8 @@ export const EditorPage: Component = () => {
     // A reload or explicit save recovery starts from the adopted workbook.
     history.reset(view);
     setSpreadsheet(view);
+    const active = view.sheets.find((s) => s.id === view.activeSheetId) ?? view.sheets[0];
+    setEditValue(active?.cells[selectedCell()]?.value ?? "");
     refreshUndoRedo();
   };
 
@@ -613,7 +615,7 @@ export const EditorPage: Component = () => {
     // Tab navigation is not an edit and must not consume Undo or erase Redo.
     save(updated, false);
     setSelectedCell("A1");
-    setEditValue("");
+    setEditValue(newSheet?.cells.A1?.value ?? "");
     setIsEditing(false);
     setEditingInFormulaBar(false);
     refreshUndoRedo();
@@ -656,7 +658,7 @@ export const EditorPage: Component = () => {
       const draft = getSpreadsheet(ss.id);
       if (draft) setSpreadsheet(draft);
       setSelectedCell("A1");
-      setEditValue("");
+      setEditValue(activeSheet()?.cells.A1?.value ?? "");
     }
   };
 
@@ -709,7 +711,7 @@ export const EditorPage: Component = () => {
               <OfficeNav />
               <button
                 type="button"
-                class="flex h-9 w-9 sm:h-7 sm:w-7 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                class="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
                 onClick={() => setShowShortcuts(true)}
                 aria-label={t("shortcutsOpen")}
                 title={t("shortcutsOpen")}
@@ -788,6 +790,7 @@ export const EditorPage: Component = () => {
               onApplyFilter={handleApplyFilter}
               onClearFilter={handleClearFilter}
               filterActive={!!activeSheet()?.filter}
+              filterQuery={activeSheet()?.filter?.query ?? ""}
             />
 
             {/* Formula Bar */}

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../shared";
 
 /* Drive Tailwind's `dark:` variant from `<html data-theme="dark">` (set by
    lib/theme.ts) instead of the OS `prefers-color-scheme`, so the in-app toggle

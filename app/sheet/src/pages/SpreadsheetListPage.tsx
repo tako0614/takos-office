@@ -41,6 +41,7 @@ export const SpreadsheetListPage: Component = () => {
   const [imported, setImported] = createSignal<{spreadsheet: Spreadsheet;hasUnsupportedContent: boolean} | null>(null);
   const importer = createSpreadsheetImporter();
   let importGeneration = 0, fileInput!: HTMLInputElement;
+  let searchInputRef: HTMLInputElement | undefined;
   const cancelImport = () => { importGeneration++;importer.retire();setImporting(false);setImportSaving(false); };
   onCleanup(() => importer.retire());
 
@@ -69,6 +70,7 @@ export const SpreadsheetListPage: Component = () => {
   };
   const { t, language } = useI18n();
   const [spreadsheets, setSpreadsheets] = createSignal<Spreadsheet[]>([]);
+  const [search, setSearch] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal("");
@@ -80,6 +82,14 @@ export const SpreadsheetListPage: Component = () => {
   let dialogRef: HTMLDivElement | undefined;
   let dialogInputRef: HTMLInputElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
+  let pointerDownOnBackdrop = false;
+
+  const filteredSpreadsheets = createMemo(() => {
+    const q = search().trim().toLowerCase();
+    const list = spreadsheets();
+    if (!q) return list;
+    return list.filter((ss) => ss.title.toLowerCase().includes(q));
+  });
 
   createEffect(() => {
     void language();
@@ -88,17 +98,19 @@ export const SpreadsheetListPage: Component = () => {
 
   createEffect(() => {
     if (!showNewDialog()) return;
+    pointerDownOnBackdrop = false;
     previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const releaseScrollLock = acquireModalScrollLock();
     queueMicrotask(() => dialogInputRef?.focus());
     const onKeyDown = (event: KeyboardEvent) =>
       handleModalKeyDown(event, dialogRef, () => setShowNewDialog(false));
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     onCleanup(() => {
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       releaseScrollLock();
-      restoreFocus(previouslyFocused);
+      const prev = previouslyFocused;
       previouslyFocused = null;
+      queueMicrotask(() => restoreFocus(prev));
     });
   });
 
@@ -236,7 +248,7 @@ export const SpreadsheetListPage: Component = () => {
             <LanguageSwitcher />
             <button
               type="button"
-              class="flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-700 px-3 sm:px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
+              class="min-h-11 sm:min-h-9 flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-700 px-3 sm:px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
               disabled={creating() || importing() || !!creationError()}
               onClick={() => setShowNewDialog(true)}
             >
@@ -262,11 +274,12 @@ export const SpreadsheetListPage: Component = () => {
 
       {/* Content */}
       <main id="main" tabIndex={-1} class="mx-auto max-w-5xl px-4 sm:px-6 py-6 outline-none">
-        <div class="mb-6 flex flex-col items-start gap-2">
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="flex flex-col items-start gap-2">
           <input ref={fileInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" aria-label={t("importXlsx")}
             onChange={(event) => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file)void handleImport(file);}} />
           <button type="button" disabled={creating() || importing() || !!creationError()} onClick={() => fileInput.click()}
-            class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-800">{t("importXlsx")}</button>
+            class="min-h-11 sm:min-h-9 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-neutral-600 dark:text-neutral-100 dark:hover:bg-neutral-800">{t("importXlsx")}</button>
           <p class="max-w-xl text-xs text-gray-500 dark:text-neutral-400">{t("fileImportHelp")}</p>
           <Show when={importing()}><div role="status" aria-busy="true" class="text-sm text-gray-700 dark:text-neutral-200">
             {t(importSaving() ? "importSaving" : "importing")}
@@ -277,6 +290,25 @@ export const SpreadsheetListPage: Component = () => {
             <p>{t(result().hasUnsupportedContent ? "fileFormattingWarning" : "importComplete")}</p>
             <button type="button" class="mt-2 text-emerald-700 underline dark:text-emerald-300" onClick={() => navigate(withCurrentSpaceId(`/${result().spreadsheet.id}`))}>{t("openImportedSpreadsheet")}</button>
           </div>}</Show>
+        </div>
+        <div class="w-full sm:w-64 shrink-0">
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={search()}
+            onInput={(e) => setSearch(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
+              if (e.key === "Escape" && search()) {
+                e.preventDefault();
+                setSearch("");
+              }
+            }}
+            placeholder={t("searchSpreadsheets")}
+            aria-label={t("searchSpreadsheets")}
+            class="w-full min-h-11 sm:min-h-9 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder-neutral-400"
+          />
+        </div>
         </div>
 
         <Show when={deleting().size > 0}><p role="status" class="mb-3 text-sm">{t("deletePending")}</p></Show>
@@ -342,57 +374,78 @@ export const SpreadsheetListPage: Component = () => {
 
         <Show when={!isLoading()}>
         <Show
-          when={spreadsheets().length > 0}
+          when={filteredSpreadsheets().length > 0}
           fallback={
             <Show when={!isLoading() && !loadError()}>
-              <div class="flex flex-col items-center justify-center py-24 text-center">
-                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-neutral-800">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="text-gray-400 dark:text-neutral-400"
+              <Show
+                when={spreadsheets().length === 0}
+                fallback={
+                  <div class="flex flex-col items-center justify-center py-16 text-center">
+                    <p class="text-sm text-gray-600 dark:text-neutral-300 mb-3">
+                      {t("noMatchingSpreadsheets")}
+                    </p>
+                    <button
+                      type="button"
+                      class="min-h-11 sm:min-h-8 rounded-md border border-gray-300 dark:border-neutral-600 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+                      onClick={() => {
+                        setSearch("");
+                        queueMicrotask(() => searchInputRef?.focus());
+                      }}
+                    >
+                      {t("clearSearch")}
+                    </button>
+                  </div>
+                }
+              >
+                <div class="flex flex-col items-center justify-center py-24 text-center">
+                  <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-neutral-800">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="32"
+                      height="32"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-gray-400 dark:text-neutral-400"
+                    >
+                      <rect
+                        x="3"
+                        y="3"
+                        width="18"
+                        height="18"
+                        rx="2"
+                        ry="2"
+                      />
+                      <line x1="3" y1="9" x2="21" y2="9" />
+                      <line x1="3" y1="15" x2="21" y2="15" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <line x1="15" y1="3" x2="15" y2="21" />
+                    </svg>
+                  </div>
+                  <h2 class="mb-2 text-lg font-semibold text-gray-800 dark:text-neutral-200">
+                    {t("noSpreadsheetsTitle")}
+                  </h2>
+                  <p class="mb-6 text-sm text-gray-600 dark:text-neutral-400">
+                    {t("noSpreadsheetsDescription")}
+                  </p>
+                  <button
+                    type="button"
+                    class="min-h-11 sm:min-h-10 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-600"
+                    disabled={creating() || importing() || !!creationError()}
+                    onClick={() => setShowNewDialog(true)}
                   >
-                    <rect
-                      x="3"
-                      y="3"
-                      width="18"
-                      height="18"
-                      rx="2"
-                      ry="2"
-                    />
-                    <line x1="3" y1="9" x2="21" y2="9" />
-                    <line x1="3" y1="15" x2="21" y2="15" />
-                    <line x1="9" y1="3" x2="9" y2="21" />
-                    <line x1="15" y1="3" x2="15" y2="21" />
-                  </svg>
+                    {t("createSpreadsheet")}
+                  </button>
                 </div>
-                <h2 class="mb-2 text-lg font-semibold text-gray-800 dark:text-neutral-200">
-                  {t("noSpreadsheetsTitle")}
-                </h2>
-                <p class="mb-6 text-sm text-gray-600 dark:text-neutral-400">
-                  {t("noSpreadsheetsDescription")}
-                </p>
-                <button
-                  type="button"
-                  class="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-600"
-                  disabled={creating() || importing() || !!creationError()}
-                  onClick={() => setShowNewDialog(true)}
-                >
-                  {t("createSpreadsheet")}
-                </button>
-              </div>
+              </Show>
             </Show>
           }
         >
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <For each={spreadsheets()}>
+            <For each={filteredSpreadsheets()}>
               {(ss) => (
                 <SpreadsheetCard
                   spreadsheet={ss}
@@ -410,14 +463,22 @@ export const SpreadsheetListPage: Component = () => {
       <Show when={showNewDialog()}>
         <div
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 dark:bg-black/60"
-          onClick={() => setShowNewDialog(false)}
+          onPointerDown={(e) => {
+            pointerDownOnBackdrop = e.target === e.currentTarget;
+          }}
+          onClick={(e) => {
+            const started = pointerDownOnBackdrop;
+            pointerDownOnBackdrop = false;
+            if (started && e.target === e.currentTarget) setShowNewDialog(false);
+          }}
         >
           <div
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-spreadsheet-dialog-title"
-            class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-neutral-700 dark:bg-neutral-800"
+            tabIndex={-1}
+            class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-2xl outline-none dark:border-neutral-700 dark:bg-neutral-800"
             onClick={(e) => e.stopPropagation()}
           >
             <h2

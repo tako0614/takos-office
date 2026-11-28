@@ -10,6 +10,7 @@ import {
 import { resizeRotatedBox } from "../lib/geometry";
 
 import { logicalSlideSize } from "../../../shared/lib/slide-size.ts";
+import { useI18n } from "../i18n";
 
 interface SlideCanvasProps {
   slide: Slide;
@@ -21,6 +22,7 @@ interface SlideCanvasProps {
 }
 
 export default function SlideCanvas(props: SlideCanvasProps) {
+  const { t } = useI18n();
   let canvasRef: HTMLCanvasElement | undefined;
   let containerRef: HTMLDivElement | undefined;
   const [canvasSize, setCanvasSize] = createSignal({ w: 960, h: 540 });
@@ -204,7 +206,10 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     >
       <canvas
         ref={canvasRef}
-        class="shadow-2xl rounded-lg cursor-default"
+        tabIndex={0}
+        role="img"
+        aria-label={t("slideCanvasLabel")}
+        class="shadow-2xl rounded-lg cursor-default outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         style={{
           "max-width": "100%",
           "max-height": "100%",
