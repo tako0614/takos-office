@@ -306,6 +306,11 @@ context. The module injects them into the Worker as
 `APP_WORKSPACE_ID` and `APP_CAPSULE_ID` (and keeps `TAKOS_SPACE_ID` for the storage namespace). Interface ids and
 resolved revisions do not exist until after apply, so they are deliberately not module variables or Worker env.
 
+Selecting the Cloudflare option in Takosumi includes the Office Worker in
+the plan. Review the plan before applying. For standalone OpenTofu usage,
+set both `enable_cloudflare_resources` and `enable_cloudflare_worker_script`
+to `true` to deploy the Worker.
+
 ### MCP authentication
 
 Managed `/mcp` calls use short-lived InterfaceBinding OAuth credentials with the exact `mcp.invoke` permission and

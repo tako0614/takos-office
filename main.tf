@@ -18,9 +18,9 @@ terraform {
 }
 
 variable "enable_cloudflare_resources" {
-  description = "Provision Takos Office Cloudflare backing resources with the existing cloudflare/cloudflare provider."
+  description = "Provision Cloudflare resources. When omitted, use the Takosumi-managed install context to decide."
   type        = bool
-  default     = false
+  default     = null
 }
 
 variable "cloudflare_account_id" {
@@ -29,8 +29,8 @@ variable "cloudflare_account_id" {
   default     = ""
 
   validation {
-    condition     = !var.enable_cloudflare_resources || trimspace(var.cloudflare_account_id) != ""
-    error_message = "cloudflare_account_id is required when enable_cloudflare_resources is true."
+    condition     = !local.cloudflare_resources_enabled || trimspace(var.cloudflare_account_id) != ""
+    error_message = "cloudflare_account_id is required when Cloudflare resources are enabled."
   }
 }
 
@@ -197,9 +197,9 @@ variable "env" {
 }
 
 variable "enable_cloudflare_worker_script" {
-  description = "Deploy the Takos Office Worker script, bindings, route, and optional workers.dev enablement through OpenTofu."
+  description = "Deploy the Takos Office Worker. When omitted, use the Takosumi-managed install context to decide."
   type        = bool
-  default     = false
+  default     = null
 }
 
 variable "worker_bundle_path" {
@@ -295,8 +295,9 @@ variable "worker_compatibility_flags" {
 }
 
 locals {
-  cloudflare_resources_enabled = var.enable_cloudflare_resources
-  cloudflare_worker_enabled    = local.cloudflare_resources_enabled && var.enable_cloudflare_worker_script
+  managed_cloudflare_install   = trimspace(var.app_capsule_id) != "" && trimspace(var.takosumi_accounts_url) != ""
+  cloudflare_resources_enabled = coalesce(var.enable_cloudflare_resources, local.managed_cloudflare_install)
+  cloudflare_worker_enabled    = local.cloudflare_resources_enabled && coalesce(var.enable_cloudflare_worker_script, local.managed_cloudflare_install)
   cloudflare_route_enabled     = local.cloudflare_worker_enabled && trimspace(var.cloudflare_route_zone_id) != "" && trimspace(var.cloudflare_route_pattern) != ""
 
   worker_release_lock              = jsondecode(file("${path.module}/release.lock.json"))
@@ -398,6 +399,13 @@ resource "random_id" "app_session_secret" {
 
   keepers = {
     project_name = local.resource_prefix
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !local.managed_cloudflare_install || local.cloudflare_worker_enabled
+      error_message = "A Takosumi Cloudflare install must deploy the Office Worker. Remove any false enable_cloudflare_resources or enable_cloudflare_worker_script override and review the new plan."
+    }
   }
 }
 
