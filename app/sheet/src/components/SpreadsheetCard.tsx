@@ -85,7 +85,7 @@ export const SpreadsheetCard: Component<SpreadsheetCardProps> = (props) => {
       {/* Delete button */}
       <button
         type="button"
-        class="absolute top-3 right-3 rounded-md p-2 text-gray-500 opacity-80 sm:opacity-0 transition-opacity hover:bg-gray-100 hover:text-red-600 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-red-400"
+        class="absolute top-3 right-3 inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-md p-2 text-gray-500 opacity-80 sm:opacity-0 transition-opacity hover:bg-gray-100 hover:text-red-600 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-red-400"
         onClick={props.onDelete}
         title={t("deleteSpreadsheetTitle")}
         aria-label={`${t("deleteSpreadsheetTitle")}: ${props.spreadsheet.title}`}

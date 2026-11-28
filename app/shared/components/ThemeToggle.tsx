@@ -19,7 +19,7 @@ export default function ThemeToggle(props: { t: ThemeToggleI18n }) {
   return (
     <button
       type="button"
-      class="p-1.5 rounded-full text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      class="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center p-1.5 rounded-full text-gray-500 hover:bg-gray-100 dark:text-neutral-400 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       onClick={toggleTheme}
       title={props.t("toggleTheme")}
       aria-label={theme() === "dark" ? props.t("themeLight") : props.t("themeDark")}

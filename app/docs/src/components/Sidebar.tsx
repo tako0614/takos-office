@@ -120,7 +120,7 @@ export default function Sidebar(props: SidebarProps) {
         <button
           ref={toggleButton}
           type="button"
-          class="p-1 rounded text-gray-600 dark:text-neutral-300 hover:text-gray-800 dark:hover:text-neutral-100 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="inline-flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-7 items-center justify-center p-1 rounded text-gray-600 dark:text-neutral-300 hover:text-gray-800 dark:hover:text-neutral-100 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={toggle}
           title={expanded() ? t("collapse") : t("expand")}
           aria-label={t("toggleOutline")}

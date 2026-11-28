@@ -43,10 +43,12 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
   const { t } = useI18n();
   let dialogRef: HTMLDivElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
+  let pointerDownOnBackdrop = false;
 
   // Close on Escape, trap focus within the dialog, and restore focus on close.
   createEffect(() => {
     if (!props.open) return;
+    pointerDownOnBackdrop = false;
     previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -54,22 +56,31 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
     const handler = (e: KeyboardEvent) => {
       handleModalKeyDown(e, dialogRef, props.onClose);
     };
-    globalThis.addEventListener("keydown", handler);
+    document.addEventListener("keydown", handler, true);
     queueMicrotask(() => dialogRef?.focus());
     onCleanup(() => {
-      globalThis.removeEventListener("keydown", handler);
+      document.removeEventListener("keydown", handler, true);
       releaseScrollLock();
-      restoreFocus(previouslyFocused);
+      queueMicrotask(() => restoreFocus(previouslyFocused));
       previouslyFocused = null;
     });
   });
 
   return (
     <Show when={props.open}>
-      {/* Backdrop — click to dismiss */}
+      {/* Backdrop — click to dismiss (ignores drags starting inside modal) */}
       <div
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4"
-        onClick={props.onClose}
+        onPointerDown={(e) => {
+          pointerDownOnBackdrop = e.target === e.currentTarget;
+        }}
+        onClick={(e) => {
+          const startedOnBackdrop = pointerDownOnBackdrop;
+          pointerDownOnBackdrop = false;
+          if (startedOnBackdrop && e.target === e.currentTarget) {
+            props.onClose();
+          }
+        }}
       >
         <div
           ref={dialogRef}
@@ -84,7 +95,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
             <h2 class="text-base font-medium">{t("shortcutsTitle")}</h2>
             <button
               type="button"
-              class="p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              class="inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center p-1.5 rounded-full text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               onClick={props.onClose}
               title={t("shortcutClose")}
               aria-label={t("shortcutClose")}

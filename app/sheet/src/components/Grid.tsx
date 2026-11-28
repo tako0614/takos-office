@@ -18,6 +18,7 @@ import { evaluateConditionalRules } from "../lib/conditional-format";
 import { applyNumberFormat } from "../lib/number-format";
 import { filterHiddenRows } from "../lib/sheet-ops";
 import { CellEditor } from "./CellEditor";
+import { useI18n } from "../i18n";
 
 const TOTAL_COLS = 100;
 const TOTAL_ROWS = 1000;
@@ -43,6 +44,7 @@ interface GridProps {
 }
 
 export const Grid: Component<GridProps> = (props) => {
+  const { t } = useI18n();
   let containerRef: HTMLDivElement | undefined;
 
   const [scrollLeft, setScrollLeft] = createSignal(0);
@@ -453,6 +455,8 @@ export const Grid: Component<GridProps> = (props) => {
   return (
     <div
       ref={containerRef}
+      role="grid"
+      aria-label={`${props.sheet.name} — ${t("spreadsheetGrid")}`}
       class="relative flex-1 overflow-auto bg-white dark:bg-neutral-900"
       onScroll={handleScroll}
       tabIndex={0}

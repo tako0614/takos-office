@@ -1,6 +1,7 @@
 import { FileText, Trash2 } from "lucide-solid";
 import type { Document } from "../types";
 import { dateLocale, useI18n } from "../i18n";
+import { extractDocumentPreview } from "../lib/document-preview";
 
 interface DocumentCardProps {
   document: Document;
@@ -10,6 +11,7 @@ interface DocumentCardProps {
 
 export default function DocumentCard(props: DocumentCardProps) {
   const { t } = useI18n();
+  const preview = () => extractDocumentPreview(props.document.content);
 
   const formatDate = (iso: string) => {
     const date = new Date(iso);
@@ -38,8 +40,8 @@ export default function DocumentCard(props: DocumentCardProps) {
       >
         {/* Preview area */}
         <div class="h-40 bg-white dark:bg-neutral-800 border-b border-gray-100 dark:border-neutral-700 p-4 overflow-hidden">
-          <div class="text-[8px] leading-tight text-gray-500 dark:text-neutral-400 line-clamp-[12]">
-            {props.document.title}
+          <div class="text-xs leading-relaxed text-gray-600 dark:text-neutral-300 line-clamp-6">
+            {preview() || props.document.title}
           </div>
         </div>
 
@@ -59,7 +61,7 @@ export default function DocumentCard(props: DocumentCardProps) {
 
       <button
         type="button"
-        class="absolute top-2 right-2 p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-500 dark:text-neutral-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
+        class="absolute top-2 right-2 inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center p-2 rounded-full bg-white/90 dark:bg-neutral-800/90 text-gray-500 dark:text-neutral-400 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-red-50 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
         onClick={(e) => {
           e.stopPropagation();
           props.onDelete(e);

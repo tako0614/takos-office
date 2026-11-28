@@ -45,3 +45,15 @@ export function setTheme(t: Theme) {
 export function toggleTheme() {
   setTheme(theme() === "dark" ? "light" : "dark");
 }
+
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("storage", (event: StorageEvent) => {
+    if (event.key !== KEY) return;
+    if (event.newValue === "light" || event.newValue === "dark") {
+      if (event.newValue !== theme()) {
+        setThemeSignal(event.newValue);
+        apply(event.newValue);
+      }
+    }
+  });
+}

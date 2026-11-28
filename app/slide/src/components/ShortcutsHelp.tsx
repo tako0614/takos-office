@@ -15,6 +15,7 @@ type Row = { keys: string; descKey: ShortcutDescKey };
 
 type ShortcutDescKey =
   | "shortcutDeleteElement"
+  | "shortcutEditText"
   | "shortcutNudgeElement"
   | "shortcutReorderSlide"
   | "shortcutUndo"
@@ -31,6 +32,7 @@ type ShortcutDescKey =
 // handle (see EditorPage.tsx and PresentPage.tsx). Keep these in sync with the
 // real key handlers.
 const EDITOR_ROWS: Row[] = [
+  { keys: "Enter", descKey: "shortcutEditText" },
   { keys: "Arrow / Shift + Arrow", descKey: "shortcutNudgeElement" },
   { keys: "Alt + ↑ / ↓", descKey: "shortcutReorderSlide" },
   { keys: "Delete / Backspace", descKey: "shortcutDeleteElement" },
@@ -80,6 +82,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
   let dialogRef: HTMLDivElement | undefined;
   let closeRef: HTMLButtonElement | undefined;
   let previouslyFocused: HTMLElement | null = null;
+  let pointerDownOnBackdrop = false;
 
   // Close on Escape and trap focus within the dialog while it is open.
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -88,32 +91,42 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
 
   createEffect(() => {
     if (!props.open) return;
+    pointerDownOnBackdrop = false;
     previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     const releaseScrollLock = acquireModalScrollLock();
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     // Move focus into the dialog once it is mounted.
     queueMicrotask(() => closeRef?.focus());
     onCleanup(() => {
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
       releaseScrollLock();
-      restoreFocus(previouslyFocused);
+      const prev = previouslyFocused;
       previouslyFocused = null;
+      queueMicrotask(() => restoreFocus(prev));
     });
   });
 
   return (
     <div
       class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      onClick={() => props.onClose()}
+      onPointerDown={(e) => {
+        pointerDownOnBackdrop = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        const started = pointerDownOnBackdrop;
+        pointerDownOnBackdrop = false;
+        if (started && e.target === e.currentTarget) props.onClose();
+      }}
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t("shortcutsTitle")}
-        class="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+        tabIndex={-1}
+        class="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-gray-200 bg-white p-6 shadow-2xl outline-none dark:border-gray-700 dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div class="mb-4 flex items-center justify-between">
@@ -123,7 +136,7 @@ export default function ShortcutsHelp(props: ShortcutsHelpProps) {
           <button
             ref={closeRef}
             type="button"
-            class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+            class="inline-flex min-h-10 min-w-10 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
             onClick={() => props.onClose()}
             aria-label={t("close")}
           >

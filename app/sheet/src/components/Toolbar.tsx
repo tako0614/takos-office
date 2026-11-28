@@ -4,7 +4,7 @@ import type { CellFormat } from "../types";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { theme } from "../../../shared/lib/theme";
-import { isImeComposing } from "../../../shared/lib/dialog-a11y";
+import { isImeComposing, restoreFocus } from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
 
 interface ToolbarProps {
@@ -29,6 +29,7 @@ interface ToolbarProps {
   onApplyFilter?: (query: string) => void;
   onClearFilter?: () => void;
   filterActive?: boolean;
+  filterQuery?: string;
 }
 
 export const Toolbar: Component<ToolbarProps> = (props) => {
@@ -37,12 +38,18 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   const [showBgColor, setShowBgColor] = createSignal(false);
   const [editingTitle, setEditingTitle] = createSignal(false);
   const [titleValue, setTitleValue] = createSignal(props.title);
+  const [filterInput, setFilterInput] = createSignal(props.filterQuery ?? "");
   let textColorRef: HTMLDivElement | undefined;
   let bgColorRef: HTMLDivElement | undefined;
 
   createEffect(() => {
+    setFilterInput(props.filterQuery ?? "");
+  });
+
+  createEffect(() => {
     if (!showTextColor() && !showBgColor()) return;
     const activeWrapper = showTextColor() ? textColorRef : bgColorRef;
+    const opener = activeWrapper?.querySelector<HTMLButtonElement>("button");
     const onPointerDown = (e: PointerEvent) => {
       if (
         activeWrapper &&
@@ -60,6 +67,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         e.stopPropagation();
         setShowTextColor(false);
         setShowBgColor(false);
+        queueMicrotask(() => restoreFocus(opener));
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -93,7 +101,12 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     "#f9a8d4",
   ];
 
-  const fontSizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32];
+  const baseFontSizes = [8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32];
+  const fontSizeOptions = () => {
+    const current = fmt().fontSize ?? 13;
+    if (baseFontSizes.includes(current)) return baseFontSizes;
+    return [...baseFontSizes, current].sort((a, b) => a - b);
+  };
 
   const numberFormats = () => [
     { label: t("general"), value: "" },
@@ -115,7 +128,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     <button
       type="button"
       disabled={btnProps.disabled}
-      class={`flex min-h-9 min-w-9 sm:min-h-7 sm:min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      class={`flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         btnProps.active
           ? "bg-gray-300 text-gray-900 dark:bg-neutral-600 dark:text-white"
           : "text-gray-700 hover:bg-gray-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
@@ -142,7 +155,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       {/* Home button */}
       <button
         type="button"
-        class="mr-2 flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+        class="mr-2 flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
         onClick={props.onNavigateHome}
         title={t("backToList")}
         aria-label={t("backToList")}
@@ -168,7 +181,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
         fallback={
           <button
             type="button"
-            class="mr-4 max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
+            class="mr-4 inline-flex min-h-10 sm:min-h-7 items-center max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
             onClick={() => {
               setTitleValue(props.title);
               setEditingTitle(true);
@@ -254,7 +267,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Separator />
 
       <button type="button" onClick={props.onExportXlsx} disabled={props.exporting} title={t("exportXlsx")}
-        class="shrink-0 rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:text-emerald-200">{t(props.exporting ? "exporting" : "exportXlsx")}</button>
+        class="shrink-0 min-h-10 sm:min-h-7 rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:text-emerald-200">{t(props.exporting ? "exporting" : "exportXlsx")}</button>
 
       {/* Import CSV */}
       <ToolBtn
@@ -362,20 +375,36 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Show when={props.onApplyFilter}>
         <input
           type="search"
-          class="ml-1 h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-400 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-500"
+          class="ml-1 min-h-10 sm:min-h-7 sm:h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-500 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-400"
           placeholder={t("filterPlaceholder")}
           title={t("filterColumn")}
           aria-label={t("filterColumn")}
+          value={filterInput()}
+          onInput={(e) => setFilterInput(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (isImeComposing(e)) return;
             if (e.key === "Enter") {
-              props.onApplyFilter?.(e.currentTarget.value);
+              props.onApplyFilter?.(filterInput());
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setFilterInput("");
+              props.onClearFilter?.();
+              e.currentTarget.blur();
             }
           }}
-          onChange={(e) => props.onApplyFilter?.(e.currentTarget.value)}
+          onChange={(e) => {
+            setFilterInput(e.currentTarget.value);
+            props.onApplyFilter?.(e.currentTarget.value);
+          }}
         />
         <Show when={props.filterActive}>
-          <ToolBtn onClick={() => props.onClearFilter?.()} title={t("clearFilter")}>
+          <ToolBtn
+            onClick={() => {
+              setFilterInput("");
+              props.onClearFilter?.();
+            }}
+            title={t("clearFilter")}
+          >
             <span class="text-xs">✕</span>
           </ToolBtn>
         </Show>
@@ -414,14 +443,14 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Font size */}
       <select
-        class="h-7 rounded bg-gray-200 px-1 text-xs text-gray-800 outline-none dark:bg-neutral-700 dark:text-neutral-200"
+        class="min-h-10 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().fontSize ?? 13}
         onChange={(e) =>
           props.onFormatChange({ fontSize: Number(e.currentTarget.value) })}
         title={t("fontSize")}
         aria-label={t("fontSize")}
       >
-        {fontSizes.map((size) => (
+        {fontSizeOptions().map((size) => (
           <option value={size}>
             {size}
           </option>
@@ -605,7 +634,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Number format */}
       <select
-        class="h-7 rounded bg-gray-200 px-1 text-xs text-gray-800 outline-none dark:bg-neutral-700 dark:text-neutral-200"
+        class="min-h-10 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().numberFormat ?? ""}
         onChange={(e) =>
           props.onFormatChange({

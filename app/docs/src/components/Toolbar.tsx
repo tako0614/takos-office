@@ -33,7 +33,12 @@ import {
   Undo,
 } from "lucide-solid";
 import { useI18n } from "../i18n";
-import { isImeComposing, isValidHttpUrl } from "../../../shared/lib/dialog-a11y";
+import { theme } from "../../../shared/lib/theme";
+import {
+  isImeComposing,
+  isValidHttpUrl,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y";
 import {
   downloadDocument,
   type ExportFormat,
@@ -131,8 +136,16 @@ export default function Toolbar(props: ToolbarProps) {
   const [exportReady, setExportReady] = createSignal(false);
   const [lastExportFormat, setLastExportFormat] = createSignal<ExportFormat | null>(null);
   let textColorRef: HTMLDivElement | undefined;
+  let textColorBtnRef: HTMLButtonElement | undefined;
   let highlightRef: HTMLDivElement | undefined;
+  let highlightBtnRef: HTMLButtonElement | undefined;
   let exportRef: HTMLDivElement | undefined;
+  let exportBtnRef: HTMLButtonElement | undefined;
+  let exportMenuRef: HTMLDivElement | undefined;
+  let linkBtnRef: HTMLButtonElement | undefined;
+  let linkInputRef: HTMLInputElement | undefined;
+  let imageBtnRef: HTMLButtonElement | undefined;
+  let imageInputRef: HTMLInputElement | undefined;
   let exportController: AbortController | undefined;
   let exportReadyTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => {
@@ -153,14 +166,43 @@ export default function Toolbar(props: ToolbarProps) {
   });
 
   createEffect(() => {
+    if (showLinkInput()) {
+      queueMicrotask(() => {
+        linkInputRef?.focus();
+        linkInputRef?.select();
+      });
+    }
+  });
+
+  createEffect(() => {
+    if (showImageInput()) {
+      queueMicrotask(() => {
+        imageInputRef?.focus();
+        imageInputRef?.select();
+      });
+    }
+  });
+
+  createEffect(() => {
     const anyPopupOpen =
       showTextColor() || showHighlight() || showExport();
     if (!anyPopupOpen) return;
+    const isExport = showExport();
     const activeWrapper = showTextColor()
       ? textColorRef
       : showHighlight()
       ? highlightRef
       : exportRef;
+    const opener = showTextColor()
+      ? textColorBtnRef
+      : showHighlight()
+      ? highlightBtnRef
+      : exportBtnRef;
+    if (isExport) {
+      queueMicrotask(() => {
+        exportMenuRef?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+      });
+    }
     const onPointerDown = (e: PointerEvent) => {
       if (
         activeWrapper &&
@@ -176,6 +218,37 @@ export default function Toolbar(props: ToolbarProps) {
         e.preventDefault();
         e.stopPropagation();
         closePopups();
+        queueMicrotask(() => restoreFocus(opener));
+        return;
+      }
+      if (
+        isExport &&
+        (e.key === "ArrowDown" ||
+          e.key === "ArrowUp" ||
+          e.key === "Home" ||
+          e.key === "End")
+      ) {
+        const items = Array.from(
+          exportMenuRef?.querySelectorAll<HTMLElement>('[role="menuitem"]') ??
+            [],
+        );
+        if (items.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const activeIdx = items.indexOf(document.activeElement as HTMLElement);
+        let nextIdx = 0;
+        if (e.key === "ArrowDown") {
+          nextIdx = activeIdx >= 0 ? (activeIdx + 1) % items.length : 0;
+        } else if (e.key === "ArrowUp") {
+          nextIdx = activeIdx >= 0
+            ? (activeIdx - 1 + items.length) % items.length
+            : items.length - 1;
+        } else if (e.key === "Home") {
+          nextIdx = 0;
+        } else {
+          nextIdx = items.length - 1;
+        }
+        items[nextIdx]?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -220,37 +293,56 @@ export default function Toolbar(props: ToolbarProps) {
     }
   };
 
-  const [, setTick] = createSignal(0);
+  const [tick, setTick] = createSignal(0);
 
-  const setupListener = () => {
+  createEffect(() => {
     const editor = props.editor;
     if (!editor) return;
     const handler = () => setTick((t) => t + 1);
     editor.on("selectionUpdate", handler);
     editor.on("transaction", handler);
+    setTick((t) => t + 1);
     onCleanup(() => {
       editor.off("selectionUpdate", handler);
       editor.off("transaction", handler);
     });
+  });
+
+  const isActive = (name: string, attrs?: Record<string, unknown>) => {
+    tick();
+    return props.editor?.isActive(name, attrs) ?? false;
   };
 
-  const checkEditor = setInterval(() => {
-    if (props.editor) {
-      setupListener();
-      clearInterval(checkEditor);
-    }
-  }, 100);
-  onCleanup(() => clearInterval(checkEditor));
+  const isTextAlignActive = (align: "left" | "center" | "right") => {
+    tick();
+    return (
+      props.editor?.getAttributes("paragraph").textAlign === align ||
+      props.editor?.getAttributes("heading").textAlign === align
+    );
+  };
 
-  const isActive = (name: string, attrs?: Record<string, unknown>) =>
-    props.editor?.isActive(name, attrs) ?? false;
+  const currentFontFamily = () => {
+    tick();
+    const family = props.editor?.getAttributes("textStyle")?.fontFamily;
+    return typeof family === "string" ? family : "";
+  };
 
-  const isTextAlignActive = (align: "left" | "center" | "right") =>
-    props.editor?.getAttributes("paragraph").textAlign === align ||
-    props.editor?.getAttributes("heading").textAlign === align;
+  const currentFontSize = () => {
+    tick();
+    const raw = props.editor?.getAttributes("textStyle")?.fontSize;
+    if (typeof raw !== "string") return "";
+    const match = raw.match(/^(\d+(?:\.\d+)?)/);
+    return match ? match[1] : "";
+  };
+
+  const currentTextColor = () => {
+    tick();
+    const color = props.editor?.getAttributes("textStyle")?.color;
+    return typeof color === "string" && color ? color : "";
+  };
 
   const btn = (active: boolean) =>
-    `inline-flex min-h-9 min-w-9 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+    `inline-flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
       active
         ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
         : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -325,9 +417,10 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* Font family */}
         <select
-          class="toolbar-select"
-          style="width:7.5rem"
+          class="toolbar-select min-h-10 sm:min-h-7"
+          style="min-width:7.5rem"
           aria-label={t("font")}
+          value={currentFontFamily()}
           onChange={(e) => {
             const val = e.currentTarget.value;
             if (val) props.editor?.chain().focus().setFontFamily(val).run();
@@ -342,9 +435,10 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* Font size */}
         <select
-          class="toolbar-select"
-          style="width:3.5rem"
+          class="toolbar-select min-h-10 sm:min-h-7"
+          style="min-width:5rem"
           aria-label={t("size")}
+          value={currentFontSize()}
           onChange={(e) => {
             const val = e.currentTarget.value;
             if (val) {
@@ -369,6 +463,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleBold().run()}
           title={t("bold")}
           aria-label={t("bold")}
+          aria-pressed={isActive("bold")}
         >
           <Bold size={16} />
         </button>
@@ -378,6 +473,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleItalic().run()}
           title={t("italic")}
           aria-label={t("italic")}
+          aria-pressed={isActive("italic")}
         >
           <Italic size={16} />
         </button>
@@ -387,6 +483,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleUnderline().run()}
           title={t("underline")}
           aria-label={t("underline")}
+          aria-pressed={isActive("underline")}
         >
           <Underline size={16} />
         </button>
@@ -396,6 +493,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleStrike().run()}
           title={t("strikethrough")}
           aria-label={t("strikethrough")}
+          aria-pressed={isActive("strike")}
         >
           <Strikethrough size={16} />
         </button>
@@ -403,6 +501,7 @@ export default function Toolbar(props: ToolbarProps) {
         {/* Text color */}
         <div ref={textColorRef} class="relative">
           <button
+            ref={textColorBtnRef}
             type="button"
             class={btn(false)}
             onClick={() => {
@@ -420,8 +519,8 @@ export default function Toolbar(props: ToolbarProps) {
               <div
                 class="w-3.5 h-1 rounded-sm mt-0.5"
                 style={{
-                  background: props.editor?.getAttributes("textStyle")?.color ||
-                    "#000",
+                  background: currentTextColor() ||
+                    (theme() === "dark" ? "#e5e5e5" : "#202124"),
                 }}
               />
             </div>
@@ -445,6 +544,7 @@ export default function Toolbar(props: ToolbarProps) {
         {/* Highlight */}
         <div ref={highlightRef} class="relative">
           <button
+            ref={highlightBtnRef}
             type="button"
             class={btn(isActive("highlight"))}
             onClick={() => {
@@ -454,6 +554,7 @@ export default function Toolbar(props: ToolbarProps) {
             }}
             title={t("highlight")}
             aria-label={t("highlight")}
+            aria-pressed={isActive("highlight")}
             aria-haspopup="true"
             aria-expanded={showHighlight()}
           >
@@ -486,6 +587,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().toggleSuperscript().run()}
           title={t("superscript")}
           aria-label={t("superscript")}
+          aria-pressed={isActive("superscript")}
         >
           <Superscript size={16} />
         </button>
@@ -495,6 +597,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleSubscript().run()}
           title={t("subscript")}
           aria-label={t("subscript")}
+          aria-pressed={isActive("subscript")}
         >
           <Subscript size={16} />
         </button>
@@ -509,6 +612,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().toggleHeading({ level: 1 }).run()}
           title={t("heading1")}
           aria-label={t("heading1")}
+          aria-pressed={isActive("heading", { level: 1 })}
         >
           <Heading1 size={16} />
         </button>
@@ -519,6 +623,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().toggleHeading({ level: 2 }).run()}
           title={t("heading2")}
           aria-label={t("heading2")}
+          aria-pressed={isActive("heading", { level: 2 })}
         >
           <Heading2 size={16} />
         </button>
@@ -529,6 +634,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().toggleHeading({ level: 3 }).run()}
           title={t("heading3")}
           aria-label={t("heading3")}
+          aria-pressed={isActive("heading", { level: 3 })}
         >
           <Heading3 size={16} />
         </button>
@@ -542,6 +648,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleBulletList().run()}
           title={t("bulletList")}
           aria-label={t("bulletList")}
+          aria-pressed={isActive("bulletList")}
         >
           <List size={16} />
         </button>
@@ -552,6 +659,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().toggleOrderedList().run()}
           title={t("numberedList")}
           aria-label={t("numberedList")}
+          aria-pressed={isActive("orderedList")}
         >
           <ListOrdered size={16} />
         </button>
@@ -561,6 +669,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleTaskList().run()}
           title={t("checklist")}
           aria-label={t("checklist")}
+          aria-pressed={isActive("taskList")}
         >
           <ListChecks size={16} />
         </button>
@@ -575,6 +684,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().setTextAlign("left").run()}
           title={t("leftAlign")}
           aria-label={t("leftAlign")}
+          aria-pressed={isTextAlignActive("left")}
         >
           <AlignLeft size={16} />
         </button>
@@ -585,6 +695,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().setTextAlign("center").run()}
           title={t("centerAlign")}
           aria-label={t("centerAlign")}
+          aria-pressed={isTextAlignActive("center")}
         >
           <AlignCenter size={16} />
         </button>
@@ -595,6 +706,7 @@ export default function Toolbar(props: ToolbarProps) {
             props.editor?.chain().focus().setTextAlign("right").run()}
           title={t("rightAlign")}
           aria-label={t("rightAlign")}
+          aria-pressed={isTextAlignActive("right")}
         >
           <AlignRight size={16} />
         </button>
@@ -608,6 +720,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleBlockquote().run()}
           title={t("blockQuote")}
           aria-label={t("blockQuote")}
+          aria-pressed={isActive("blockquote")}
         >
           <Quote size={16} />
         </button>
@@ -617,6 +730,7 @@ export default function Toolbar(props: ToolbarProps) {
           onClick={() => props.editor?.chain().focus().toggleCodeBlock().run()}
           title={t("codeBlock")}
           aria-label={t("codeBlock")}
+          aria-pressed={isActive("codeBlock")}
         >
           <Code size={16} />
         </button>
@@ -635,6 +749,7 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* Link */}
         <button
+          ref={linkBtnRef}
           type="button"
           class={btn(isActive("link"))}
           onClick={() => {
@@ -648,12 +763,15 @@ export default function Toolbar(props: ToolbarProps) {
           }}
           title={t("link")}
           aria-label={t("link")}
+          aria-pressed={isActive("link")}
+          aria-expanded={showLinkInput()}
         >
           <LinkIcon size={16} />
         </button>
 
         {/* Image */}
         <button
+          ref={imageBtnRef}
           type="button"
           class={btn(false)}
           onClick={() => {
@@ -663,6 +781,7 @@ export default function Toolbar(props: ToolbarProps) {
           }}
           title={t("insertImage")}
           aria-label={t("insertImage")}
+          aria-expanded={showImageInput()}
         >
           <ImageIcon size={16} />
         </button>
@@ -685,8 +804,9 @@ export default function Toolbar(props: ToolbarProps) {
         {/* Export menu — pushed to the right edge of the toolbar row */}
         <div ref={exportRef} class="relative ml-auto">
           <button
+            ref={exportBtnRef}
             type="button"
-            class="flex items-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-0 items-center justify-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
             onClick={() => {
               const next = !showExport();
               closePopups();
@@ -704,6 +824,7 @@ export default function Toolbar(props: ToolbarProps) {
           </button>
           <Show when={showExport()}>
             <div
+              ref={exportMenuRef}
               class="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50 py-1 min-w-44"
               role="menu"
             >
@@ -775,6 +896,7 @@ export default function Toolbar(props: ToolbarProps) {
       <Show when={showLinkInput()}>
         <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
+            ref={linkInputRef}
             type="url"
             placeholder={t("linkPlaceholder")}
             aria-label={t("link")}
@@ -792,6 +914,7 @@ export default function Toolbar(props: ToolbarProps) {
                 e.stopPropagation();
                 setShowLinkInput(false);
                 setLinkError(false);
+                queueMicrotask(() => restoreFocus(linkBtnRef));
               }
             }}
             class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
@@ -799,7 +922,7 @@ export default function Toolbar(props: ToolbarProps) {
           <button
             type="button"
             onClick={handleSetLink}
-            class="min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-10 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("apply")}
           </button>
@@ -808,8 +931,9 @@ export default function Toolbar(props: ToolbarProps) {
             onClick={() => {
               setShowLinkInput(false);
               setLinkError(false);
+              queueMicrotask(() => restoreFocus(linkBtnRef));
             }}
-            class="min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="min-h-10 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>
@@ -825,6 +949,7 @@ export default function Toolbar(props: ToolbarProps) {
       <Show when={showImageInput()}>
         <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-t border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
           <input
+            ref={imageInputRef}
             type="url"
             placeholder={t("imagePlaceholder")}
             aria-label={t("insertImage")}
@@ -842,6 +967,7 @@ export default function Toolbar(props: ToolbarProps) {
                 e.stopPropagation();
                 setShowImageInput(false);
                 setImageError(false);
+                queueMicrotask(() => restoreFocus(imageBtnRef));
               }
             }}
             class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
@@ -849,7 +975,7 @@ export default function Toolbar(props: ToolbarProps) {
           <button
             type="button"
             onClick={handleInsertImage}
-            class="min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+            class="min-h-10 sm:min-h-9 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
           >
             {t("insert")}
           </button>
@@ -858,8 +984,9 @@ export default function Toolbar(props: ToolbarProps) {
             onClick={() => {
               setShowImageInput(false);
               setImageError(false);
+              queueMicrotask(() => restoreFocus(imageBtnRef));
             }}
-            class="min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="min-h-10 sm:min-h-9 px-3 py-1.5 text-gray-600 dark:text-neutral-300 text-sm rounded-md hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
           >
             {t("cancel")}
           </button>

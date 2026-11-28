@@ -128,12 +128,20 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
     }
   };
 
+  const openMenuAtElement = (trigger: HTMLElement, sheetId: string) => {
+    const rect = trigger.getBoundingClientRect();
+    menuOpener = trigger;
+    setContextMenu({ x: rect.left, y: rect.top, sheetId });
+  };
+
   // Close context menu when clicking outside
   const handleWindowClick = () => closeContextMenu();
 
   return (
     <div
-      class="flex min-h-10 sm:h-8 items-center overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
+      role="tablist"
+      aria-label={t("sheetTabsLabel")}
+      class="flex min-h-11 sm:h-8 items-center overflow-x-auto border-t border-gray-200 bg-gray-50 px-1 dark:border-neutral-700 dark:bg-neutral-800"
       onClick={handleWindowClick}
     >
       <For each={props.spreadsheet.sheets}>
@@ -141,22 +149,53 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
           <Show
             when={renamingId() === sheet.id}
             fallback={
-              <button
-                type="button"
-                class={`mr-0.5 flex min-h-8 sm:h-6 shrink-0 items-center rounded px-3 text-xs transition-colors ${
-                  sheet.id === props.activeSheetId
-                    ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:ring-0 dark:shadow-none"
-                    : "text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-100"
-                }`}
-                onClick={() => props.onSwitchSheet(sheet.id)}
-                onContextMenu={(e) => handleContextMenu(e, sheet.id)}
-              >
-                {sheet.name}
-              </button>
+              <div class="mr-0.5 inline-flex shrink-0 items-center">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sheet.id === props.activeSheetId}
+                  class={`flex min-h-10 sm:min-h-6 sm:h-6 shrink-0 items-center rounded px-3 text-xs transition-colors ${
+                    sheet.id === props.activeSheetId
+                      ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200 dark:bg-neutral-700 dark:text-neutral-100 dark:ring-0 dark:shadow-none"
+                      : "text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700/50 dark:hover:text-neutral-100"
+                  }`}
+                  onClick={() => props.onSwitchSheet(sheet.id)}
+                  onContextMenu={(e) => handleContextMenu(e, sheet.id)}
+                  onKeyDown={(e) => {
+                    if (isImeComposing(e)) return;
+                    if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+                      e.preventDefault();
+                      openMenuAtElement(e.currentTarget, sheet.id);
+                    }
+                  }}
+                >
+                  {sheet.name}
+                </button>
+                <Show when={sheet.id === props.activeSheetId}>
+                  <button
+                    type="button"
+                    aria-label={t("sheetActions", { name: sheet.name })}
+                    title={t("sheetActions", { name: sheet.name })}
+                    aria-haspopup="menu"
+                    aria-expanded={contextMenu()?.sheetId === sheet.id}
+                    class="flex h-10 w-10 sm:h-6 sm:w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (contextMenu()?.sheetId === sheet.id) {
+                        closeContextMenu();
+                      } else {
+                        openMenuAtElement(e.currentTarget, sheet.id);
+                      }
+                    }}
+                  >
+                    ⋮
+                  </button>
+                </Show>
+              </div>
             }
           >
             <input
-              class="mr-0.5 h-6 w-24 shrink-0 rounded bg-white px-2 text-xs text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
+              class="mr-0.5 h-8 sm:h-6 w-24 shrink-0 rounded bg-white px-2 text-xs text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
               aria-label={t("renameSheet")}
               value={renameValue()}
               onInput={(e) => setRenameValue(e.currentTarget.value)}
@@ -175,7 +214,7 @@ export const SheetTabs: Component<SheetTabsProps> = (props) => {
       {/* Add sheet button */}
       <button
         type="button"
-        class="flex h-8 w-8 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+        class="flex h-10 w-10 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
         onClick={props.onAddSheet}
         title={t("addSheet")}
         aria-label={t("addSheet")}
