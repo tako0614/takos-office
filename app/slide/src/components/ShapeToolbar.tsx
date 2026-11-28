@@ -1,4 +1,10 @@
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { useI18n } from "../i18n";
+import {
+  observeHorizontalScrollEdges,
+  setupToolbarRovingTabIndex,
+  type HorizontalScrollEdges,
+} from "../../../shared/lib/dialog-a11y";
 
 interface ShapeToolbarProps {
   onInsertText: () => void;
@@ -45,6 +51,21 @@ function ToolButton(props: {
 
 export default function ShapeToolbar(props: ShapeToolbarProps) {
   const { t } = useI18n();
+  const [scrollEdges, setScrollEdges] = createSignal<HorizontalScrollEdges>({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
+  let toolbarRowRef: HTMLDivElement | undefined;
+
+  onMount(() => {
+    if (!toolbarRowRef) return;
+    const stopRoving = setupToolbarRovingTabIndex(toolbarRowRef);
+    const stopEdges = observeHorizontalScrollEdges(toolbarRowRef, setScrollEdges);
+    onCleanup(() => {
+      stopRoving();
+      stopEdges();
+    });
+  });
 
   return (
     <div class="shrink-0 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex flex-col sm:flex-row sm:flex-wrap sm:items-center px-3 sm:px-4 py-1.5 sm:py-2 gap-1.5 sm:gap-2">
@@ -58,7 +79,9 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
 
       <div class="hidden sm:block w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
 
+      <div class="relative min-w-0 sm:flex-1">
       <div
+        ref={toolbarRowRef}
         role="toolbar"
         aria-label={t("officeSlides")}
         class="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible sm:flex-1"
@@ -117,6 +140,25 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
           onClick={() => props.onPresent()}
           variant="primary"
         />
+      </div>
+      <div
+        aria-hidden="true"
+        data-scroll-fade="left"
+        class="pointer-events-none absolute inset-y-0 left-0 w-7 bg-gradient-to-r from-white via-white/75 to-transparent dark:from-gray-800 dark:via-gray-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollLeft,
+          "opacity-0": !scrollEdges().canScrollLeft,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        data-scroll-fade="right"
+        class="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-white via-white/75 to-transparent dark:from-gray-800 dark:via-gray-800/75 sm:hidden transition-opacity duration-150"
+        classList={{
+          "opacity-100": scrollEdges().canScrollRight,
+          "opacity-0": !scrollEdges().canScrollRight,
+        }}
+      />
       </div>
     </div>
   );

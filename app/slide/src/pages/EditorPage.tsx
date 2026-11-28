@@ -31,6 +31,7 @@ import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import {
   acquireModalScrollLock,
   getArrowNudgeDelta,
+  getFocusableElements,
   handleModalKeyDown,
   isImeComposing,
   isInteractiveShortcutTarget,
@@ -85,6 +86,19 @@ export default function EditorPage() {
     if (!editingTextId()) return;
     const release = acquireModalScrollLock();
     onCleanup(release);
+  });
+
+  createEffect(() => {
+    const panel = mobilePanel();
+    if (!panel) return;
+    const panelId =
+      panel === "slides" ? "slide-navigation-panel" : "slide-properties-panel";
+    queueMicrotask(() => {
+      const container = document.getElementById(panelId);
+      if (!container) return;
+      const first = getFocusableElements(container)[0];
+      first?.focus();
+    });
   });
 
   createEffect(() => {
@@ -476,9 +490,10 @@ export default function EditorPage() {
       return;
     }
 
-    // Arrow / Shift+Arrow nudges the selected element (1px / 10px).
+    // Arrow / Shift+Arrow nudges the selected element (1px / 10px), never
+    // hijacking arrow navigation on buttons or other interactive controls.
     const nudge = getArrowNudgeDelta(e);
-    if (nudge) {
+    if (nudge && !isInteractiveShortcutTarget(e.target)) {
       const el = selectedElement();
       if (el) {
         e.preventDefault();
@@ -522,7 +537,10 @@ export default function EditorPage() {
       handleRedo();
     }
     if (e.key === "Escape") {
-      setSelectedElementId(null);
+      if (selectedElementId()) {
+        setSelectedElementId(null);
+        announceStatus(t("selectionCleared"));
+      }
       setEditingTextId(null);
     }
   };
@@ -534,9 +552,14 @@ export default function EditorPage() {
     <Show
       when={presentation()}
       fallback={
-        <div class="h-screen bg-gray-50 dark:bg-gray-900 p-8 text-gray-500 dark:text-gray-400">
-          {t("loading")}
-        </div>
+        <main
+          id="main"
+          tabIndex={-1}
+          class="flex h-screen items-center justify-center bg-gray-50 p-8 text-gray-600 outline-none dark:bg-gray-900 dark:text-gray-300"
+        >
+          <h1 class="sr-only">{t("untitledPresentation")}</h1>
+          <span role="status">{t("loading")}</span>
+        </main>
       }
     >
       <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
@@ -660,6 +683,7 @@ export default function EditorPage() {
               onSelectElement={setSelectedElementId}
               onUpdateElement={handleUpdateElement}
               onEditText={handleEditText}
+              onAnnounceSelection={announceStatus}
             />
           </Show>
 

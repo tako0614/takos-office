@@ -63,7 +63,7 @@ function parseEditorContent(content: string): JSONContent | undefined {
 }
 
 export default function Editor(props: EditorProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   let editorRef!: HTMLDivElement;
   let editorInstance: TipTapEditor | null = null;
   const [isReady, setIsReady] = createSignal(false);
@@ -120,9 +120,18 @@ export default function Editor(props: EditorProps) {
       editorProps: {
         attributes: {
           class: "tiptap",
+          role: "textbox",
+          "aria-multiline": "true",
+          "aria-label": t("documentContent"),
         },
       },
     });
+  });
+
+  createEffect(() => {
+    void language();
+    if (!isReady() || !editorInstance || editorInstance.isDestroyed) return;
+    editorInstance.view.dom.setAttribute("aria-label", t("documentContent"));
   });
 
   createEffect(() => {
