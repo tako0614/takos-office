@@ -6,6 +6,7 @@ interface CellEditorProps {
   top: number;
   width: number;
   height: number;
+  ariaLabel?: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -22,6 +23,7 @@ export const CellEditor: Component<CellEditorProps> = (props) => {
   return (
     <input
       ref={inputRef}
+      aria-label={props.ariaLabel}
       class="absolute z-20 border-2 border-blue-500 bg-white px-1 text-sm text-gray-900 outline-none dark:bg-neutral-900 dark:text-neutral-100"
       style={{
         left: `${props.left}px`,

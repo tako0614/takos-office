@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { useLocation } from "@solidjs/router";
 import type { Editor } from "@tiptap/core";
 import {
@@ -35,6 +36,7 @@ import {
 import { useI18n } from "../i18n";
 import { theme } from "../../../shared/lib/theme";
 import {
+  computeFixedPopupPosition,
   isImeComposing,
   isValidHttpUrl,
   restoreFocus,
@@ -130,15 +132,22 @@ export default function Toolbar(props: ToolbarProps) {
   const [showTextColor, setShowTextColor] = createSignal(false);
   const [showHighlight, setShowHighlight] = createSignal(false);
   const [showExport, setShowExport] = createSignal(false);
+  const [popupPos, setPopupPos] = createSignal<{ left: number; top: number }>({
+    left: 8,
+    top: 48,
+  });
   const [exporting, setExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal(false);
   const [exportWarning, setExportWarning] = createSignal(false);
   const [exportReady, setExportReady] = createSignal(false);
   const [lastExportFormat, setLastExportFormat] = createSignal<ExportFormat | null>(null);
+  let toolbarRowRef: HTMLDivElement | undefined;
   let textColorRef: HTMLDivElement | undefined;
   let textColorBtnRef: HTMLButtonElement | undefined;
+  let textColorPopupRef: HTMLDivElement | undefined;
   let highlightRef: HTMLDivElement | undefined;
   let highlightBtnRef: HTMLButtonElement | undefined;
+  let highlightPopupRef: HTMLDivElement | undefined;
   let exportRef: HTMLDivElement | undefined;
   let exportBtnRef: HTMLButtonElement | undefined;
   let exportMenuRef: HTMLDivElement | undefined;
@@ -148,6 +157,23 @@ export default function Toolbar(props: ToolbarProps) {
   let imageInputRef: HTMLInputElement | undefined;
   let exportController: AbortController | undefined;
   let exportReadyTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const positionPopup = (
+    opener: HTMLElement | undefined,
+    width: number,
+    align: "left" | "right" = "left",
+  ) => {
+    if (!opener) return;
+    const rect = opener.getBoundingClientRect();
+    setPopupPos(
+      computeFixedPopupPosition(
+        rect,
+        width,
+        globalThis.innerWidth ?? 1024,
+        align,
+      ),
+    );
+  };
   onCleanup(() => {
     exportController?.abort();
     if (exportReadyTimer) clearTimeout(exportReadyTimer);
@@ -193,24 +219,44 @@ export default function Toolbar(props: ToolbarProps) {
       : showHighlight()
       ? highlightRef
       : exportRef;
+    const activePopup = () =>
+      showTextColor()
+        ? textColorPopupRef
+        : showHighlight()
+        ? highlightPopupRef
+        : exportMenuRef;
     const opener = showTextColor()
       ? textColorBtnRef
       : showHighlight()
       ? highlightBtnRef
       : exportBtnRef;
+    const popupAlign: "left" | "right" = isExport ? "right" : "left";
+    const popupWidth = () =>
+      isExport ? 184 : (globalThis.innerWidth ?? 1024) < 640 ? 260 : 198;
     if (isExport) {
       queueMicrotask(() => {
         exportMenuRef?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
       });
     }
     const onPointerDown = (e: PointerEvent) => {
-      if (
-        activeWrapper &&
-        e.target instanceof Node &&
-        !activeWrapper.contains(e.target)
-      ) {
-        closePopups();
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (activeWrapper?.contains(target) || activePopup()?.contains(target)) {
+        return;
       }
+      closePopups();
+    };
+    const onScrollOrResize = () => {
+      if (!opener) return;
+      const rect = opener.getBoundingClientRect();
+      if (toolbarRowRef) {
+        const tb = toolbarRowRef.getBoundingClientRect();
+        if (rect.right <= tb.left || rect.left >= tb.right) {
+          closePopups();
+          return;
+        }
+      }
+      positionPopup(opener, popupWidth(), popupAlign);
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (isImeComposing(e)) return;
@@ -257,9 +303,13 @@ export default function Toolbar(props: ToolbarProps) {
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    toolbarRowRef?.addEventListener("scroll", onScrollOrResize, { passive: true });
+    globalThis.addEventListener("resize", onScrollOrResize);
     onCleanup(() => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      toolbarRowRef?.removeEventListener("scroll", onScrollOrResize);
+      globalThis.removeEventListener("resize", onScrollOrResize);
     });
   });
 
@@ -352,7 +402,7 @@ export default function Toolbar(props: ToolbarProps) {
   };
 
   const btn = (active: boolean) =>
-    `inline-flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+    `shrink-0 inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1.5 rounded transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
       active
         ? "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-300"
         : "text-gray-600 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -402,7 +452,12 @@ export default function Toolbar(props: ToolbarProps) {
     <div
       class="flex flex-col border-b border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-800"
     >
-      <div class="flex items-center gap-0.5 px-2 py-1 flex-wrap">
+      <div
+        ref={toolbarRowRef}
+        role="toolbar"
+        aria-label={t("doc")}
+        class="flex items-center gap-0.5 px-2 py-1 flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible"
+      >
         {/* Undo / Redo */}
         <button
           type="button"
@@ -427,7 +482,7 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* Font family */}
         <select
-          class="toolbar-select min-h-10 sm:min-h-7"
+          class="shrink-0 toolbar-select min-h-11 sm:min-h-7"
           style="min-width:7.5rem"
           aria-label={t("font")}
           value={currentFontFamily()}
@@ -445,7 +500,7 @@ export default function Toolbar(props: ToolbarProps) {
 
         {/* Font size */}
         <select
-          class="toolbar-select min-h-10 sm:min-h-7"
+          class="shrink-0 toolbar-select min-h-11 sm:min-h-7"
           style="min-width:5rem"
           aria-label={t("size")}
           value={currentFontSize()}
@@ -513,7 +568,7 @@ export default function Toolbar(props: ToolbarProps) {
         </button>
 
         {/* Text color */}
-        <div ref={textColorRef} class="relative">
+        <div ref={textColorRef} class="relative shrink-0">
           <button
             ref={textColorBtnRef}
             type="button"
@@ -521,6 +576,10 @@ export default function Toolbar(props: ToolbarProps) {
             onClick={() => {
               const next = !showTextColor();
               closePopups();
+              if (next) {
+                const width = (globalThis.innerWidth ?? 1024) < 640 ? 260 : 198;
+                positionPopup(textColorBtnRef, width, "left");
+              }
               setShowTextColor(next);
             }}
             title={t("textColor")}
@@ -540,23 +599,32 @@ export default function Toolbar(props: ToolbarProps) {
             </div>
           </button>
           <Show when={showTextColor()}>
-            <div class="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50">
-              <ColorPicker
-                onSelect={(c) => {
-                  props.editor?.chain().focus().setColor(c).run();
-                  setShowTextColor(false);
+            <Portal>
+              <div
+                ref={textColorPopupRef}
+                class="fixed z-[110] bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700"
+                style={{
+                  left: `${popupPos().left}px`,
+                  top: `${popupPos().top}px`,
                 }}
-                onClear={() => {
-                  props.editor?.chain().focus().unsetColor().run();
-                  setShowTextColor(false);
-                }}
-              />
-            </div>
+              >
+                <ColorPicker
+                  onSelect={(c) => {
+                    props.editor?.chain().focus().setColor(c).run();
+                    setShowTextColor(false);
+                  }}
+                  onClear={() => {
+                    props.editor?.chain().focus().unsetColor().run();
+                    setShowTextColor(false);
+                  }}
+                />
+              </div>
+            </Portal>
           </Show>
         </div>
 
         {/* Highlight */}
-        <div ref={highlightRef} class="relative">
+        <div ref={highlightRef} class="relative shrink-0">
           <button
             ref={highlightBtnRef}
             type="button"
@@ -564,6 +632,10 @@ export default function Toolbar(props: ToolbarProps) {
             onClick={() => {
               const next = !showHighlight();
               closePopups();
+              if (next) {
+                const width = (globalThis.innerWidth ?? 1024) < 640 ? 260 : 198;
+                positionPopup(highlightBtnRef, width, "left");
+              }
               setShowHighlight(next);
             }}
             title={t("highlight")}
@@ -575,19 +647,28 @@ export default function Toolbar(props: ToolbarProps) {
             <Highlighter size={16} />
           </button>
           <Show when={showHighlight()}>
-            <div class="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50">
-              <ColorPicker
-                onSelect={(c) => {
-                  props.editor?.chain().focus().toggleHighlight({ color: c })
-                    .run();
-                  setShowHighlight(false);
+            <Portal>
+              <div
+                ref={highlightPopupRef}
+                class="fixed z-[110] bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700"
+                style={{
+                  left: `${popupPos().left}px`,
+                  top: `${popupPos().top}px`,
                 }}
-                onClear={() => {
-                  props.editor?.chain().focus().unsetHighlight().run();
-                  setShowHighlight(false);
-                }}
-              />
-            </div>
+              >
+                <ColorPicker
+                  onSelect={(c) => {
+                    props.editor?.chain().focus().toggleHighlight({ color: c })
+                      .run();
+                    setShowHighlight(false);
+                  }}
+                  onClear={() => {
+                    props.editor?.chain().focus().unsetHighlight().run();
+                    setShowHighlight(false);
+                  }}
+                />
+              </div>
+            </Portal>
           </Show>
         </div>
 
@@ -816,14 +897,15 @@ export default function Toolbar(props: ToolbarProps) {
         </button>
 
         {/* Export menu — pushed to the right edge of the toolbar row */}
-        <div ref={exportRef} class="relative ml-auto">
+        <div ref={exportRef} class="relative shrink-0 ml-auto">
           <button
             ref={exportBtnRef}
             type="button"
-            class="flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-0 items-center justify-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            class="flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-0 items-center justify-center gap-1 px-2 py-1.5 rounded text-gray-700 dark:text-neutral-300 text-sm hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
             onClick={() => {
               const next = !showExport();
               closePopups();
+              if (next) positionPopup(exportBtnRef, 184, "right");
               setShowExport(next);
             }}
             title={t("export")}
@@ -837,48 +919,54 @@ export default function Toolbar(props: ToolbarProps) {
             <span class="hidden sm:inline">{t(exporting() ? "exporting" : "export")}</span>
           </button>
           <Show when={showExport()}>
-            <div
-              ref={exportMenuRef}
-              class="absolute top-full right-0 mt-1 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 z-50 py-1 min-w-44"
-              role="menu"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
-                onClick={() => void handleExport("docx")}
+            <Portal>
+              <div
+                ref={exportMenuRef}
+                class="fixed z-[110] bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-gray-200 dark:border-neutral-700 py-1 min-w-44"
+                style={{
+                  left: `${popupPos().left}px`,
+                  top: `${popupPos().top}px`,
+                }}
+                role="menu"
               >
-                <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
-                {t("exportDocx")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
-                onClick={() => handleExport("markdown")}
-              >
-                <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
-                {t("exportMarkdown")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
-                onClick={() => handleExport("text")}
-              >
-                <FileType size={16} class="text-gray-500 dark:text-neutral-400" />
-                {t("exportPlainText")}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
-                onClick={() => handleExport("html")}
-              >
-                <FileCode size={16} class="text-gray-500 dark:text-neutral-400" />
-                {t("exportHtml")}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex min-h-11 sm:min-h-8 items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+                  onClick={() => void handleExport("docx")}
+                >
+                  <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
+                  {t("exportDocx")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex min-h-11 sm:min-h-8 items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+                  onClick={() => handleExport("markdown")}
+                >
+                  <FileText size={16} class="text-gray-500 dark:text-neutral-400" />
+                  {t("exportMarkdown")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex min-h-11 sm:min-h-8 items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+                  onClick={() => handleExport("text")}
+                >
+                  <FileType size={16} class="text-gray-500 dark:text-neutral-400" />
+                  {t("exportPlainText")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex min-h-11 sm:min-h-8 items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-neutral-200 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+                  onClick={() => handleExport("html")}
+                >
+                  <FileCode size={16} class="text-gray-500 dark:text-neutral-400" />
+                  {t("exportHtml")}
+                </button>
+              </div>
+            </Portal>
           </Show>
         </div>
       </div>
@@ -890,7 +978,7 @@ export default function Toolbar(props: ToolbarProps) {
             {(fmt) => (
               <button
                 type="button"
-                class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+                class="min-h-11 sm:min-h-8 rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
                 onClick={() => void handleExport(fmt())}
               >
                 {t("retry")}
@@ -937,7 +1025,7 @@ export default function Toolbar(props: ToolbarProps) {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleSetLink();
             }}
-            class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="min-h-11 sm:min-h-9 min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
@@ -996,7 +1084,7 @@ export default function Toolbar(props: ToolbarProps) {
               if (isImeComposing(e)) return;
               if (e.key === "Enter") handleInsertImage();
             }}
-            class="min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="min-h-11 sm:min-h-9 min-w-[180px] flex-1 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <button
             type="button"
@@ -1037,10 +1125,10 @@ function ColorPicker(
   const { t } = useI18n();
 
   return (
-    <div style="width:194px">
+    <div class="w-[256px] sm:w-[194px]">
       <button
         type="button"
-        class="w-full text-left px-3 py-1.5 text-xs text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
+        class="w-full min-h-11 sm:min-h-7 text-left px-3 py-1.5 text-xs text-gray-600 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
         onClick={props.onClear}
       >
         {t("reset")}

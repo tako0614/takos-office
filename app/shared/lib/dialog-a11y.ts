@@ -204,6 +204,31 @@ export function isValidHttpUrl(raw: string): boolean {
   }
 }
 
+export interface PopupAnchorRect {
+  left: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Computes viewport-clamped `position: fixed` coordinates for a toolbar popup
+ * rendered inside a `<Portal>` so popups are never clipped by horizontally
+ * scrollable mobile toolbars and never overflow off the viewport edge.
+ */
+export function computeFixedPopupPosition(
+  anchor: PopupAnchorRect,
+  popupWidth: number,
+  viewportWidth: number,
+  align: "left" | "right" = "left",
+  margin = 8,
+): { left: number; top: number } {
+  const rawLeft = align === "right" ? anchor.right - popupWidth : anchor.left;
+  const maxLeft = Math.max(margin, viewportWidth - popupWidth - margin);
+  const left = Math.max(margin, Math.min(rawLeft, maxLeft));
+  const top = Math.max(margin, Math.round(anchor.bottom + 4));
+  return { left: Math.round(left), top };
+}
+
 /**
  * Computes the next position for keyboard element nudging (`Arrow*` = 1px,
  * `Shift+Arrow*` = 10px), returning `null` for non-arrow keys or modifier combos.

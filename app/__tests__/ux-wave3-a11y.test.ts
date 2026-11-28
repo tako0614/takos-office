@@ -408,7 +408,7 @@ describe("Wave 3 cross-app editor & modal contracts", () => {
     expect(slideEditor).toContain("!isInteractiveShortcutTarget(e.target)");
   });
 
-  test("Sheets Grid uses valid role=region (not empty role=grid), SheetTabs isolates role=tablist with ArrowLeft/ArrowRight and trigger pointerdown guard", () => {
+  test("Sheets Grid exposes valid structured WAI-ARIA role=grid rows/cells and SheetTabs isolates role=tablist with ArrowLeft/ArrowRight and trigger pointerdown guard", () => {
     const grid = readFileSync(
       join(ROOT, "sheet/src/components/Grid.tsx"),
       "utf8",
@@ -417,8 +417,11 @@ describe("Wave 3 cross-app editor & modal contracts", () => {
       join(ROOT, "sheet/src/components/SheetTabs.tsx"),
       "utf8",
     );
-    expect(grid).toContain('role="region"');
-    expect(grid).not.toContain('role="grid"');
+    expect(grid).toContain('role="grid"');
+    expect(grid).toContain('role="row"');
+    expect(grid).toContain('role="gridcell"');
+    expect(grid).toContain("aria-rowindex=");
+    expect(grid).toContain("aria-colindex=");
     expect(tabs).toContain('role="tablist"');
     expect(tabs).toContain('role="tab"');
     expect(tabs).toContain("ArrowLeft");

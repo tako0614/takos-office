@@ -311,6 +311,18 @@ body {
   transition: transform 0.1s;
 }
 
+@media screen and (max-width: 639px) {
+  .color-grid {
+    gap: 4px;
+    padding: 0.5rem;
+  }
+
+  .color-swatch {
+    width: 26px;
+    height: 26px;
+  }
+}
+
 .color-swatch:hover {
   transform: scale(1.2);
   border-color: #5f6368;

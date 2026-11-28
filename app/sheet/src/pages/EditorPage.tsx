@@ -33,6 +33,8 @@ import { FormulaBar } from "../components/FormulaBar";
 import { SheetTabs } from "../components/SheetTabs";
 import { ShortcutsHelp } from "../components/ShortcutsHelp";
 import OfficeNav from "../components/OfficeNav";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
 import {
@@ -706,34 +708,39 @@ export const EditorPage: Component = () => {
         {(ss) => (
           <>
             <h1 class="sr-only">{ss().title || t("untitledSpreadsheet")}</h1>
-            {/* Office nav - return to the shell / switch apps from inside a sheet */}
-            <div class="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+            {/* Office nav & suite controls */}
+            <header class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 sm:px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900 shrink-0">
               <OfficeNav />
-              <button
-                type="button"
-                class="flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                onClick={() => setShowShortcuts(true)}
-                aria-label={t("shortcutsOpen")}
-                title={t("shortcutsOpen")}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  type="button"
+                  class="flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+                  onClick={() => setShowShortcuts(true)}
+                  aria-label={t("shortcutsOpen")}
+                  title={t("shortcutsOpen")}
+                  aria-haspopup="dialog"
                 >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </button>
-            </div>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </button>
+                <ThemeToggle t={t} />
+                <LanguageSwitcher />
+              </div>
+            </header>
 
             <Show when={saveKind() === "pending"}>
               <p role="status" class="px-4 py-1 text-sm text-gray-600 dark:text-neutral-300">{t("savePending")}</p>
@@ -744,8 +751,8 @@ export const EditorPage: Component = () => {
                 <p>{t("saveRecoveryHint")}</p>
                 <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
                 <div class="mt-2 flex flex-wrap gap-3">
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
+                  <button type="button" class="min-h-11 sm:min-h-8 rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="min-h-11 sm:min-h-8 rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
                 </div>
               </div>
             </Show>
@@ -755,7 +762,7 @@ export const EditorPage: Component = () => {
                 <span>{t("exportFailed")}</span>
                 <button
                   type="button"
-                  class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+                  class="min-h-11 sm:min-h-8 rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
                   onClick={() => void handleExportXlsx()}
                 >
                   {t("retry")}

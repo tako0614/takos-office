@@ -364,7 +364,7 @@ export const SpreadsheetListPage: Component = () => {
             <span class="min-w-0 flex-1">{t("loadSpreadsheetsFailed")}</span>
             <button
               type="button"
-              class="rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              class="min-h-11 sm:min-h-8 rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
               onClick={fetchSpreadsheets}
             >
               {t("retry")}
@@ -489,7 +489,7 @@ export const SpreadsheetListPage: Component = () => {
             </h2>
             <input
               ref={dialogInputRef}
-              class="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+              class="mb-4 min-h-11 sm:min-h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
               placeholder={t("spreadsheetTitlePlaceholder")}
               aria-label={t("spreadsheetTitlePlaceholder")}
               value={newTitle()}
@@ -502,14 +502,14 @@ export const SpreadsheetListPage: Component = () => {
             <div class="flex justify-end gap-2">
               <button
                 type="button"
-                class="rounded-lg px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-neutral-100"
+                class="min-h-11 sm:min-h-10 rounded-lg px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-neutral-100"
                 onClick={() => setShowNewDialog(false)}
               >
                 {t("cancel")}
               </button>
               <button
                 type="button"
-                class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
+                class="min-h-11 sm:min-h-10 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
                 disabled={creating() || importing() || !!creationError()}
                 onClick={handleCreate}
               >

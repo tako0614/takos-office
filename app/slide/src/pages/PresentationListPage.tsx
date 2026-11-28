@@ -353,7 +353,7 @@ export default function PresentationListPage() {
             <span class="min-w-0 flex-1">{t("loadPresentationsFailed")}</span>
             <button
               type="button"
-              class="rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              class="min-h-11 sm:min-h-8 rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
               onClick={fetchPresentations}
             >
               {t("retry")}
@@ -451,7 +451,7 @@ export default function PresentationListPage() {
             <input
               ref={dialogInputRef}
               type="text"
-              class="w-full bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-4 py-2.5 rounded-lg border outline-none focus:border-blue-500 text-sm mb-6"
+              class="w-full min-h-11 sm:min-h-10 bg-gray-50 text-gray-900 border-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 px-4 py-2.5 rounded-lg border outline-none focus:border-blue-500 text-sm mb-6"
               placeholder={t("titlePlaceholder")}
               aria-label={t("titlePlaceholder")}
               value={newTitle()}
@@ -464,14 +464,14 @@ export default function PresentationListPage() {
             <div class="flex justify-end gap-3">
               <button
                 type="button"
-                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                class="min-h-11 sm:min-h-10 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100 transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 onClick={() => setShowNewDialog(false)}
               >
                 {t("cancel")}
               </button>
               <button
                 type="button"
-                class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+                class="min-h-11 sm:min-h-10 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
                 disabled={creating() || importing() || !!creationError()}
                 onClick={handleCreate}
               >

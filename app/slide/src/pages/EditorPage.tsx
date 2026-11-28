@@ -23,6 +23,8 @@ import SlidePanel from "../components/SlidePanel";
 import ShapeToolbar from "../components/ShapeToolbar";
 import PropertyPanel from "../components/PropertyPanel";
 import OfficeNav from "../components/OfficeNav";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import ThemeToggle from "../../../shared/components/ThemeToggle";
 import ShortcutsHelp from "../components/ShortcutsHelp";
 import { useI18n } from "../i18n";
 import { withCurrentSpaceId } from "../../../shared/lib/space-id";
@@ -548,10 +550,24 @@ export default function EditorPage() {
         <div role="status" aria-live="polite" class="sr-only">
           {statusAnnouncement()}
         </div>
-        {/* Office nav - return to the shell / switch apps from inside a deck */}
-        <div class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-4 py-2">
+        {/* Office nav & suite controls */}
+        <header class="flex flex-wrap items-center justify-between gap-2 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 px-3 sm:px-4 py-2 shrink-0">
           <OfficeNav />
-        </div>
+          <div class="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              class="flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-full text-sm font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
+              onClick={() => setShowShortcuts(true)}
+              title={t("shortcutsTitle")}
+              aria-label={t("shortcutsHelpButton")}
+              aria-haspopup="dialog"
+            >
+              ?
+            </button>
+            <ThemeToggle t={t} />
+            <LanguageSwitcher />
+          </div>
+        </header>
 
             <Show when={saveKind() === "pending"}>
               <p role="status" class="px-4 py-1 text-sm text-gray-600 dark:text-gray-300">{t("savePending")}</p>
@@ -562,8 +578,8 @@ export default function EditorPage() {
                 <p>{t("saveRecoveryHint")}</p>
                 <Show when={recoveryError()}><p>{recoveryError()}</p></Show>
                 <div class="mt-2 flex flex-wrap gap-3">
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
-                  <button type="button" class="rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
+                  <button type="button" class="min-h-11 sm:min-h-8 rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(false)}>{t("replaceDraft")}</button>
+                  <button type="button" class="min-h-11 sm:min-h-8 rounded border px-3 py-1 disabled:opacity-50" disabled={recovering()} onClick={() => requestReconcile(true)}>{t("readServer")}</button>
                 </div>
               </div>
             </Show>
@@ -581,7 +597,6 @@ export default function EditorPage() {
           onPresent={handlePresent}
           onExportPptx={() => void handleExportPptx()}
           exporting={exporting()}
-          onShowHelp={() => setShowShortcuts(true)}
           canUndo={undoStack().length > 0}
           canRedo={redoStack().length > 0}
           hasSelection={selectedElementId() !== null}
@@ -591,7 +606,7 @@ export default function EditorPage() {
             <span>{t("exportFailed")}</span>
             <button
               type="button"
-              class="rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
+              class="min-h-11 sm:min-h-8 rounded border border-red-300 dark:border-red-700 px-2.5 py-1 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-950/40"
               onClick={() => void handleExportPptx()}
             >
               {t("retry")}
@@ -708,7 +723,7 @@ export default function EditorPage() {
                     <div class="flex justify-end mt-3">
                       <button
                         type="button"
-                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                        class="min-h-11 sm:min-h-9 bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                         onClick={closeTextEditor}
                       >
                         {t("done")}
@@ -774,7 +789,7 @@ export default function EditorPage() {
         />
 
         {/* Bottom bar */}
-        <div class="min-h-10 sm:h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">
+        <div class="min-h-11 sm:h-7 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700 flex items-center px-4 text-xs text-gray-500 dark:text-gray-400">
           <span>
             {t("slideCount", {
               current: selectedSlideIndex() + 1,
@@ -784,7 +799,7 @@ export default function EditorPage() {
           <span class="mx-2">|</span>
           <button
             type="button"
-            class="inline-flex min-h-10 sm:min-h-6 items-center px-1 hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+            class="inline-flex min-h-11 sm:min-h-6 items-center px-1 hover:text-gray-800 dark:hover:text-gray-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
             aria-label={t("backToList")}
             onClick={() => navigate(withCurrentSpaceId("/"))}
           >
