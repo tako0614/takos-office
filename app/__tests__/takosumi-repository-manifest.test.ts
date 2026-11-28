@@ -93,7 +93,7 @@ test("the advertised root delivers all four public OIDC registration fields", ()
   }
 });
 
-test("the Cloudflare root exposes deployment opt-ins for reviewed user choice", () => {
+test("the Cloudflare option uses module defaults for deployment switches", () => {
   const module = manifest.install.modules["."]!;
   for (const name of [
     "enable_cloudflare_resources",
@@ -101,12 +101,11 @@ test("the Cloudflare root exposes deployment opt-ins for reviewed user choice", 
   ]) {
     expect(module.inputs).toContainEqual(expect.objectContaining({
       name,
-      source: { kind: "user" },
+      source: { kind: "module_default" },
       type: "boolean",
-      advanced: true,
     }));
     expect(variableBlock(moduleSources["."]!, name)).toMatch(
-      /\n\s+default\s+=\s+false\b/,
+      /\n\s+default\s+=\s+null\b/,
     );
   }
 });
