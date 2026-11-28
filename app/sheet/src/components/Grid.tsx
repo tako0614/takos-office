@@ -1,7 +1,9 @@
 import {
   Component,
+  createEffect,
   createMemo,
   createSignal,
+  createUniqueId,
   For,
   onCleanup,
   onMount,
@@ -45,6 +47,7 @@ interface GridProps {
 
 export const Grid: Component<GridProps> = (props) => {
   const { t } = useI18n();
+  const gridId = createUniqueId();
   let containerRef: HTMLDivElement | undefined;
 
   const [scrollLeft, setScrollLeft] = createSignal(0);
@@ -409,6 +412,31 @@ export const Grid: Component<GridProps> = (props) => {
     };
   });
 
+  // Restore focus to the role="grid" container when CellEditor exits via
+  // Enter / Escape / Tab so aria-activedescendant remains tracked by AT,
+  // without stealing focus when blur-commit moves focus to FormulaBar/Toolbar
+  // (using a macrotask so the browser finishes blur -> focus transfer first).
+  let wasEditing = false;
+  let focusRestoreTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const editing = props.isEditing;
+    if (wasEditing && !editing) {
+      if (focusRestoreTimer !== undefined) clearTimeout(focusRestoreTimer);
+      focusRestoreTimer = setTimeout(() => {
+        focusRestoreTimer = undefined;
+        if (props.isEditing) return;
+        const active = document.activeElement;
+        if (!active || active === document.body || !active.isConnected) {
+          containerRef?.focus({ preventScroll: true });
+        }
+      }, 0);
+    }
+    wasEditing = editing;
+  });
+  onCleanup(() => {
+    if (focusRestoreTimer !== undefined) clearTimeout(focusRestoreTimer);
+  });
+
   // Observe container size
   onMount(() => {
     if (!containerRef) return;
@@ -452,169 +480,210 @@ export const Grid: Component<GridProps> = (props) => {
     return indices;
   });
 
+  const cellDomId = (col: number, row: number) => `${gridId}-c-${col}-${row}`;
+
+  const activeCellId = createMemo(() => {
+    const { col, row } = selectedParsed();
+    const cols = visibleCols();
+    const rows = visibleRows();
+    if (
+      col >= cols.start &&
+      col < cols.end &&
+      row >= rows.start &&
+      row < rows.end &&
+      !hiddenRows().has(row)
+    ) {
+      return cellDomId(col, row);
+    }
+    return undefined;
+  });
+
   return (
-    <div
-      ref={containerRef}
-      role="region"
-      aria-label={`${props.sheet.name} — ${t("spreadsheetGrid")}`}
-      class="relative flex-1 overflow-auto bg-white dark:bg-neutral-900"
-      onScroll={handleScroll}
-      tabIndex={0}
-      style={{ outline: "none" }}
-    >
-      {/* Virtual content sizer */}
+    <div class="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       <div
-        style={{
-          width: `${totalWidth()}px`,
-          height: `${totalHeight()}px`,
-          position: "relative",
-        }}
+        ref={containerRef}
+        role="grid"
+        aria-label={`${props.sheet.name} — ${t("spreadsheetGrid")}`}
+        aria-rowcount={TOTAL_ROWS + 1}
+        aria-colcount={TOTAL_COLS + 1}
+        aria-multiselectable="true"
+        aria-activedescendant={props.isEditing ? undefined : activeCellId()}
+        class="relative flex-1 overflow-auto bg-white dark:bg-neutral-900"
+        onScroll={handleScroll}
+        tabIndex={0}
+        style={{ outline: "none" }}
       >
-        {/* Corner cell (top-left) */}
+        {/* Virtual content sizer */}
         <div
-          class="sticky top-0 left-0 z-30 flex items-center justify-center border-b border-r border-gray-200 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800"
+          role="rowgroup"
           style={{
-            width: `${HEADER_WIDTH}px`,
-            height: `${HEADER_HEIGHT}px`,
-            position: "sticky",
-          }}
-        />
-
-        {/* Column headers */}
-        <div
-          class="sticky top-0 z-20"
-          style={{
-            position: "sticky",
-            height: `${HEADER_HEIGHT}px`,
-            "margin-left": `${HEADER_WIDTH}px`,
-            "margin-top": `${-HEADER_HEIGHT}px`,
+            width: `${totalWidth()}px`,
+            height: `${totalHeight()}px`,
+            position: "relative",
           }}
         >
-          <For each={visibleColIndices()}>
-            {(col) => (
-              <div
-                class={`absolute top-0 flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium select-none dark:border-neutral-600 ${
-                  selectedParsed().col === col
-                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-                    : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
-                }`}
-                style={{
-                  left: `${colPositions()[col]}px`,
-                  width: `${getColWidth(col)}px`,
-                  height: `${HEADER_HEIGHT}px`,
-                }}
-              >
-                {columnToLetter(col)}
-                {/* Resize handle */}
+          {/* Sticky column header row (aria-rowindex=1) */}
+          <div
+            role="row"
+            aria-rowindex={1}
+            class="sticky top-0 z-30"
+            style={{
+              position: "sticky",
+              width: `${totalWidth()}px`,
+              height: `${HEADER_HEIGHT}px`,
+            }}
+          >
+            {/* Corner cell (top-left) */}
+            <div
+              role="columnheader"
+              aria-colindex={1}
+              aria-label="#"
+              class="sticky top-0 left-0 z-40 flex items-center justify-center border-b border-r border-gray-200 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800"
+              style={{
+                width: `${HEADER_WIDTH}px`,
+                height: `${HEADER_HEIGHT}px`,
+                position: "sticky",
+              }}
+            />
+
+            {/* Column headers */}
+            <For each={visibleColIndices()}>
+              {(col) => (
                 <div
-                  class="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
-                  onMouseDown={(e) => handleResizeMouseDown(col, e)}
-                />
-              </div>
-            )}
-          </For>
-        </div>
+                  role="columnheader"
+                  aria-colindex={col + 2}
+                  class={`absolute top-0 flex items-center justify-center border-b border-r border-gray-200 text-xs font-medium select-none dark:border-neutral-600 ${
+                    selectedParsed().col === col
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                      : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
+                  }`}
+                  style={{
+                    left: `${colPositions()[col] + HEADER_WIDTH}px`,
+                    width: `${getColWidth(col)}px`,
+                    height: `${HEADER_HEIGHT}px`,
+                  }}
+                >
+                  {columnToLetter(col)}
+                  {/* Resize handle */}
+                  <div
+                    class="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-blue-500"
+                    onMouseDown={(e) => handleResizeMouseDown(col, e)}
+                  />
+                </div>
+              )}
+            </For>
+          </div>
 
-        {/* Row headers */}
-        <div
-          class="sticky left-0 z-20"
-          style={{
-            position: "sticky",
-            width: `${HEADER_WIDTH}px`,
-            "margin-top": `${-HEADER_HEIGHT}px`,
-          }}
-        >
+          {/* Virtualized data rows (aria-rowindex = row + 2) */}
           <For each={visibleRowIndices()}>
             {(row) => (
               <div
-                class={`absolute flex items-center justify-center border-b border-r border-gray-200 text-xs select-none dark:border-neutral-600 ${
-                  selectedParsed().row === row
-                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
-                    : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
-                }`}
+                role="row"
+                aria-rowindex={row + 2}
+                class="absolute left-0"
                 style={{
                   top: `${rowPositions()[row] + HEADER_HEIGHT}px`,
-                  width: `${HEADER_WIDTH}px`,
+                  width: `${totalWidth()}px`,
                   height: `${getRowHeight(row)}px`,
                 }}
               >
-                {row + 1}
+                {/* Sticky row header */}
+                <div
+                  role="rowheader"
+                  aria-colindex={1}
+                  class={`sticky left-0 z-20 flex items-center justify-center border-b border-r border-gray-200 text-xs select-none dark:border-neutral-600 ${
+                    selectedParsed().row === row
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300"
+                      : "bg-gray-50 text-gray-600 dark:bg-neutral-800 dark:text-neutral-400"
+                  }`}
+                  style={{
+                    width: `${HEADER_WIDTH}px`,
+                    height: `${getRowHeight(row)}px`,
+                    position: "sticky",
+                  }}
+                >
+                  {row + 1}
+                </div>
+
+                {/* Visible cells in this row */}
+                <For each={visibleColIndices()}>
+                  {(col) => {
+                    const isSelected = () =>
+                      selectedParsed().col === col && selectedParsed().row === row;
+                    const inRange = () => isCellInRange(col, row);
+                    const fmt = () => getMergedFormat(col, row);
+                    const display = () => getCellDisplay(col, row);
+
+                    return (
+                      <div
+                        id={cellDomId(col, row)}
+                        role="gridcell"
+                        aria-colindex={col + 2}
+                        aria-selected={isSelected() || inRange() ? "true" : "false"}
+                        aria-label={display()
+                          ? `${formatCellAddress(col, row)}: ${display()}`
+                          : formatCellAddress(col, row)}
+                        class={`grid-cell absolute top-0 flex items-center overflow-hidden px-1 text-sm text-gray-900 dark:text-neutral-200 ${
+                          isSelected() ? "cell-selected" : ""
+                        } ${inRange() && !isSelected() ? "cell-in-range" : ""}`}
+                        style={{
+                          left: `${colPositions()[col] + HEADER_WIDTH}px`,
+                          width: `${getColWidth(col)}px`,
+                          height: `${getRowHeight(row)}px`,
+                          ...(fmt()?.bgColor
+                            ? { "background-color": fmt()!.bgColor }
+                            : {}),
+                          ...(fmt()?.textColor
+                            ? { color: fmt()!.textColor }
+                            : {}),
+                          ...(fmt()?.bold ? { "font-weight": "bold" } : {}),
+                          ...(fmt()?.italic ? { "font-style": "italic" } : {}),
+                          ...(fmt()?.underline
+                            ? { "text-decoration": "underline" }
+                            : {}),
+                          ...(fmt()?.fontSize
+                            ? { "font-size": `${fmt()!.fontSize}px` }
+                            : {}),
+                          ...(fmt()?.textAlign
+                            ? {
+                              "text-align": fmt()!.textAlign,
+                              "justify-content": fmt()!.textAlign === "center"
+                                ? "center"
+                                : fmt()!.textAlign === "right"
+                                ? "flex-end"
+                                : "flex-start",
+                            }
+                            : {}),
+                        }}
+                        onClick={(e) => handleCellClick(col, row, e)}
+                        onDblClick={() => handleCellDblClick(col, row)}
+                      >
+                        {display()}
+                      </div>
+                    );
+                  }}
+                </For>
               </div>
             )}
           </For>
         </div>
-
-        {/* Cells */}
-        <For each={visibleRowIndices()}>
-          {(row) => (
-            <For each={visibleColIndices()}>
-              {(col) => {
-                const isSelected = () =>
-                  selectedParsed().col === col && selectedParsed().row === row;
-                const inRange = () => isCellInRange(col, row);
-                const fmt = () => getMergedFormat(col, row);
-
-                return (
-                  <div
-                    class={`grid-cell absolute flex items-center overflow-hidden px-1 text-sm text-gray-900 dark:text-neutral-200 ${
-                      isSelected() ? "cell-selected" : ""
-                    } ${inRange() && !isSelected() ? "cell-in-range" : ""}`}
-                    style={{
-                      left: `${colPositions()[col] + HEADER_WIDTH}px`,
-                      top: `${rowPositions()[row] + HEADER_HEIGHT}px`,
-                      width: `${getColWidth(col)}px`,
-                      height: `${getRowHeight(row)}px`,
-                      ...(fmt()?.bgColor
-                        ? { "background-color": fmt()!.bgColor }
-                        : {}),
-                      ...(fmt()?.textColor
-                        ? { color: fmt()!.textColor }
-                        : {}),
-                      ...(fmt()?.bold ? { "font-weight": "bold" } : {}),
-                      ...(fmt()?.italic ? { "font-style": "italic" } : {}),
-                      ...(fmt()?.underline
-                        ? { "text-decoration": "underline" }
-                        : {}),
-                      ...(fmt()?.fontSize
-                        ? { "font-size": `${fmt()!.fontSize}px` }
-                        : {}),
-                      ...(fmt()?.textAlign
-                        ? {
-                          "text-align": fmt()!.textAlign,
-                          "justify-content": fmt()!.textAlign === "center"
-                            ? "center"
-                            : fmt()!.textAlign === "right"
-                            ? "flex-end"
-                            : "flex-start",
-                        }
-                        : {}),
-                    }}
-                    onClick={(e) => handleCellClick(col, row, e)}
-                    onDblClick={() => handleCellDblClick(col, row)}
-                  >
-                    {getCellDisplay(col, row)}
-                  </div>
-                );
-              }}
-            </For>
-          )}
-        </For>
-
-        {/* Cell editor overlay */}
-        <Show when={props.isEditing}>
-          <CellEditor
-            value={props.editValue}
-            left={editorPosition().left}
-            top={editorPosition().top}
-            width={editorPosition().width}
-            height={editorPosition().height}
-            onChange={props.onEditChange}
-            onSubmit={props.onSubmitEdit}
-            onCancel={props.onCancelEdit}
-            onTab={props.onTabEdit}
-          />
-        </Show>
       </div>
+
+      {/* Cell editor overlay — sibling of role="grid" so ARIA owned children stay strictly rows */}
+      <Show when={props.isEditing}>
+        <CellEditor
+          value={props.editValue}
+          left={editorPosition().left}
+          top={editorPosition().top}
+          width={editorPosition().width}
+          height={editorPosition().height}
+          ariaLabel={t("formulaInput", { cell: props.selectedCell })}
+          onChange={props.onEditChange}
+          onSubmit={props.onSubmitEdit}
+          onCancel={props.onCancelEdit}
+          onTab={props.onTabEdit}
+        />
+      </Show>
     </div>
   );
 };

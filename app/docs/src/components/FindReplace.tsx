@@ -300,7 +300,7 @@ export default function FindReplace(props: FindReplaceProps) {
               }
             }}
             aria-label={t("find")}
-            class="w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            class="min-h-11 sm:min-h-8 w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
           <span
             role="status"
@@ -363,7 +363,7 @@ export default function FindReplace(props: FindReplaceProps) {
             }
           }}
           aria-label={t("replace")}
-          class="w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+          class="min-h-11 sm:min-h-8 flex-1 min-w-[140px] sm:flex-none sm:w-44 bg-gray-50 dark:bg-neutral-800 text-gray-800 dark:text-neutral-100 text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
         />
         <button
           type="button"

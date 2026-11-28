@@ -171,7 +171,7 @@ export function renderShellPage(): string {
   .search { position: relative; margin-bottom: 8px; }
   .search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #6b7280; pointer-events: none; }
   .search input {
-    width: 100%; padding: 12px 14px 12px 40px; font-size: 15px;
+    width: 100%; min-height: 44px; padding: 12px 14px 12px 40px; font-size: 15px;
     border: 1px solid #d1d5db; border-radius: 10px; outline: none; background: #fff; color: #111827;
   }
   .search input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
@@ -240,6 +240,7 @@ export function renderShellPage(): string {
     }
     .theme-toggle { width: 44px; height: 44px; }
     .lang-toggle { min-width: 44px; height: 44px; }
+    .card-open-link { min-height: 44px; align-items: center; }
     .card-new { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; }
     #retry, #clear-search { min-height: 44px; padding: 10px 16px; }
   }

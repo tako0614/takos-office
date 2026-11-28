@@ -359,7 +359,7 @@ export default function EditorPage() {
             disabled={recovering() || !doc()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
             aria-label={t("documentTitle")}
-            class="w-full min-w-0 min-h-10 sm:min-h-8 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-500 dark:placeholder-neutral-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
+            class="w-full min-w-0 min-h-11 sm:min-h-8 text-lg font-normal text-gray-800 dark:text-neutral-100 outline-none border-none bg-transparent placeholder-gray-500 dark:placeholder-neutral-400 px-1 py-0.5 rounded hover:ring-1 hover:ring-gray-300 dark:hover:ring-neutral-600 focus:ring-2 focus:ring-blue-500 transition-all"
             placeholder={t("untitledDocument")}
           />
         </div>
@@ -407,14 +407,14 @@ export default function EditorPage() {
           <span>{recoveryLabels().message}</span>
           <button
             type="button"
-            class="underline"
+            class="inline-flex min-h-11 sm:min-h-8 items-center underline"
             onClick={() => requestRecoverSave(false)}
           >
             {recoveryLabels().retry}
           </button>
           <button
             type="button"
-            class="underline"
+            class="inline-flex min-h-11 sm:min-h-8 items-center underline"
             onClick={() => requestRecoverSave(true)}
           >
             {recoveryLabels().reload}

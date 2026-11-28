@@ -120,7 +120,7 @@ export default function Sidebar(props: SidebarProps) {
         <button
           ref={toggleButton}
           type="button"
-          class="inline-flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-7 items-center justify-center p-1 rounded text-gray-600 dark:text-neutral-300 hover:text-gray-800 dark:hover:text-neutral-100 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          class="inline-flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 items-center justify-center p-1 rounded text-gray-600 dark:text-neutral-300 hover:text-gray-800 dark:hover:text-neutral-100 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           onClick={toggle}
           title={expanded() ? t("collapse") : t("expand")}
           aria-label={t("toggleOutline")}
@@ -144,12 +144,12 @@ export default function Sidebar(props: SidebarProps) {
             </p>
           }
         >
-          <nav class="flex flex-col gap-0.5">
+          <nav aria-label={t("outline")} class="flex flex-col gap-0.5">
             <For each={headings()}>
               {(heading) => (
                 <button
                   type="button"
-                  class={`text-left py-1 px-2 rounded truncate hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors ${indent(
+                  class={`flex min-h-11 sm:min-h-0 items-center text-left py-1 px-2 rounded truncate hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors ${indent(
                     heading.level,
                   )} ${textStyle(heading.level)}`}
                   onClick={() => scrollToHeading(heading.pos)}

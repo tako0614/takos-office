@@ -1,10 +1,15 @@
 import { Component, createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { JSX } from "solid-js";
+import { Portal } from "solid-js/web";
 import type { CellFormat } from "../types";
-import { LanguageSwitcher } from "./LanguageSwitcher";
-import ThemeToggle from "../../../shared/components/ThemeToggle";
 import { theme } from "../../../shared/lib/theme";
-import { isImeComposing, restoreFocus } from "../../../shared/lib/dialog-a11y";
+import {
+  computeFixedPopupPosition,
+  getNextColorPopupIndex,
+  handlePortalPopupTab,
+  isImeComposing,
+  restoreFocus,
+} from "../../../shared/lib/dialog-a11y";
 import { useI18n } from "../i18n";
 
 interface ToolbarProps {
@@ -36,11 +41,32 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   const { t } = useI18n();
   const [showTextColor, setShowTextColor] = createSignal(false);
   const [showBgColor, setShowBgColor] = createSignal(false);
+  const [popupPos, setPopupPos] = createSignal<{ left: number; top: number }>({
+    left: 8,
+    top: 48,
+  });
   const [editingTitle, setEditingTitle] = createSignal(false);
   const [titleValue, setTitleValue] = createSignal(props.title);
   const [filterInput, setFilterInput] = createSignal(props.filterQuery ?? "");
+  let toolbarRowRef: HTMLDivElement | undefined;
   let textColorRef: HTMLDivElement | undefined;
+  let textColorPopupRef: HTMLDivElement | undefined;
   let bgColorRef: HTMLDivElement | undefined;
+  let bgColorPopupRef: HTMLDivElement | undefined;
+
+  const positionColorPopup = (wrapper: HTMLDivElement | undefined) => {
+    const opener = wrapper?.querySelector<HTMLElement>("button");
+    if (!opener) return;
+    const width = (globalThis.innerWidth ?? 1024) < 640 ? 244 : 168;
+    setPopupPos(
+      computeFixedPopupPosition(
+        opener.getBoundingClientRect(),
+        width,
+        globalThis.innerWidth ?? 1024,
+        "left",
+      ),
+    );
+  };
 
   createEffect(() => {
     setFilterInput(props.filterQuery ?? "");
@@ -48,33 +74,79 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
   createEffect(() => {
     if (!showTextColor() && !showBgColor()) return;
+    let active = true;
     const activeWrapper = showTextColor() ? textColorRef : bgColorRef;
+    const activePopup = () =>
+      showTextColor() ? textColorPopupRef : bgColorPopupRef;
     const opener = activeWrapper?.querySelector<HTMLButtonElement>("button");
-    const onPointerDown = (e: PointerEvent) => {
-      if (
-        activeWrapper &&
-        e.target instanceof Node &&
-        !activeWrapper.contains(e.target)
-      ) {
-        setShowTextColor(false);
-        setShowBgColor(false);
+    const closeColors = () => {
+      setShowTextColor(false);
+      setShowBgColor(false);
+    };
+    const closeAndRestore = () => {
+      closeColors();
+      queueMicrotask(() => restoreFocus(opener));
+    };
+    queueMicrotask(() => {
+      if (!active) return;
+      activePopup()?.querySelector<HTMLElement>("button")?.focus();
+    });
+    const onScrollOrResize = () => {
+      if (!opener) return;
+      const rect = opener.getBoundingClientRect();
+      if (toolbarRowRef) {
+        const tb = toolbarRowRef.getBoundingClientRect();
+        if (rect.right <= tb.left || rect.left >= tb.right) {
+          closeColors();
+          return;
+        }
       }
+      positionColorPopup(activeWrapper);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (activeWrapper?.contains(target) || activePopup()?.contains(target)) {
+        return;
+      }
+      closeColors();
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (isImeComposing(e)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        setShowTextColor(false);
-        setShowBgColor(false);
-        queueMicrotask(() => restoreFocus(opener));
+        closeAndRestore();
+        return;
+      }
+      if (e.key === "Tab") {
+        handlePortalPopupTab(e, activePopup(), closeAndRestore, true);
+        return;
+      }
+      const popup = activePopup();
+      if (!popup) return;
+      const items = Array.from(popup.querySelectorAll<HTMLElement>("button"));
+      const activeIdx = items.indexOf(document.activeElement as HTMLElement);
+      const nextIdx = getNextColorPopupIndex(e.key, activeIdx, items.length, {
+        columns: 6,
+        resetPosition: "last",
+      });
+      if (nextIdx !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        items[nextIdx]?.focus();
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    toolbarRowRef?.addEventListener("scroll", onScrollOrResize, { passive: true });
+    globalThis.addEventListener("resize", onScrollOrResize);
     onCleanup(() => {
+      active = false;
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      toolbarRowRef?.removeEventListener("scroll", onScrollOrResize);
+      globalThis.removeEventListener("resize", onScrollOrResize);
     });
   });
 
@@ -128,7 +200,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
     <button
       type="button"
       disabled={btnProps.disabled}
-      class={`flex min-h-10 min-w-10 sm:min-h-7 sm:min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      class={`shrink-0 flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-[28px] items-center justify-center rounded px-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
         btnProps.active
           ? "bg-gray-300 text-gray-900 dark:bg-neutral-600 dark:text-white"
           : "text-gray-700 hover:bg-gray-200 dark:text-neutral-300 dark:hover:bg-neutral-700"
@@ -145,78 +217,88 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
   );
 
   const Separator = () => (
-    <div class="hidden sm:block mx-1 h-5 w-px bg-gray-300 dark:bg-neutral-600" />
+    <div class="hidden sm:block shrink-0 mx-1 h-5 w-px bg-gray-300 dark:bg-neutral-600" />
   );
 
   return (
     <div
-      class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-2 sm:px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
+      class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1 border-b border-gray-200 bg-gray-50 px-2 sm:px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-800"
     >
-      {/* Home button */}
-      <button
-        type="button"
-        class="mr-2 flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-        onClick={props.onNavigateHome}
-        title={t("backToList")}
-        aria-label={t("backToList")}
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+      {/* Back & Title — stays visible while mobile action strip scrolls horizontally */}
+      <div class="flex items-center gap-1 shrink-0">
+        {/* Home button */}
+        <button
+          type="button"
+          class="mr-1 flex min-h-11 min-w-11 sm:min-h-7 sm:min-w-7 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-200 hover:text-gray-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+          onClick={props.onNavigateHome}
+          title={t("backToList")}
+          aria-label={t("backToList")}
         >
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
-
-      {/* Title */}
-      <Show
-        when={editingTitle()}
-        fallback={
-          <button
-            type="button"
-            class="mr-4 inline-flex min-h-10 sm:min-h-7 items-center max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
-            onClick={() => {
-              setTitleValue(props.title);
-              setEditingTitle(true);
-            }}
-            aria-label={t("editTitle")}
-            title={t("editTitle")}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            {props.title}
-          </button>
-        }
-      >
-        <input
-          class="mr-4 w-48 rounded bg-white px-2 py-0.5 text-sm text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
-          aria-label={t("editTitle")}
-          value={titleValue()}
-          onInput={(e) => setTitleValue(e.currentTarget.value)}
-          onBlur={() => {
-            if (titleValue().trim()) props.onTitleChange(titleValue().trim());
-            setEditingTitle(false);
-          }}
-          onKeyDown={(e) => {
-            if (isImeComposing(e)) return;
-            if (e.key === "Enter") {
-              if (titleValue().trim()) {
-                props.onTitleChange(titleValue().trim());
-              }
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+
+        {/* Title */}
+        <Show
+          when={editingTitle()}
+          fallback={
+            <button
+              type="button"
+              class="sm:mr-2 inline-flex min-h-11 sm:min-h-7 items-center max-w-[240px] sm:max-w-[200px] truncate text-sm font-medium text-gray-900 hover:text-black dark:text-neutral-100 dark:hover:text-white"
+              onClick={() => {
+                setTitleValue(props.title);
+                setEditingTitle(true);
+              }}
+              aria-label={t("editTitle")}
+              title={t("editTitle")}
+            >
+              {props.title}
+            </button>
+          }
+        >
+          <input
+            class="sm:mr-2 min-h-11 sm:min-h-7 w-48 rounded bg-white px-2 py-0.5 text-sm text-gray-900 outline-none ring-1 ring-blue-500 dark:bg-neutral-700 dark:text-neutral-100"
+            aria-label={t("editTitle")}
+            value={titleValue()}
+            onInput={(e) => setTitleValue(e.currentTarget.value)}
+            onBlur={() => {
+              if (titleValue().trim()) props.onTitleChange(titleValue().trim());
               setEditingTitle(false);
-            }
-            if (e.key === "Escape") setEditingTitle(false);
-          }}
-          ref={(el) => setTimeout(() => el.focus(), 0)}
-        />
-      </Show>
+            }}
+            onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
+              if (e.key === "Enter") {
+                if (titleValue().trim()) {
+                  props.onTitleChange(titleValue().trim());
+                }
+                setEditingTitle(false);
+              }
+              if (e.key === "Escape") setEditingTitle(false);
+            }}
+            ref={(el) => setTimeout(() => el.focus(), 0)}
+          />
+        </Show>
+      </div>
 
       <Separator />
+
+      <div
+        ref={toolbarRowRef}
+        role="toolbar"
+        aria-label={t("officeSheets")}
+        class="flex items-center gap-1 flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible sm:flex-1"
+      >
 
       {/* Undo */}
       <ToolBtn
@@ -267,7 +349,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Separator />
 
       <button type="button" onClick={props.onExportXlsx} disabled={props.exporting} title={t("exportXlsx")}
-        class="shrink-0 min-h-10 sm:min-h-7 rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:text-emerald-200">{t(props.exporting ? "exporting" : "exportXlsx")}</button>
+        class="shrink-0 whitespace-nowrap min-h-11 sm:min-h-7 rounded border border-emerald-300 px-2.5 py-1 text-xs text-emerald-800 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:text-emerald-200">{t(props.exporting ? "exporting" : "exportXlsx")}</button>
 
       {/* Import CSV */}
       <ToolBtn
@@ -375,7 +457,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Show when={props.onApplyFilter}>
         <input
           type="search"
-          class="ml-1 min-h-10 sm:min-h-7 sm:h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-500 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-400"
+          class="shrink-0 ml-1 min-h-11 sm:min-h-7 sm:h-7 w-32 rounded border border-gray-300 bg-white px-2 text-xs text-gray-800 placeholder-gray-500 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:placeholder-neutral-400"
           placeholder={t("filterPlaceholder")}
           title={t("filterColumn")}
           aria-label={t("filterColumn")}
@@ -443,7 +525,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Font size */}
       <select
-        class="min-h-10 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
+        class="shrink-0 min-h-11 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().fontSize ?? 13}
         onChange={(e) =>
           props.onFormatChange({ fontSize: Number(e.currentTarget.value) })}
@@ -460,11 +542,13 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
       <Separator />
 
       {/* Text color */}
-      <div ref={textColorRef} class="relative">
+      <div ref={textColorRef} class="relative shrink-0">
         <ToolBtn
           onClick={() => {
-            setShowTextColor(!showTextColor());
+            const next = !showTextColor();
             setShowBgColor(false);
+            if (next) positionColorPopup(textColorRef);
+            setShowTextColor(next);
           }}
           title={t("textColor")}
           ariaHaspopup="true"
@@ -481,40 +565,55 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           </span>
         </ToolBtn>
         <Show when={showTextColor()}>
-          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800">
-            {colors.map((color) => (
-              <button
-                type="button"
-                class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
-                style={{ background: color }}
-                aria-label={color}
-                title={color}
-                onClick={() => {
-                  props.onFormatChange({ textColor: color });
-                  setShowTextColor(false);
-                }}
-              />
-            ))}
-            <button
-              type="button"
-              class="col-span-6 mt-1 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
-              onClick={() => {
-                props.onFormatChange({ textColor: undefined });
-                setShowTextColor(false);
+          <Portal>
+            <div
+              ref={textColorPopupRef}
+              class="fixed z-[110] grid grid-cols-6 gap-1.5 sm:gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800"
+              style={{
+                left: `${popupPos().left}px`,
+                top: `${popupPos().top}px`,
               }}
             >
-              {t("reset")}
-            </button>
-          </div>
+              {colors.map((color) => (
+                <button
+                  type="button"
+                  class="h-8 w-8 sm:h-5 sm:w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
+                  style={{ background: color }}
+                  aria-label={color}
+                  title={color}
+                  onClick={() => {
+                    const opener = textColorRef?.querySelector<HTMLButtonElement>("button");
+                    props.onFormatChange({ textColor: color });
+                    setShowTextColor(false);
+                    queueMicrotask(() => restoreFocus(opener));
+                  }}
+                />
+              ))}
+              <button
+                type="button"
+                class="col-span-6 mt-1 min-h-11 sm:min-h-7 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
+                onClick={() => {
+                  const opener = textColorRef?.querySelector<HTMLButtonElement>("button");
+                  props.onFormatChange({ textColor: undefined });
+                  setShowTextColor(false);
+                  queueMicrotask(() => restoreFocus(opener));
+                }}
+              >
+                {t("reset")}
+              </button>
+            </div>
+          </Portal>
         </Show>
       </div>
 
       {/* Background color */}
-      <div ref={bgColorRef} class="relative">
+      <div ref={bgColorRef} class="relative shrink-0">
         <ToolBtn
           onClick={() => {
-            setShowBgColor(!showBgColor());
+            const next = !showBgColor();
             setShowTextColor(false);
+            if (next) positionColorPopup(bgColorRef);
+            setShowBgColor(next);
           }}
           title={t("backgroundColor")}
           ariaHaspopup="true"
@@ -532,31 +631,44 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           />
         </ToolBtn>
         <Show when={showBgColor()}>
-          <div class="absolute top-8 left-0 z-50 grid grid-cols-6 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800">
-            {colors.map((color) => (
-              <button
-                type="button"
-                class="h-5 w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
-                style={{ background: color }}
-                aria-label={color}
-                title={color}
-                onClick={() => {
-                  props.onFormatChange({ bgColor: color });
-                  setShowBgColor(false);
-                }}
-              />
-            ))}
-            <button
-              type="button"
-              class="col-span-6 mt-1 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
-              onClick={() => {
-                props.onFormatChange({ bgColor: undefined });
-                setShowBgColor(false);
+          <Portal>
+            <div
+              ref={bgColorPopupRef}
+              class="fixed z-[110] grid grid-cols-6 gap-1.5 sm:gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-600 dark:bg-neutral-800"
+              style={{
+                left: `${popupPos().left}px`,
+                top: `${popupPos().top}px`,
               }}
             >
-              {t("reset")}
-            </button>
-          </div>
+              {colors.map((color) => (
+                <button
+                  type="button"
+                  class="h-8 w-8 sm:h-5 sm:w-5 rounded border border-gray-300 transition-transform hover:scale-110 dark:border-neutral-600"
+                  style={{ background: color }}
+                  aria-label={color}
+                  title={color}
+                  onClick={() => {
+                    const opener = bgColorRef?.querySelector<HTMLButtonElement>("button");
+                    props.onFormatChange({ bgColor: color });
+                    setShowBgColor(false);
+                    queueMicrotask(() => restoreFocus(opener));
+                  }}
+                />
+              ))}
+              <button
+                type="button"
+                class="col-span-6 mt-1 min-h-11 sm:min-h-7 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-300 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600"
+                onClick={() => {
+                  const opener = bgColorRef?.querySelector<HTMLButtonElement>("button");
+                  props.onFormatChange({ bgColor: undefined });
+                  setShowBgColor(false);
+                  queueMicrotask(() => restoreFocus(opener));
+                }}
+              >
+                {t("reset")}
+              </button>
+            </div>
+          </Portal>
         </Show>
       </div>
 
@@ -634,7 +746,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
 
       {/* Number format */}
       <select
-        class="min-h-10 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
+        class="shrink-0 min-h-11 sm:min-h-7 sm:h-7 rounded bg-gray-200 px-1.5 text-xs text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-700 dark:text-neutral-200"
         value={fmt().numberFormat ?? ""}
         onChange={(e) =>
           props.onFormatChange({
@@ -649,10 +761,7 @@ export const Toolbar: Component<ToolbarProps> = (props) => {
           </option>
         ))}
       </select>
-
-      <div class="flex-1" />
-      <ThemeToggle t={t} />
-      <LanguageSwitcher />
+      </div>
     </div>
   );
 };

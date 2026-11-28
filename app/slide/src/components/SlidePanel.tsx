@@ -85,11 +85,11 @@ function SlideThumbnail(props: {
       </button>
       {/* Reorder + Delete controls */}
       <Show when={props.total > 1}>
-        <div class="absolute top-2 right-2 flex items-center gap-1 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+        <div class="mt-1 flex items-center justify-end gap-1.5 px-1 pb-1 sm:mt-0 sm:px-0 sm:pb-0 sm:absolute sm:top-2 sm:right-2 sm:gap-1 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           <button
             type="button"
             disabled={props.index === 0}
-            class="w-6 h-6 rounded bg-gray-800/80 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            class="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 sm:w-6 sm:h-6 rounded bg-gray-800/85 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             aria-label={t("moveSlideUp", { number: props.index + 1 })}
             title={t("moveSlideUp", { number: props.index + 1 })}
             onClick={() => props.onMoveUp()}
@@ -99,7 +99,7 @@ function SlideThumbnail(props: {
           <button
             type="button"
             disabled={props.index === props.total - 1}
-            class="w-6 h-6 rounded bg-gray-800/80 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            class="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 sm:w-6 sm:h-6 rounded bg-gray-800/85 text-white text-xs flex items-center justify-center hover:bg-gray-700 disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             aria-label={t("moveSlideDown", { number: props.index + 1 })}
             title={t("moveSlideDown", { number: props.index + 1 })}
             onClick={() => props.onMoveDown()}
@@ -109,7 +109,7 @@ function SlideThumbnail(props: {
           <Show when={props.canDelete}>
             <button
               type="button"
-              class="w-6 h-6 rounded bg-red-600/90 text-white text-xs flex items-center justify-center hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              class="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 sm:w-6 sm:h-6 rounded bg-red-600/90 text-white text-xs flex items-center justify-center hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               aria-label={t("deleteSlide", { number: props.index + 1 })}
               title={t("deleteSlide", { number: props.index + 1 })}
               onClick={() => props.onDelete()}
@@ -135,7 +135,7 @@ export default function SlidePanel(props: SlidePanelProps) {
         </span>
         <button
           type="button"
-          class="min-h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          class="min-h-11 sm:min-h-8 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           aria-label={t("addSlide")}
           onClick={() => props.onAddSlide()}
         >

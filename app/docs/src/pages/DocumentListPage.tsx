@@ -254,7 +254,7 @@ export default function DocumentListPage() {
             <span class="min-w-0 flex-1">{t("loadDocumentsFailed")}</span>
             <button
               type="button"
-              class="rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+              class="min-h-11 sm:min-h-8 rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
               onClick={fetchDocuments}
             >
               {t("retry")}

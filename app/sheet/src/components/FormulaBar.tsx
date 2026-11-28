@@ -15,7 +15,7 @@ export const FormulaBar: Component<FormulaBarProps> = (props) => {
   return (
     <div class="flex min-h-11 sm:min-h-8 sm:h-8 items-center border-b border-gray-200 bg-gray-50 px-2 py-1 sm:py-0 dark:border-neutral-700 dark:bg-neutral-800">
       {/* Cell address display */}
-      <div class="flex h-10 sm:h-6 w-14 sm:w-16 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-xs font-medium text-gray-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200">
+      <div class="flex h-11 sm:h-6 w-14 sm:w-16 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-xs font-medium text-gray-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200">
         {props.cellAddress}
       </div>
 
@@ -24,7 +24,7 @@ export const FormulaBar: Component<FormulaBarProps> = (props) => {
 
       {/* Formula input */}
       <input
-        class="min-h-10 sm:min-h-6 sm:h-6 min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+        class="min-h-11 sm:min-h-6 sm:h-6 min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
         aria-label={t("formulaInput", { cell: props.cellAddress })}
         value={props.value}
         onInput={(e) => props.onValueChange(e.currentTarget.value)}
